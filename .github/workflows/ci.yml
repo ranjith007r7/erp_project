@@ -1,0 +1,66 @@
+name: CI
+
+# Runs automatically on every push and pull request.
+# This costs $0 - GitHub Actions gives unlimited minutes for public repos
+# and a generous free monthly quota for private repos.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: erp_user
+          POSTGRES_PASSWORD: erp_password
+          POSTGRES_DB: erp_db
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: pip install -r requirements.txt
+
+      - name: Confirm the app imports cleanly (catches syntax/import errors)
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://erp_user:erp_password@localhost:5432/erp_db
+          JWT_SECRET_KEY: ci-test-secret
+        run: python -c "from app.main import app; print('App imported successfully')"
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm install
+
+      - name: Build frontend (catches TypeScript/compile errors)
+        working-directory: ./frontend
+        run: npm run build
