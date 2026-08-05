@@ -40,13 +40,3 @@ def get_current_user(
         raise credentials_error
 
     return user
-
-
-def get_org_id(current_user: User = Depends(get_current_user)) -> str:
-    """
-    Every CRM/Sales/etc. route needs to filter its queries down to the
-    logged-in user's own organization - never showing one client's data
-    to another. Rather than repeat `str(current_user.org_id)` in every
-    single route, every module imports this one helper instead.
-    """
-    return str(current_user.org_id)

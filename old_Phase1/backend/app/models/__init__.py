@@ -10,8 +10,6 @@ from app.models.user import User
 from app.models.audit_log import AuditLog
 from app.models.notification import Notification
 from app.models.custom_field import CustomField
-from app.models.crm import Account, Contact, Lead, Opportunity
-from app.models.sales import Product, Customer, Quotation, QuotationItem, SalesOrder, SalesOrderItem, Invoice
 
 __all__ = [
     "Organization",
@@ -21,15 +19,4 @@ __all__ = [
     "AuditLog",
     "Notification",
     "CustomField",
-    "Account",
-    "Contact",
-    "Lead",
-    "Opportunity",
-    "Product",
-    "Customer",
-    "Quotation",
-    "QuotationItem",
-    "SalesOrder",
-    "SalesOrderItem",
-    "Invoice",
 ]

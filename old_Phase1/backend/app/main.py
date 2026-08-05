@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import Base, engine
-from app.api.routes import auth, crm, sales, dashboard
+from app.api.routes import auth
 
 # Importing app.models here (even though unused directly) registers every
 # table with Base.metadata - see the comment in app/models/__init__.py
@@ -11,8 +11,8 @@ import app.models  # noqa: F401
 
 app = FastAPI(
     title="Base ERP API",
-    description="Core/Platform + CRM + Sales - Phase 2",
-    version="0.2.0",
+    description="Core/Platform layer - Organizations, Users, Roles, Permissions, Audit Log, Notifications, Custom Fields",
+    version="0.1.0",
 )
 
 app.add_middleware(
@@ -24,9 +24,6 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
-app.include_router(crm.router)
-app.include_router(sales.router)
-app.include_router(dashboard.router)
 
 
 @app.on_event("startup")
