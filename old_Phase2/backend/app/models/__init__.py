@@ -12,7 +12,6 @@ from app.models.notification import Notification
 from app.models.custom_field import CustomField
 from app.models.crm import Account, Contact, Lead, Opportunity
 from app.models.sales import Product, Customer, Quotation, QuotationItem, SalesOrder, SalesOrderItem, Invoice
-from app.models.finance import ChartOfAccounts, JournalEntry, JournalLine, Payment
 
 __all__ = [
     "Organization",
@@ -33,8 +32,4 @@ __all__ = [
     "SalesOrder",
     "SalesOrderItem",
     "Invoice",
-    "ChartOfAccounts",
-    "JournalEntry",
-    "JournalLine",
-    "Payment",
 ]

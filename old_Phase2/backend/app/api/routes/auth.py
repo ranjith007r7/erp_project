@@ -13,7 +13,6 @@ from app.models.role import Role, Permission
 from app.models.user import User
 from app.schemas.auth import OrganizationSignup, LoginRequest, TokenResponse, UserOut
 from app.api.deps import get_current_user
-from app.services.accounting import seed_default_accounts
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -58,11 +57,6 @@ def signup(payload: OrganizationSignup, db: Session = Depends(get_db)):
         role_id=admin_role.id,
     )
     db.add(admin_user)
-
-    # 4. Seed a minimal default Chart of Accounts, so Finance isn't empty
-    #    the moment this organization exists - see app/services/accounting.py
-    seed_default_accounts(db, org.id)
-
     db.commit()
     db.refresh(admin_user)
 

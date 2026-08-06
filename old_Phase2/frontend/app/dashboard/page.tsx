@@ -24,11 +24,10 @@ type Summary = {
 const LIVE_MODULES: { name: string; href: string; stat?: keyof Summary; label?: string }[] = [
   { name: "CRM", href: "/crm", stat: "leads", label: "leads" },
   { name: "Sales", href: "/sales", stat: "sales_orders", label: "orders" },
-  { name: "Finance", href: "/finance", stat: "unpaid_invoices", label: "unpaid" },
 ];
 
 const PLACEHOLDER_MODULES = [
-  "Procurement", "Inventory", "HR", "Projects", "Documents", "Reports",
+  "Procurement", "Inventory", "Finance", "HR", "Projects", "Documents", "Reports",
 ];
 
 export default function DashboardPage() {

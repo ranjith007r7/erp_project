@@ -24,7 +24,6 @@ from app.schemas.sales import (
     SalesOrderOut,
     InvoiceOut,
 )
-from app.services.accounting import post_invoice_journal_entry
 
 router = APIRouter(prefix="/api/sales", tags=["sales"], dependencies=[Depends(get_current_user)])
 
@@ -154,12 +153,9 @@ def list_orders(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)
 @router.post("/orders/{order_id}/invoice", response_model=InvoiceOut, status_code=201)
 def generate_invoice(order_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """
-    Generates an Invoice from a Sales Order, AND posts the matching
-    Journal Entry (Debit Accounts Receivable, Credit Sales Revenue) in the
-    same database transaction - this is the actual "hand-off" between
-    Sales and Finance that makes this an ERP rather than separate apps.
-    If anything fails, both the Invoice and the Journal Entry roll back
-    together, so the books can never go out of sync with Sales records.
+    Generates an Invoice from a Sales Order. In a later phase (Finance),
+    this same action will also create a Journal Entry - deliberately not
+    wired yet, since the Finance module doesn't exist until Phase 3.
     """
     order = db.query(SalesOrder).filter(SalesOrder.id == order_id, SalesOrder.org_id == org_id).first()
     if not order:
@@ -177,13 +173,6 @@ def generate_invoice(order_id: str, db: Session = Depends(get_db), org_id: str =
     )
     order.status = "fulfilled"
     db.add(invoice)
-    db.flush()  # generates invoice.id, needed for the journal entry reference below
-
-    try:
-        post_invoice_journal_entry(db, org_id, str(invoice.id), invoice.amount)
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
     db.commit()
     db.refresh(invoice)
     return invoice

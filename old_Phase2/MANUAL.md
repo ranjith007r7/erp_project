@@ -249,47 +249,12 @@ Render and Vercel both auto-redeploy on push (that's what we set up in Phase 1).
 
 ---
 
-## PART 6 — Phase 3: Finance & Accounting
+## PART 6 — What's Next
 
-### What we added
-
-| Piece | What it does |
-|---|---|
-| `ChartOfAccounts`, `JournalEntry`, `JournalLine`, `Payment` models | Real double-entry bookkeeping — every entry's debits equal its credits |
-| `app/services/accounting.py` | The one shared place that knows how to post a balanced Journal Entry — both Sales and Finance call into it, rather than each writing their own copy |
-| Signup now seeds 3 default accounts | Cash (1000), Accounts Receivable (1100), Sales Revenue (4000) — so Finance isn't empty the moment an organization exists |
-| Sales' `generate_invoice` now auto-posts a Journal Entry | Debit Accounts Receivable, Credit Sales Revenue — in the **same database transaction** as the Invoice itself, so they can never go out of sync |
-| `POST /api/finance/payments` | Records money received, marks the Invoice paid, and posts a second Journal Entry (Debit Cash, Credit Accounts Receivable) |
-| `/finance` frontend page | Chart of Accounts, a live Journal Entries feed showing every debit/credit line, and a "Record Payment" button on unpaid invoices |
-
-**This is the phase where cross-module automation became real, not just planned.** Generating an Invoice in Sales now silently creates correct accounting entries in Finance — nobody re-types anything, exactly the "single source of truth" behavior described in the ERP Fundamentals document.
-
-### Why the accounting logic lives in its own `services/` folder
-
-Sales needs to post to Finance's accounts when an Invoice is created. Finance needs Sales' `Invoice` model when a Payment is recorded. If each route file tried to import directly from the other, we'd risk a circular import (`sales.py` imports `finance.py` which imports `sales.py`...). Putting the shared logic in `app/services/accounting.py` — which only imports from `app.models.finance`, never from routes — sidesteps that entirely. This is a pattern worth reusing: **whenever two modules need to hand off to each other, put the hand-off logic in its own service file, not inside either module's routes.**
-
-### Full lifecycle test (verified end-to-end, including the books balancing)
-
-```
-signup → 3 default accounts seeded automatically (Cash, A/R, Sales Revenue)
-→ customer + product + quotation (3 × ₹1,000 = ₹3,000) → accept → order
-→ generate invoice
-    → Journal Entry #1: Dr Accounts Receivable ₹3,000 / Cr Sales Revenue ₹3,000
-→ record payment (₹3,000)
-    → Journal Entry #2: Dr Cash ₹3,000 / Cr Accounts Receivable ₹3,000
-    → invoice status: unpaid → paid
-→ attempted a second payment on the same invoice → correctly rejected
-  ("This invoice is already fully paid.")
-```
-
-Every journal entry balanced (total debits = total credits) at every step, with zero manual bookkeeping — the backend did all of it from the Sales actions alone.
-
-### A deliberate simplification, documented so it isn't mistaken for a bug
-
-Recording a payment currently marks an invoice **fully** paid regardless of the amount entered — there's no partial-payment tracking (e.g., paying ₹1,000 of a ₹3,000 invoice and leaving ₹2,000 outstanding) yet. This was a conscious scope cut to keep Phase 3 focused on proving the Sales→Finance hand-off works correctly; partial payments are a reasonable enhancement for a later phase, not a missing fundamental.
-
----
-
-## PART 7 — What's Next
-
-Phase 4 will build **Inventory + Procurement** together, since they're each other's mirror image (Procurement brings stock *in*, Sales/Inventory sends it *out*). This is also when the lightweight `Product` table from Phase 2 gets extended with real stock-tracking fields (SKU, warehouse, reorder level) rather than replaced — exactly as planned back in Phase 2. This section keeps growing with each phase — nothing above gets deleted, only added to.
+Phase 3 will build **Finance & Accounting**, wiring it to the Sales module we
+just built — every Invoice generated in Sales should create a Journal Entry
+here, which is the cross-module "hand-off" that makes this an actual ERP
+rather than separate apps. **Inventory** will likely come alongside it, since
+Sales Orders should start reducing real stock levels once it exists. This
+section keeps growing with each phase — nothing above gets deleted, only
+added to.
