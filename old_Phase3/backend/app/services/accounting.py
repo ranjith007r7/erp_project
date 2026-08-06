@@ -31,38 +31,16 @@ def seed_default_accounts(db: Session, org_id: str) -> None:
 
 
 def get_account(db: Session, org_id: str, code: str) -> ChartOfAccounts:
-    """
-    Looks up a default account by code, and SELF-HEALS if it's missing.
-
-    Why this matters: seed_default_accounts() only runs once, at signup.
-    Any organization created before that code existed (or before we later
-    add a NEW default account in a future phase, e.g. Accounts Payable in
-    Procurement) would otherwise hit a hard failure here forever, with no
-    way to recover except a manual database fix. Self-healing means the
-    very next time this account is actually needed, it gets created on
-    the spot - permanently closing this entire category of bug, for every
-    organization, past or future, without anyone needing to run a script.
-    """
     account = (
         db.query(ChartOfAccounts)
         .filter(ChartOfAccounts.org_id == org_id, ChartOfAccounts.code == code)
         .first()
     )
-    if account:
-        return account
-
-    default = next((d for d in DEFAULT_ACCOUNTS if d[0] == code), None)
-    if not default:
-        # This code isn't even in our known defaults - a genuine
-        # configuration error, not a missing-seed situation. Still fail
-        # loudly here, since self-healing an *unknown* account would hide
-        # a real bug instead of fixing a data gap.
-        raise ValueError(f"Account {code} is not a recognized default account.")
-
-    default_code, name, account_type = default
-    account = ChartOfAccounts(org_id=org_id, code=default_code, name=name, account_type=account_type)
-    db.add(account)
-    db.flush()
+    if not account:
+        raise ValueError(
+            f"Account {code} not found for this organization - "
+            f"default accounts may not have been seeded at signup."
+        )
     return account
 
 

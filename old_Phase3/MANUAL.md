@@ -179,7 +179,6 @@ re-pin it the same way.
 | `422 Unprocessable Entity` | Your request body doesn't match what the backend expects (e.g., a field is too short, or missing) | Read the JSON error body — FastAPI tells you exactly which field failed and why. This is usually a genuinely helpful error, not a bug. |
 | `relation "users" does not exist` (or similar "table doesn't exist") | The database tables were never created | Locally, this self-heals on backend startup (`Base.metadata.create_all`). On a fresh Supabase database, just restart the Render service once so startup runs again. |
 | Render build fails with `pydantic-core` / `maturin` / `Build failed` errors, mentioning Python 3.14 | Render is using a newer default Python version than our dependencies have pre-built packages for yet | Set the `PYTHON_VERSION` environment variable to `3.12.10` in Render's dashboard (Environment tab), then redeploy with "Clear build cache & deploy." Do **not** use a `runtime.txt` file — Render doesn't read it; it's a Heroku convention. Render supports only `PYTHON_VERSION` (env var) or a `.python-version` file, in that priority order. |
-| An organization created in an earlier phase is missing data a newer phase expects (e.g. default accounts, default settings) | "Seed at signup" only runs for *new* signups — it can't retroactively fix organizations that already existed | This is why `get_account()` self-heals (Part 6). When adding a new "default" anything in a future module, prefer self-healing lookups over signup-only seeding, or you'll hit this exact bug again for every existing organization. |
 | Render service shows "Deploy failed" | Usually a missing dependency or wrong start command | Check the deploy logs tab on Render — it shows the exact Python traceback, same as running it locally. |
 | Vercel build fails with a TypeScript error | Same as `npm run build` failing locally | Run `npm run build` locally first before pushing — that's exactly what Vercel runs, so if it passes locally it will almost certainly pass there too. |
 | Everything "was working yesterday" and now nothing responds locally | Totally normal — Postgres (and any background server) doesn't survive a machine/container restart unless you explicitly restart it | Restart Postgres, then restart the backend and frontend, in that order. |
@@ -285,21 +284,9 @@ signup → 3 default accounts seeded automatically (Cash, A/R, Sales Revenue)
 
 Every journal entry balanced (total debits = total credits) at every step, with zero manual bookkeeping — the backend did all of it from the Sales actions alone.
 
-### A real bug found in your own production deployment (and fixed properly, not patched)
-
-After deploying Phase 3, you hit `"Account 1000 not found for this organization"` when clicking Record Payment. **Root cause:** that organization was created during Phase 1/2 testing, *before* `seed_default_accounts()` existed — signup-time seeding has no way to retroactively add accounts to organizations that already existed. This is a well-known category of bug called a **data migration gap**: new code correctly handles new data going forward, but old data was never backfilled.
-
-**Fix:** `get_account()` in `app/services/accounting.py` is now **self-healing** — if a default account is missing when it's actually needed, it's created on the spot instead of failing. This was verified by deliberately reproducing your exact scenario: seeding an org, then deleting all its accounts to simulate a pre-Phase-3 org, then running Invoice generation and Payment recording against it. Both self-healed correctly with zero manual database work, in the exact order a real user would hit them (Invoice generation healed accounts 1100 + 4000; Record Payment then healed 1000).
-
-This fix also permanently closes this bug category for the future — any account we add as a new "default" in a later phase (e.g. Accounts Payable in Procurement) will self-heal for every organization, old or new, the first time it's actually needed, without anyone ever running a manual migration script.
-
-**What to do:** just redeploy (`git push`) and click Record Payment again on the same invoice — no database fix needed, the code heals it automatically.
-
 ### A deliberate simplification, documented so it isn't mistaken for a bug
 
 Recording a payment currently marks an invoice **fully** paid regardless of the amount entered — there's no partial-payment tracking (e.g., paying ₹1,000 of a ₹3,000 invoice and leaving ₹2,000 outstanding) yet. This was a conscious scope cut to keep Phase 3 focused on proving the Sales→Finance hand-off works correctly; partial payments are a reasonable enhancement for a later phase, not a missing fundamental.
-
-
 
 ---
 
