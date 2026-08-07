@@ -25,7 +25,6 @@ from app.schemas.sales import (
     InvoiceOut,
 )
 from app.services.accounting import post_invoice_journal_entry
-from app.services.inventory import issue_stock
 
 router = APIRouter(prefix="/api/sales", tags=["sales"], dependencies=[Depends(get_current_user)])
 
@@ -155,40 +154,20 @@ def list_orders(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)
 @router.post("/orders/{order_id}/invoice", response_model=InvoiceOut, status_code=201)
 def generate_invoice(order_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """
-    Generates an Invoice from a Sales Order, issues stock for every line
-    item (Inventory), AND posts the matching Journal Entry (Finance) - all
-    in the SAME database transaction. This is the actual multi-module
-    "hand-off" that makes this an ERP: one action here correctly touches
-    three modules at once, or none of them, never a partial mix.
+    Generates an Invoice from a Sales Order, AND posts the matching
+    Journal Entry (Debit Accounts Receivable, Credit Sales Revenue) in the
+    same database transaction - this is the actual "hand-off" between
+    Sales and Finance that makes this an ERP rather than separate apps.
+    If anything fails, both the Invoice and the Journal Entry roll back
+    together, so the books can never go out of sync with Sales records.
     """
-    order = (
-        db.query(SalesOrder)
-        .options(joinedload(SalesOrder.items))
-        .filter(SalesOrder.id == order_id, SalesOrder.org_id == org_id)
-        .first()
-    )
+    order = db.query(SalesOrder).filter(SalesOrder.id == order_id, SalesOrder.org_id == org_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Sales order not found")
 
     existing = db.query(Invoice).filter(Invoice.order_id == order.id).first()
     if existing:
         raise HTTPException(status_code=400, detail="An invoice already exists for this order.")
-
-    # Issue stock for every line item BEFORE creating the invoice - if any
-    # item doesn't have enough stock, we fail here and nothing else about
-    # this order (invoice, journal entry, status) gets touched at all.
-    for item in order.items:
-        try:
-            issue_stock(
-                db, org_id,
-                product_id=str(item.product_id),
-                product_name=item.product.name,
-                qty=item.qty,
-                ref_type="sales_order",
-                ref_id=str(order.id),
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
 
     invoice = Invoice(
         org_id=org_id,

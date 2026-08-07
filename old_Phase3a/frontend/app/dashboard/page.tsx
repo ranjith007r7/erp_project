@@ -19,20 +19,16 @@ type Summary = {
   quotations: number;
   sales_orders: number;
   unpaid_invoices: number;
-  low_stock_products: number;
-  pending_purchase_orders: number;
 };
 
 const LIVE_MODULES: { name: string; href: string; stat?: keyof Summary; label?: string }[] = [
   { name: "CRM", href: "/crm", stat: "leads", label: "leads" },
   { name: "Sales", href: "/sales", stat: "sales_orders", label: "orders" },
   { name: "Finance", href: "/finance", stat: "unpaid_invoices", label: "unpaid" },
-  { name: "Inventory", href: "/inventory", stat: "low_stock_products", label: "low stock" },
-  { name: "Procurement", href: "/procurement", stat: "pending_purchase_orders", label: "pending" },
 ];
 
 const PLACEHOLDER_MODULES = [
-  "HR", "Projects", "Documents", "Reports",
+  "Procurement", "Inventory", "HR", "Projects", "Documents", "Reports",
 ];
 
 export default function DashboardPage() {
@@ -88,14 +84,12 @@ export default function DashboardPage() {
       </div>
 
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-7 gap-4 mb-8 max-w-5xl">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8 max-w-3xl">
           <SummaryTile label="Leads" value={summary.leads} />
           <SummaryTile label="Open Opportunities" value={summary.open_opportunities} />
           <SummaryTile label="Quotations" value={summary.quotations} />
           <SummaryTile label="Sales Orders" value={summary.sales_orders} />
           <SummaryTile label="Unpaid Invoices" value={summary.unpaid_invoices} />
-          <SummaryTile label="Low Stock" value={summary.low_stock_products} />
-          <SummaryTile label="Pending POs" value={summary.pending_purchase_orders} />
         </div>
       )}
 

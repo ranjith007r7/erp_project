@@ -13,8 +13,6 @@ from app.models.custom_field import CustomField
 from app.models.crm import Account, Contact, Lead, Opportunity
 from app.models.sales import Product, Customer, Quotation, QuotationItem, SalesOrder, SalesOrderItem, Invoice
 from app.models.finance import ChartOfAccounts, JournalEntry, JournalLine, Payment
-from app.models.inventory import ProductCategory, Warehouse, StockLevel, StockMovement
-from app.models.procurement import Vendor, PurchaseOrder, PurchaseOrderItem, GoodsReceipt
 
 __all__ = [
     "Organization",
@@ -39,12 +37,4 @@ __all__ = [
     "JournalEntry",
     "JournalLine",
     "Payment",
-    "ProductCategory",
-    "Warehouse",
-    "StockLevel",
-    "StockMovement",
-    "Vendor",
-    "PurchaseOrder",
-    "PurchaseOrderItem",
-    "GoodsReceipt",
 ]

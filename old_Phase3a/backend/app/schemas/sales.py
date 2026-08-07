@@ -9,18 +9,12 @@ from pydantic import BaseModel, Field
 class ProductCreate(BaseModel):
     name: str = Field(..., min_length=1)
     unit_price: Decimal = Decimal("0")
-    sku: Optional[str] = None
-    category_id: Optional[UUID] = None
-    reorder_level: int = 0
 
 
 class ProductOut(BaseModel):
     id: UUID
     name: str
     unit_price: Decimal
-    sku: Optional[str] = None
-    category_id: Optional[UUID] = None
-    reorder_level: int
 
     model_config = {"from_attributes": True}
 

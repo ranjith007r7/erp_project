@@ -10,11 +10,11 @@ from app.core.database import Base
 
 class Product(Base):
     """
-    Started DELIBERATELY MINIMAL in Phase 2 (Sales) - just enough for a
-    Sales Order to have line items with a price. Now extended here in
-    Phase 4 (Inventory) with the fields real stock tracking needs -
-    exactly as planned back then, this is the SAME table gaining columns,
-    not a second competing table. Nothing built in Sales needed to change.
+    DELIBERATELY MINIMAL for now - just enough for a Sales Order to have
+    line items with a price. When we build the dedicated Inventory module,
+    we'll ADD columns to this same table (sku, category_id, reorder_level,
+    stock tracking) rather than creating a second, competing table - so
+    nothing built in Sales needs to change later.
     """
     __tablename__ = "products"
 
@@ -22,9 +22,6 @@ class Product(Base):
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     name = Column(String, nullable=False)
     unit_price = Column(Numeric(12, 2), nullable=False, default=0)
-    sku = Column(String, nullable=True)
-    category_id = Column(UUID(as_uuid=True), ForeignKey("product_categories.id"), nullable=True)
-    reorder_level = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

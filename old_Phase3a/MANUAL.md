@@ -179,7 +179,6 @@ re-pin it the same way.
 | `422 Unprocessable Entity` | Your request body doesn't match what the backend expects (e.g., a field is too short, or missing) | Read the JSON error body — FastAPI tells you exactly which field failed and why. This is usually a genuinely helpful error, not a bug. |
 | `relation "users" does not exist` (or similar "table doesn't exist") | The database tables were never created | Locally, this self-heals on backend startup (`Base.metadata.create_all`). On a fresh Supabase database, just restart the Render service once so startup runs again. |
 | Render build fails with `pydantic-core` / `maturin` / `Build failed` errors, mentioning Python 3.14 | Render is using a newer default Python version than our dependencies have pre-built packages for yet | Set the `PYTHON_VERSION` environment variable to `3.12.10` in Render's dashboard (Environment tab), then redeploy with "Clear build cache & deploy." Do **not** use a `runtime.txt` file — Render doesn't read it; it's a Heroku convention. Render supports only `PYTHON_VERSION` (env var) or a `.python-version` file, in that priority order. |
-| `column "..." of relation "..." does not exist` | You added a field to a model whose table already existed from an earlier phase. `Base.metadata.create_all()` only creates brand-new tables — it never alters existing ones | Run a manual `ALTER TABLE ... ADD COLUMN ...` matching the new field(s), on both your local database and Supabase. This will keep happening until Alembic migrations are adopted (see Part 8) — it's expected, not a sign something is broken. |
 | An organization created in an earlier phase is missing data a newer phase expects (e.g. default accounts, default settings) | "Seed at signup" only runs for *new* signups — it can't retroactively fix organizations that already existed | This is why `get_account()` self-heals (Part 6). When adding a new "default" anything in a future module, prefer self-healing lookups over signup-only seeding, or you'll hit this exact bug again for every existing organization. |
 | Render service shows "Deploy failed" | Usually a missing dependency or wrong start command | Check the deploy logs tab on Render — it shows the exact Python traceback, same as running it locally. |
 | Vercel build fails with a TypeScript error | Same as `npm run build` failing locally | Run `npm run build` locally first before pushing — that's exactly what Vercel runs, so if it passes locally it will almost certainly pass there too. |
@@ -304,64 +303,6 @@ Recording a payment currently marks an invoice **fully** paid regardless of the 
 
 ---
 
-## PART 8 — Phase 4: Inventory + Procurement
+## PART 7 — What's Next
 
-### What we added
-
-| Piece | What it does |
-|---|---|
-| `ProductCategory`, `Warehouse`, `StockLevel`, `StockMovement` models | Real stock tracking — `StockLevel` is the current count, `StockMovement` is the permanent ledger explaining how it got there (same pattern as Journal Entries in Finance) |
-| `Product` extended (not replaced) | `sku`, `category_id`, `reorder_level` added to the same table from Phase 2, exactly as promised back then |
-| `Vendor`, `PurchaseOrder`(+items), `GoodsReceipt` models | Procurement's mirror image of Sales — brings stock **in** instead of sending it **out** |
-| `app/services/inventory.py` | Same shared-service pattern as accounting.py — `receive_stock()` (Procurement calls this) and `issue_stock()` (Sales calls this), so neither module needs to import the other |
-| `get_default_warehouse()` self-heals | Same self-healing pattern from the Finance bug fix — no organization can ever hit a missing-warehouse trap |
-| Sales' `generate_invoice` now issues real stock | And **rejects the invoice entirely** if there isn't enough stock — this is the actual point of Inventory existing: Sales can no longer promise something that isn't there |
-| `/inventory` and `/procurement` frontend pages | Categories, products with live stock + low-stock warnings, stock movement ledger, vendors, purchase orders, and a "Receive Goods" action |
-| Dashboard | Now shows Low Stock and Pending Purchase Order counts, and both modules are live-linked |
-
-### A second real bug, and why it's a different kind than the last one
-
-After adding `sku`, `category_id`, and `reorder_level` to the `Product` model, the very next test run failed with `column "sku" of relation "products" does not exist`.
-
-**This is a different bug category than the Finance self-healing one.** That one was *missing rows* in an existing table (an old organization with zero account rows). This one is a *missing column* — the `products` table itself already existed from Phase 2 testing, and `Base.metadata.create_all()` **only creates tables that don't exist yet — it never alters a table that's already there**, even if the code now says that table should have three more columns.
-
-This was flagged as a known limitation all the way back in Phase 1's `main.py` comment ("this is fine while we're actively building... once the schema stabilizes, we'll switch to Alembic migrations"). This is that moment arriving.
-
-**Immediate fix (already applied locally, and needed once on your Supabase database too):**
-```sql
-ALTER TABLE products ADD COLUMN IF NOT EXISTS sku VARCHAR;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS category_id UUID;
-ALTER TABLE products ADD COLUMN IF NOT EXISTS reorder_level INTEGER NOT NULL DEFAULT 0;
-```
-Run this once in Supabase's SQL Editor before your Phase 4 deploy goes live, or every request touching Products will fail with the same error you'd see locally.
-
-**Why we didn't fix this "properly" with Alembic in the same phase:** introducing real migration tooling correctly - especially generating a *baseline* migration that matches a database that already has real tables in it, without accidentally trying to recreate them - deserves its own careful, dedicated pass, not to be rushed alongside feature work. Patching this specific column gap now, unblocking Phase 4, and scheduling Alembic as the very next piece of work (before Phase 5 feature-building resumes) is the more honest engineering call than pretending to add proper migrations in the same breath as three new modules.
-
-**What this means going forward:** any time we add a column to a table that already existed in a prior phase (not a brand-new table), expect this same error, and apply the same kind of `ALTER TABLE` fix, until Alembic is in place.
-
-### Full lifecycle test (including the two failure modes that matter most)
-
-```
-signup → category "Electronics" → product "USB Cable" (SKU, reorder_level=10)
-→ stock BEFORE any purchase: empty (no StockLevel row exists yet - correct)
-→ vendor → purchase order (50 units) → RECEIVE → stock: 50
-
-→ Test 1: order 100 units (more than the 50 available)
-    → generate invoice REJECTED: "Insufficient stock for 'USB Cable':
-      50 available, 100 required."
-    → stock UNCHANGED at 50 - confirms the rejection has zero side effects,
-      nothing partially written
-
-→ Test 2: order 20 units (within the 50 available)
-    → generate invoice SUCCEEDS
-    → stock correctly drops: 50 → 30
-    → movement ledger shows exactly one 'in' of 50 and one 'out' of 20
-```
-
-The insufficient-stock rejection leaving stock completely untouched is the important part to notice — it proves the whole operation (stock check, invoice, journal entry) either fully succeeds or fully fails together, never partially.
-
----
-
-## PART 9 — What's Next
-
-**Before Phase 5 feature work resumes, the next task is adopting Alembic migrations properly** — this closes the schema-change bug category for good, the same way self-healing closed the missing-default-row category in Finance. After that, Phase 5 will build **HR & Payroll**, which is largely self-contained (it doesn't hand off to Sales/Procurement the way Finance and Inventory do), making it a good "breather" phase before **Projects & Tasks**, **Documents & Workflow Approvals**, and finally **Reports & Analytics** close out the original module list. This section keeps growing with each phase — nothing above gets deleted, only added to.
+Phase 4 will build **Inventory + Procurement** together, since they're each other's mirror image (Procurement brings stock *in*, Sales/Inventory sends it *out*). This is also when the lightweight `Product` table from Phase 2 gets extended with real stock-tracking fields (SKU, warehouse, reorder level) rather than replaced — exactly as planned back in Phase 2. This section keeps growing with each phase — nothing above gets deleted, only added to.
