@@ -14,7 +14,6 @@ from app.models.crm import Lead, Opportunity
 from app.models.sales import Quotation, SalesOrder, Invoice, Product
 from app.models.inventory import StockLevel
 from app.models.procurement import PurchaseOrder
-from app.models.hr import Employee, LeaveRequest
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(get_current_user)])
 
@@ -48,8 +47,4 @@ def get_summary(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)
         "pending_purchase_orders": db.query(PurchaseOrder).filter(
             PurchaseOrder.org_id == org_id, PurchaseOrder.status == "pending"
         ).count(),
-        "employees": db.query(Employee).filter(Employee.org_id == org_id, Employee.status == "active").count(),
-        "pending_leave_requests": db.query(LeaveRequest).join(
-            Employee, Employee.id == LeaveRequest.employee_id
-        ).filter(Employee.org_id == org_id, LeaveRequest.status == "pending").count(),
     }

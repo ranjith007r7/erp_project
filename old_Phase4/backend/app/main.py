@@ -2,17 +2,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.api.routes import auth, crm, sales, finance, inventory, procurement, hr, dashboard
+from app.core.database import Base, engine
+from app.api.routes import auth, crm, sales, finance, inventory, procurement, dashboard
 
 # Importing app.models here (even though unused directly) registers every
-# table with Base.metadata - needed so Alembic's autogenerate can see
-# every model when comparing against the real database schema.
+# table with Base.metadata - see the comment in app/models/__init__.py
 import app.models  # noqa: F401
 
 app = FastAPI(
     title="Base ERP API",
-    description="Core/Platform + CRM + Sales + Finance + Inventory + Procurement + HR - Phase 5",
-    version="0.5.0",
+    description="Core/Platform + CRM + Sales + Finance + Inventory + Procurement - Phase 4",
+    version="0.4.0",
 )
 
 app.add_middleware(
@@ -29,16 +29,18 @@ app.include_router(sales.router)
 app.include_router(finance.router)
 app.include_router(inventory.router)
 app.include_router(procurement.router)
-app.include_router(hr.router)
 app.include_router(dashboard.router)
 
-# NOTE: there used to be a startup hook here calling
-# Base.metadata.create_all(bind=engine) to auto-create tables. That's
-# removed now - Alembic owns the schema going forward (see alembic/ and
-# MANUAL.md Part 10). The database schema is created/changed ONLY by
-# running `alembic upgrade head`, never automatically at app startup.
-# This is what makes schema changes trackable, reviewable, and reversible,
-# instead of happening silently.
+
+@app.on_event("startup")
+def on_startup():
+    """
+    Creates every table that doesn't exist yet, based on the models we've
+    imported above. This is fine while we're actively building (Phase 1).
+    Once the schema stabilizes, we'll switch to Alembic migrations instead,
+    so that changes to production data are tracked and reversible.
+    """
+    Base.metadata.create_all(bind=engine)
 
 
 @app.get("/")

@@ -13,15 +13,14 @@ from sqlalchemy.orm import Session
 
 from app.models.finance import ChartOfAccounts, JournalEntry, JournalLine
 
-# Every organization gets these accounts automatically at signup (or via
-# self-healing on first use - see get_account below). Adding a new entry
-# here (like Payroll Expense in Phase 5) is automatically picked up by
-# self-healing for EVERY organization, old or new - no backfill needed.
+# Every organization gets these three accounts automatically at signup.
+# More get added when Procurement/HR/Inventory need their own (e.g.
+# Accounts Payable, Payroll Expense) - this list is deliberately minimal
+# for what Sales needs today.
 DEFAULT_ACCOUNTS = [
     ("1000", "Cash", "asset"),
     ("1100", "Accounts Receivable", "asset"),
     ("4000", "Sales Revenue", "revenue"),
-    ("5000", "Payroll Expense", "expense"),
 ]
 
 
@@ -97,26 +96,5 @@ def post_payment_journal_entry(db: Session, org_id: str, payment_id: str, amount
     entry = JournalEntry(org_id=org_id, reference=f"PMT-{payment_id}", description="Payment received")
     entry.lines.append(JournalLine(account_id=cash_account.id, debit=amount, credit=0))
     entry.lines.append(JournalLine(account_id=ar_account.id, debit=0, credit=amount))
-    db.add(entry)
-    return entry
-
-
-def post_payroll_journal_entry(db: Session, org_id: str, payroll_run_id: str, total_net_pay) -> JournalEntry:
-    """
-    The moment a Payroll Run is processed, we record:
-        Debit  Payroll Expense   (this cost the company money)
-        Credit Cash              (assuming immediate payment - a company
-                                  using a 'Salaries Payable' liability
-                                  account instead, for payroll paid on a
-                                  delay, is a reasonable later refinement)
-    One entry for the WHOLE run's total, not one per employee - keeps the
-    ledger readable, matching how a real payroll journal entry looks.
-    """
-    payroll_expense_account = get_account(db, org_id, "5000")
-    cash_account = get_account(db, org_id, "1000")
-
-    entry = JournalEntry(org_id=org_id, reference=f"PAYROLL-{payroll_run_id}", description="Payroll processed")
-    entry.lines.append(JournalLine(account_id=payroll_expense_account.id, debit=total_net_pay, credit=0))
-    entry.lines.append(JournalLine(account_id=cash_account.id, debit=0, credit=total_net_pay))
     db.add(entry)
     return entry

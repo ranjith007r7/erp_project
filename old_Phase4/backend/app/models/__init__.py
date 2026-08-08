@@ -15,7 +15,6 @@ from app.models.sales import Product, Customer, Quotation, QuotationItem, SalesO
 from app.models.finance import ChartOfAccounts, JournalEntry, JournalLine, Payment
 from app.models.inventory import ProductCategory, Warehouse, StockLevel, StockMovement
 from app.models.procurement import Vendor, PurchaseOrder, PurchaseOrderItem, GoodsReceipt
-from app.models.hr import Department, Employee, Attendance, LeaveRequest, PayrollRun, Payslip
 
 __all__ = [
     "Organization",
@@ -48,10 +47,4 @@ __all__ = [
     "PurchaseOrder",
     "PurchaseOrderItem",
     "GoodsReceipt",
-    "Department",
-    "Employee",
-    "Attendance",
-    "LeaveRequest",
-    "PayrollRun",
-    "Payslip",
 ]
