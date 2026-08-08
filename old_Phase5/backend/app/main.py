@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.api.routes import auth, crm, sales, finance, inventory, procurement, hr, projects, dashboard
+from app.api.routes import auth, crm, sales, finance, inventory, procurement, hr, dashboard
 
 # Importing app.models here (even though unused directly) registers every
 # table with Base.metadata - needed so Alembic's autogenerate can see
@@ -11,8 +11,8 @@ import app.models  # noqa: F401
 
 app = FastAPI(
     title="Base ERP API",
-    description="Core/Platform + CRM + Sales + Finance + Inventory + Procurement + HR + Projects - Phase 6",
-    version="0.6.0",
+    description="Core/Platform + CRM + Sales + Finance + Inventory + Procurement + HR - Phase 5",
+    version="0.5.0",
 )
 
 app.add_middleware(
@@ -30,7 +30,6 @@ app.include_router(finance.router)
 app.include_router(inventory.router)
 app.include_router(procurement.router)
 app.include_router(hr.router)
-app.include_router(projects.router)
 app.include_router(dashboard.router)
 
 # NOTE: there used to be a startup hook here calling

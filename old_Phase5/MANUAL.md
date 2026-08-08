@@ -419,34 +419,6 @@ If you're unsure which state your Supabase database is in, tell me what tables c
 
 ---
 
-## PART 13 — Phase 6: Projects & Tasks
+## PART 12 — What's Next
 
-### What we added
-
-| Piece | What it does |
-|---|---|
-| `Project`, `Task`, `TimeLog` models | Self-contained module — no Finance/Inventory hand-offs, as planned |
-| `client_account_id` on Project | Optionally links to a CRM Account, for services-oriented orgs; internal projects just leave it null |
-| `/projects` frontend page | Create projects, add tasks with priority, checkbox to mark done, log hours per task with a running total shown inline |
-| Dashboard | Active Projects and Open Tasks tiles, module now live-linked |
-
-### Full lifecycle test (verified end-to-end)
-
-```
-signup → project "Website Revamp" → task "Design homepage" (priority: high)
-→ log 3.5 hours against the task
-→ mark task done
-→ all three list endpoints (projects, tasks, time-logs) confirmed correct
-```
-
-Straightforward module, deliberately - the "breather" phase between Inventory/Procurement's stock logic and Documents' upcoming approval-workflow engine.
-
-### Deploying this update
-
-Same as Phase 5 — `alembic upgrade head` on Supabase (no `stamp` needed this time, since Supabase should already be at the Phase 5 baseline from your last deploy), then `git push`.
-
----
-
-## PART 14 — What's Next
-
-Phase 7 will build **Documents & Workflow Approvals** — the first module needing a genuinely *generic* engine rather than per-module status fields: an `ApprovalWorkflow` + `ApprovalRequest` + `ApprovalStep` chain that any future module (expense approval, PO approval, leave approval) can plug into, rather than each module inventing its own approval logic. **Reports & Analytics** closes out the original 10-module list after that — deliberately last, since it only reads data every other module has already produced. This section keeps growing with each phase — nothing above gets deleted, only added to.
+Phase 6 will build **Projects & Tasks** — a largely self-contained module (no Finance/Inventory hand-offs required), followed by **Documents & Workflow Approvals** (which will need a generic approval-workflow engine, not just per-module status fields) and finally **Reports & Analytics** to close out the original 10-module list. This section keeps growing with each phase — nothing above gets deleted, only added to.

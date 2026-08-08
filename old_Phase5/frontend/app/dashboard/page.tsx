@@ -23,8 +23,6 @@ type Summary = {
   pending_purchase_orders: number;
   employees: number;
   pending_leave_requests: number;
-  active_projects: number;
-  open_tasks: number;
 };
 
 const LIVE_MODULES: { name: string; href: string; stat?: keyof Summary; label?: string }[] = [
@@ -34,11 +32,10 @@ const LIVE_MODULES: { name: string; href: string; stat?: keyof Summary; label?: 
   { name: "Inventory", href: "/inventory", stat: "low_stock_products", label: "low stock" },
   { name: "Procurement", href: "/procurement", stat: "pending_purchase_orders", label: "pending" },
   { name: "HR", href: "/hr", stat: "pending_leave_requests", label: "leave reqs" },
-  { name: "Projects", href: "/projects", stat: "open_tasks", label: "open tasks" },
 ];
 
 const PLACEHOLDER_MODULES = [
-  "Documents", "Reports",
+  "Projects", "Documents", "Reports",
 ];
 
 export default function DashboardPage() {
@@ -104,8 +101,6 @@ export default function DashboardPage() {
           <SummaryTile label="Pending POs" value={summary.pending_purchase_orders} />
           <SummaryTile label="Employees" value={summary.employees} />
           <SummaryTile label="Pending Leave" value={summary.pending_leave_requests} />
-          <SummaryTile label="Active Projects" value={summary.active_projects} />
-          <SummaryTile label="Open Tasks" value={summary.open_tasks} />
         </div>
       )}
 

@@ -16,7 +16,6 @@ from app.models.finance import ChartOfAccounts, JournalEntry, JournalLine, Payme
 from app.models.inventory import ProductCategory, Warehouse, StockLevel, StockMovement
 from app.models.procurement import Vendor, PurchaseOrder, PurchaseOrderItem, GoodsReceipt
 from app.models.hr import Department, Employee, Attendance, LeaveRequest, PayrollRun, Payslip
-from app.models.projects import Project, Task, TimeLog
 
 __all__ = [
     "Organization",
@@ -55,7 +54,4 @@ __all__ = [
     "LeaveRequest",
     "PayrollRun",
     "Payslip",
-    "Project",
-    "Task",
-    "TimeLog",
 ]
