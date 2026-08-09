@@ -25,7 +25,6 @@ type Summary = {
   pending_leave_requests: number;
   active_projects: number;
   open_tasks: number;
-  pending_approvals: number;
 };
 
 const LIVE_MODULES: { name: string; href: string; stat?: keyof Summary; label?: string }[] = [
@@ -36,11 +35,10 @@ const LIVE_MODULES: { name: string; href: string; stat?: keyof Summary; label?: 
   { name: "Procurement", href: "/procurement", stat: "pending_purchase_orders", label: "pending" },
   { name: "HR", href: "/hr", stat: "pending_leave_requests", label: "leave reqs" },
   { name: "Projects", href: "/projects", stat: "open_tasks", label: "open tasks" },
-  { name: "Documents", href: "/documents", stat: "pending_approvals", label: "approvals" },
 ];
 
 const PLACEHOLDER_MODULES = [
-  "Reports",
+  "Documents", "Reports",
 ];
 
 export default function DashboardPage() {
@@ -108,7 +106,6 @@ export default function DashboardPage() {
           <SummaryTile label="Pending Leave" value={summary.pending_leave_requests} />
           <SummaryTile label="Active Projects" value={summary.active_projects} />
           <SummaryTile label="Open Tasks" value={summary.open_tasks} />
-          <SummaryTile label="Pending Approvals" value={summary.pending_approvals} />
         </div>
       )}
 

@@ -447,42 +447,6 @@ Same as Phase 5 — `alembic upgrade head` on Supabase (no `stamp` needed this t
 
 ---
 
-## PART 15 — Phase 7: Documents & Workflow Approvals
+## PART 14 — What's Next
 
-### What we added
-
-| Piece | What it does |
-|---|---|
-| `Document` model | File references (title + URL), attachable to any record via `related_type`/`related_id` |
-| `ApprovalWorkflow` | A reusable RULE an org defines once (e.g. "Manager then Finance"), stored as JSON steps |
-| `ApprovalRequest` + `ApprovalStep` | One real INSTANCE of a rule running against one real record, materialized into ordered, individually-trackable step rows — same audit-trail philosophy as Journal Lines and Stock Movements |
-| `POST /approval-requests/{id}/action` | Acts on whichever step is currently pending, **in strict order** — step 2 is structurally impossible to action before step 1 |
-| `/documents` frontend page | Define a workflow, submit something for approval, approve/reject step-by-step with the current required role shown |
-
-**This is the first genuinely generic engine in the codebase.** Every other cross-module hand-off (Sales→Finance, Procurement→Inventory, HR→Finance) was a specific function for a specific event. This one is designed so ANY future module can trigger an approval by calling one endpoint with its own `entity_type`/`entity_id` — no new approval logic needs to be written per module.
-
-**Known limitation, by design:** role-checking on who can action a step currently only distinguishes "Admin" (can action anything) from everyone else (must match the exact required role). Real fine-grained enforcement is Phase 11 (RBAC Enforcement) — this phase proves the workflow *mechanics* are correct, which was the actual goal here.
-
-### Full lifecycle test (verified end-to-end)
-
-```
-2-step workflow created: Manager → Finance
-→ approval request submitted → both steps start "pending"
-→ action step 1 (Manager) → approved → request stays "pending" (step 2 still open)
-→ action step 2 (Finance) → approved → request auto-completes to "approved"
-→ re-actioning an already-approved request → correctly rejected
-
-Separate test: reject at step 1
-→ request immediately flips to "rejected"
-→ step 2 never gets touched (confirms rejection stops the chain, doesn't cascade)
-```
-
-### Deploying this update
-
-Same as always — `alembic upgrade head` on Supabase, then `git push`.
-
----
-
-## PART 16 — What's Next
-
-**Reports & Analytics** is the only module left from the original 10 — deliberately last, since it only reads data every other module has already produced (no new business logic, no new cross-module hand-offs). After that, per the roadmap document (`ERP_Remaining_Roadmap_and_Testing_Guide.md`), the path splits into two tracks: **Demo-Ready** (Custom Fields made real, UI polish) and **Client-Ready** (RBAC enforcement, automated testing, security hardening) — see that document for the full breakdown and realistic timeline. This section keeps growing with each phase — nothing above gets deleted, only added to.
+Phase 7 will build **Documents & Workflow Approvals** — the first module needing a genuinely *generic* engine rather than per-module status fields: an `ApprovalWorkflow` + `ApprovalRequest` + `ApprovalStep` chain that any future module (expense approval, PO approval, leave approval) can plug into, rather than each module inventing its own approval logic. **Reports & Analytics** closes out the original 10-module list after that — deliberately last, since it only reads data every other module has already produced. This section keeps growing with each phase — nothing above gets deleted, only added to.
