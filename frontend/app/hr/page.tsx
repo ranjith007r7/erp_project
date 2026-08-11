@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
+import { NotificationBell } from "@/components/NotificationBell";
 
 type Department = { id: string; name: string };
 type Employee = { id: string; name: string; designation: string | null; salary: string; department_id: string | null };
@@ -93,9 +94,12 @@ export default function HRPage() {
     <main className="min-h-screen p-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-slate-800">HR & Payroll</h1>
-        <Link href="/dashboard" className="text-sm text-slate-500 underline">
-          ← Dashboard
-        </Link>
+        <div className="flex items-center gap-4">
+          <NotificationBell />
+          <Link href="/dashboard" className="text-sm text-slate-500 underline">
+            ← Dashboard
+          </Link>
+        </div>
       </div>
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, apiDownload } from "@/lib/api";
+import { PromptModal } from "@/components/Modal";
 
 type ReportModule = "sales" | "finance" | "inventory" | "procurement" | "hr" | "crm" | "projects";
 
@@ -43,6 +44,7 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
+  const [showSaveModal, setShowSaveModal] = useState(false);
 
   function loadReport(tab: ReportModule) {
     setLoading(true);
@@ -84,15 +86,14 @@ export default function ReportsPage() {
     }
   }
 
-  async function handleSaveView() {
-    const name = window.prompt("Name this saved report view:");
-    if (!name) return;
+  async function handleSaveView(name: string) {
     try {
       await apiRequest("/api/reports/saved", {
         method: "POST",
         auth: true,
         body: { name, module: activeTab, query_config: {} },
       });
+      setShowSaveModal(false);
       loadSavedReports();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save report");
@@ -142,7 +143,7 @@ export default function ReportsPage() {
           ⬇ Export CSV
         </button>
         <button
-          onClick={handleSaveView}
+          onClick={() => setShowSaveModal(true)}
           className="text-sm bg-white shadow-sm rounded-lg px-3 py-1.5 text-slate-700 hover:bg-slate-100"
         >
           ★ Save this view
@@ -187,6 +188,16 @@ export default function ReportsPage() {
             </div>
           </section>
         </div>
+      )}
+
+      {showSaveModal && (
+        <PromptModal
+          title="Save Report View"
+          label="Name this saved report view"
+          placeholder="e.g. Monthly Revenue Snapshot"
+          onSubmit={handleSaveView}
+          onClose={() => setShowSaveModal(false)}
+        />
       )}
     </main>
   );

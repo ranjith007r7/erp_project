@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { CustomFieldsSection } from "@/components/CustomFieldsSection";
+import { Modal } from "@/components/Modal";
 
 type Lead = {
   id: string;
@@ -27,6 +28,8 @@ export default function CRMPage() {
   const [form, setForm] = useState({ name: "", company_name: "", email: "", source: "" });
   const [error, setError] = useState<string | null>(null);
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
+  const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
+  const [convertForm, setConvertForm] = useState({ opportunity_name: "", value: "" });
 
   function loadAll() {
     apiRequest<Lead[]>("/api/crm/leads", { auth: true }).then(setLeads).catch((e) => setError(e.message));
@@ -47,16 +50,24 @@ export default function CRMPage() {
     }
   }
 
-  async function handleConvert(leadId: string) {
-    const opportunity_name = window.prompt("Opportunity name for this deal?");
-    if (!opportunity_name) return;
-    const valueStr = window.prompt("Estimated deal value (₹)?", "0") || "0";
+  function openConvertModal(lead: Lead) {
+    setConvertForm({ opportunity_name: "", value: "0" });
+    setConvertingLead(lead);
+  }
+
+  async function handleConvert(e: React.FormEvent) {
+    e.preventDefault();
+    if (!convertingLead) return;
     try {
-      await apiRequest(`/api/crm/leads/${leadId}/convert`, {
+      await apiRequest(`/api/crm/leads/${convertingLead.id}/convert`, {
         method: "POST",
         auth: true,
-        body: { opportunity_name, opportunity_value: Number(valueStr) },
+        body: {
+          opportunity_name: convertForm.opportunity_name,
+          opportunity_value: Number(convertForm.value) || 0,
+        },
       });
+      setConvertingLead(null);
       loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to convert lead");
@@ -138,7 +149,7 @@ export default function CRMPage() {
                       </button>
                       {lead.status !== "converted" && (
                         <button
-                          onClick={() => handleConvert(lead.id)}
+                          onClick={() => openConvertModal(lead)}
                           className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700"
                         >
                           Convert →
@@ -174,6 +185,46 @@ export default function CRMPage() {
           </div>
         </section>
       </div>
+
+      {convertingLead && (
+        <Modal title={`Convert "${convertingLead.name}" to an Opportunity`} onClose={() => setConvertingLead(null)}>
+          <form onSubmit={handleConvert} className="space-y-3">
+            <label className="block text-sm text-slate-600">
+              Opportunity name
+              <input
+                autoFocus
+                required
+                value={convertForm.opportunity_name}
+                onChange={(e) => setConvertForm({ ...convertForm, opportunity_name: e.target.value })}
+                placeholder="e.g. Acme Corp — Website Revamp"
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-1"
+              />
+            </label>
+            <label className="block text-sm text-slate-600">
+              Estimated deal value (₹)
+              <input
+                type="number"
+                min="0"
+                value={convertForm.value}
+                onChange={(e) => setConvertForm({ ...convertForm, value: e.target.value })}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-1"
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConvertingLead(null)}
+                className="text-sm text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button type="submit" className="text-sm bg-slate-800 text-white px-4 py-1.5 rounded-lg hover:bg-slate-700">
+                Convert
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </main>
   );
 }

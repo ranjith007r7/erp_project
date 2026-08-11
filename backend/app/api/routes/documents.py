@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.database import get_db
 from app.api.deps import get_current_user, get_org_id
 from app.models.documents import Document, ApprovalWorkflow, ApprovalRequest, ApprovalStep
+from app.services.notifications import notify_role, notify_user
 from app.schemas.documents import (
     DocumentCreate, DocumentOut,
     ApprovalWorkflowCreate, ApprovalWorkflowOut,
@@ -87,6 +88,15 @@ def create_approval_request(payload: ApprovalRequestCreate, db: Session = Depend
     db.add(request)
     db.commit()
     db.refresh(request)
+
+    # Step 1 is actionable the moment the request exists — notify whoever
+    # holds that role. Soft-fail (see notify_role's docstring): a
+    # workflow's role_required string isn't guaranteed to match a real
+    # Role row yet, since RBAC enforcement is still Phase 11.
+    first_step = min(request.steps, key=lambda s: s.step_order)
+    notify_role(db, org_id, first_step.role_required, f"A {payload.entity_type} needs your approval.")
+    db.commit()
+
     return request
 
 
@@ -142,13 +152,18 @@ def action_approval_step(request_id: str, payload: ApprovalActionRequest, db: Se
     if payload.decision == "reject":
         current_step.status = "rejected"
         request.status = "rejected"
+        notify_user(db, org_id, request.requested_by, f"Your {request.entity_type} approval request was rejected.")
     else:
         current_step.status = "approved"
         remaining = [s for s in request.steps if s.step_order > current_step.step_order]
         if not remaining:
             request.status = "approved"
-        # else: request stays "pending" - the next step is now the new
-        # "first pending step" the next call to this endpoint will find.
+            notify_user(db, org_id, request.requested_by, f"Your {request.entity_type} approval request was approved.")
+        else:
+            # Next step just became actionable — notify whoever holds
+            # THAT role, same as the very first step at creation time.
+            next_step = min(remaining, key=lambda s: s.step_order)
+            notify_role(db, org_id, next_step.role_required, f"A {request.entity_type} needs your approval.")
 
     db.commit()
     db.refresh(request)

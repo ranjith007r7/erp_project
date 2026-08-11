@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiRequest, clearToken, getToken } from "@/lib/api";
+import { NotificationBell } from "@/components/NotificationBell";
 
 type CurrentUser = {
   id: string;
@@ -79,6 +80,7 @@ export default function DashboardPage() {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
         <div className="flex items-center gap-4">
+          <NotificationBell />
           <Link href="/settings/custom-fields" className="text-sm text-slate-500 underline hover:text-slate-700">
             Settings
           </Link>

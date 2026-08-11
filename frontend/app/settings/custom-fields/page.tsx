@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
+import { ConfirmModal } from "@/components/Modal";
 
 type CustomField = {
   id: string;
@@ -30,6 +31,7 @@ const FIELD_TYPES = ["text", "number", "date", "dropdown"];
 export default function CustomFieldsSettingsPage() {
   const [fields, setFields] = useState<CustomField[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [deletingField, setDeletingField] = useState<CustomField | null>(null);
   const [form, setForm] = useState({
     module: ENTITY_OPTIONS[0].module,
     entity_type: ENTITY_OPTIONS[0].entity_type,
@@ -85,7 +87,6 @@ export default function CustomFieldsSettingsPage() {
   }
 
   async function handleDelete(field: CustomField) {
-    if (!window.confirm(`Delete "${field.field_name}"? This also deletes every saved value for it.`)) return;
     await apiRequest(`/api/custom-fields/${field.id}`, { method: "DELETE", auth: true })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to delete field"));
     loadFields();
@@ -188,7 +189,7 @@ export default function CustomFieldsSettingsPage() {
                   {f.is_active ? "Deactivate" : "Activate"}
                 </button>
                 <button
-                  onClick={() => handleDelete(f)}
+                  onClick={() => setDeletingField(f)}
                   className="text-xs text-red-500 underline hover:text-red-700"
                 >
                   Delete
@@ -199,6 +200,17 @@ export default function CustomFieldsSettingsPage() {
           {fields.length === 0 && <p className="p-3 text-sm text-slate-400">No custom fields defined yet.</p>}
         </div>
       </div>
+
+      {deletingField && (
+        <ConfirmModal
+          title="Delete Custom Field"
+          message={`Delete "${deletingField.field_name}"? This also deletes every saved value for it.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => handleDelete(deletingField)}
+          onClose={() => setDeletingField(null)}
+        />
+      )}
     </main>
   );
 }

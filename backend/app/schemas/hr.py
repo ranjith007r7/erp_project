@@ -23,6 +23,7 @@ class EmployeeCreate(BaseModel):
     department_id: Optional[UUID] = None
     joining_date: Optional[date] = None
     salary: Decimal = Decimal("0")
+    user_id: Optional[UUID] = None
 
 
 class EmployeeOut(BaseModel):
@@ -33,6 +34,7 @@ class EmployeeOut(BaseModel):
     joining_date: Optional[date] = None
     salary: Decimal
     status: str
+    user_id: Optional[UUID] = None
 
     model_config = {"from_attributes": True}
 

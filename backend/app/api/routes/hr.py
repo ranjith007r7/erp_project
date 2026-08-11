@@ -22,6 +22,7 @@ from app.schemas.hr import (
     PayrollRunCreate, PayrollRunOut,
 )
 from app.services.accounting import post_payroll_journal_entry
+from app.services.notifications import notify_user
 
 router = APIRouter(prefix="/api/hr", tags=["hr"], dependencies=[Depends(get_current_user)])
 
@@ -91,6 +92,18 @@ def update_leave_status(leave_id: str, payload: LeaveStatusUpdate, db: Session =
     if not leave:
         raise HTTPException(status_code=404, detail="Leave request not found")
     leave.status = payload.status
+
+    # Notify the employee, if they have a login (user_id is optional on
+    # Employee — plenty of employees never need one). Soft-fail by design:
+    # notify_user() silently no-ops when user_id is None, same as every
+    # other self-healing helper in this codebase.
+    employee = db.query(Employee).filter(Employee.id == leave.employee_id).first()
+    if employee:
+        notify_user(
+            db, org_id, employee.user_id,
+            f"Your leave request ({leave.start_date} to {leave.end_date}) was {payload.status}.",
+        )
+
     db.commit()
     db.refresh(leave)
     return leave

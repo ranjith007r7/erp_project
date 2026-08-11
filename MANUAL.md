@@ -596,12 +596,90 @@ Then: log in, go to Settings (top-right of the Dashboard), define a field on Pro
 
 ---
 
-## PART 18 — What's Next
+## PART 18a — Also Fixed: The Custom Fields "Save" Button Was Invisible
 
-**Demo-Ready progress:** Custom Fields (this phase) is done. Remaining on that track, per `ERP_Remaining_Roadmap_and_Testing_Guide.md`:
-- UI/UX polish — replace every `window.prompt()` interaction (Convert Lead, etc.) with a real form/modal, a consistent design pass, mobile check, wire up Notifications.
+Found by the user actually clicking through the app after Phase 9 shipped — not by anything in this session's own testing. `tailwind.config.js`'s `content` glob only scanned `./app/**`, never `./components/**`. `CustomFieldsSection.tsx` was the first file ever placed under `components/` in this project, so this gap existed silently since Phase 1 and had nothing to expose it until now. Any class used *exclusively* in that file (`bg-slate-700`, `hover:bg-slate-600`, `disabled:opacity-50`) never made it into the compiled CSS — the button wasn't hidden by any logic, it was rendering with zero styling: no background, no padding, blending straight into the page.
 
-**Client-Ready track (after that):** RBAC enforcement on every route (not just "logged in"), a real `pytest` suite, security hardening (password reset, email verification, login rate limiting), final regression QA + a seeded demo organization.
+Fixed by adding `./components/**/*.{js,ts,jsx,tsx,mdx}` to the glob, then **verified by grepping the real compiled `.next/static/css/*.css`** for the exact selectors after a fresh build — not assumed fixed just because the config changed:
+```
+hover\:bg-slate-600:hover{...background-color:rgb(71 85 105...)}
+disabled\:opacity-50:disabled{opacity:.5}
+```
 
-See that document for the full breakdown and realistic timeline per your available hours. This section keeps growing with each phase — nothing above gets deleted, only added to.
+**Pattern worth remembering:** any future file placed outside `app/` (a new `hooks/`, `lib/`, or another `components/` subfolder) hits this exact same silent-unstyled-element bug until it's added to the glob too.
+
+---
+
+## PART 19 — Phase 10 (Part 1): Notifications Wired Up + Every `window.prompt`/`confirm` Replaced
+
+Phase 10 (UI/UX Polish) is a wide phase — prompt→modal replacement, Notifications, a design-consistency pass, mobile check, table pagination. Rather than cram all of it into one under-tested pass, it's deliberately split: this part covers the two concrete gaps the roadmap explicitly called out as still-open. The design-consistency/mobile/table pass is a separate, later part.
+
+### Notifications, made real
+
+The `Notification` model has existed since Phase 1 with every column it needed — no migration required this phase (verified: ran `alembic revision --autogenerate` after all the route/service work and got a genuinely **empty** migration back, proof of zero drift, not an assumption).
+
+| Piece | What it does |
+|---|---|
+| `app/services/notifications.py` | `notify_user()` — one notification, one specific user. `notify_role()` — notify everyone in the org currently holding a named role. Both soft-fail by design: a missing `user_id` or a role name with no matching `Role` row never blocks the real business action, it just means nobody gets alerted this time. |
+| `GET /api/notifications`, `GET /api/notifications/unread-count`, `PATCH /api/notifications/{id}/read`, `POST /api/notifications/read-all` | Scoped to the CURRENT user, not just org_id — a notification is inherently personal, unlike every other module's routes. |
+| HR's leave-status-update route | Notifies the employee (if `Employee.user_id` is set) the moment their leave is approved or rejected. |
+| Documents' approval-request creation and step-action routes | Notifies whoever holds the required role the moment a step becomes actionable (at creation, and again each time a prior step clears) — and notifies the original requester once the whole request resolves, approved or rejected. |
+| `components/NotificationBell.tsx` | Bell icon + unread badge + dropdown list, polls every 30s. Placed on Dashboard, HR, and Documents — the two pages that actually generate notifications, plus the main landing page. |
+
+**A real bug found by testing this, not by guessing:** `EmployeeCreate`/`EmployeeOut` never exposed `user_id`, even though the column has existed on the `Employee` model since Phase 5. Same "field exists on the model, no route ever exposed it" pattern as Custom Fields before Phase 9 — it just never mattered until a real feature (leave-approval notifications) needed to actually set it. First test run proved this the hard way: created an employee with `user_id` in the request body, approved their leave, checked unread count — **stayed at 0**. Traced it to the schema silently dropping the field (Pydantic ignores undeclared fields by default), fixed both schemas, reran the exact same test, and got the real result: `unread_count` 0 → 1, correct message, mark-as-read correctly dropping it back to 0.
+
+**Every notification trigger point tested for real, end-to-end:**
+```
+HR: create employee (now WITH a real user_id) → create leave request → approve
+  → unread_count: 0 → 1 → mark read → back to 0
+
+Documents, positive case: workflow requiring role "Admin" (a role that genuinely
+exists) → create approval request → unread_count: 0 → 1 (step 1 notification)
+
+Documents, soft-fail case: workflow requiring role "Manager" (does NOT exist in
+this org — no user-invite/role-creation route exists yet, a known separate gap)
+→ create approval request → request still succeeds (201), no crash,
+  unread_count UNCHANGED — soft-fail behaving exactly as designed
+
+Documents, full chain: 2-step workflow, both steps role "Admin"
+→ create request: unread 0 → 1 ("needs your approval" — step 1)
+→ approve step 1: unread 1 → 2 ("needs your approval" — step 2 now actionable)
+→ approve step 2 (final): unread 2 → 3 ("your request was approved" — requester notified)
+```
+
+**One honest limitation:** the Documents-side positive test could only use the "Admin" role, since no route exists yet to create additional users or assign them a different role — that's the same RBAC-scaffolding-not-enforced gap the roadmap already lists as open, not something new. The soft-fail path (role genuinely absent) was tested instead of a second real role, and is a legitimate test of the same code path — `notify_role()` doesn't care whether the role is missing because no one created it yet, or because the org happens not to use that name.
+
+### Every `window.prompt()`/`window.confirm()` replaced
+
+| Old | New |
+|---|---|
+| CRM's Convert Lead — two chained `window.prompt()` calls | A real two-field modal (`components/Modal.tsx`'s `Modal` shell, custom form) |
+| Settings/Custom Fields' Delete — `window.confirm()` | `ConfirmModal`, red/"danger" styled |
+| Reports' Save View — `window.prompt()` | `PromptModal`, single-field |
+
+`components/Modal.tsx` is one shared implementation (`Modal`, `PromptModal`, `ConfirmModal`) — the actual start of the design-consistency pass, even though the rest of that pass is still ahead.
+
+**A second real bug found while building this, unrelated to the prompt replacement itself:** `apiRequest` in `lib/api.ts` was traced against the Reports Save View flow, and a leftover UI bug was caught mid-build — the `PromptModal` JSX for Reports' save-view flow was written in one pass but never actually got appended to the page before the previous message ended (a genuine "said it was done, wasn't" gap, caught by grepping the file for `PromptModal` usage before claiming it worked, not by assuming the earlier edit succeeded).
+
+### How this was tested
+
+Real local PostgreSQL, real server, all of the sequences above run with `curl` against a live-booted backend. Frontend: real `npm run build`, clean, all 15 pages, sizes increased exactly where expected (crm/hr/documents/reports/settings all grew — matching the modals and bell added, nothing else moved).
+
+### Deploying this update
+
+```bash
+git add . && git commit -m "Phase 10 (1/2): Notifications wired up, every window.prompt/confirm replaced" && git push
+```
+No Alembic step needed — no schema changed. Then click through: approve a leave request and watch the bell update, convert a lead through the new modal, delete a custom field with the new confirm dialog, save a report view through the new modal.
+
+---
+
+## PART 20 — What's Next
+
+**Demo-Ready progress:** Custom Fields (Phase 9) done. Notifications + prompt/confirm replacement (Phase 10, part 1) done. Remaining on that track:
+- The rest of Phase 10 — a genuine design-consistency pass (shared button/input/card components used everywhere, not just in the new Modal), a mobile responsiveness check, and data-table sorting/pagination once a module has more than ~20 rows of demo data.
+
+**Client-Ready track (after that):** RBAC enforcement on every route (not just "logged in") — worth noting this phase's own testing ran into that exact gap directly (no way to create a second user with a different role to fully prove the Documents notification path) — a real `pytest` suite, security hardening (password reset, email verification, login rate limiting), final regression QA + a seeded demo organization.
+
+See `ERP_Remaining_Roadmap_and_Testing_Guide.md` for the full breakdown and realistic timeline per your available hours. This section keeps growing with each phase — nothing above gets deleted, only added to.
 
