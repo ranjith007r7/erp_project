@@ -18,7 +18,6 @@ from app.models.procurement import Vendor, PurchaseOrder, PurchaseOrderItem, Goo
 from app.models.hr import Department, Employee, Attendance, LeaveRequest, PayrollRun, Payslip
 from app.models.projects import Project, Task, TimeLog
 from app.models.documents import Document, ApprovalWorkflow, ApprovalRequest, ApprovalStep
-from app.models.reports import SavedReport
 
 __all__ = [
     "Organization",
@@ -64,5 +63,4 @@ __all__ = [
     "ApprovalWorkflow",
     "ApprovalRequest",
     "ApprovalStep",
-    "SavedReport",
 ]

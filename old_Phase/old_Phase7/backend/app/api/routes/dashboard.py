@@ -17,7 +17,6 @@ from app.models.procurement import PurchaseOrder
 from app.models.hr import Employee, LeaveRequest
 from app.models.projects import Project, Task
 from app.models.documents import ApprovalRequest, ApprovalWorkflow
-from app.models.reports import SavedReport
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(get_current_user)])
 
@@ -62,5 +61,4 @@ def get_summary(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)
         "pending_approvals": db.query(ApprovalRequest).join(
             ApprovalWorkflow, ApprovalWorkflow.id == ApprovalRequest.workflow_id
         ).filter(ApprovalWorkflow.org_id == org_id, ApprovalRequest.status == "pending").count(),
-        "saved_reports": db.query(SavedReport).filter(SavedReport.org_id == org_id).count(),
     }

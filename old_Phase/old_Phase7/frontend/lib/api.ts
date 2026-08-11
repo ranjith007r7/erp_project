@@ -58,30 +58,3 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   return res.json();
 }
-
-/**
- * For endpoints that return a file (CSV export) rather than JSON. Reuses
- * the same token-attachment logic as apiRequest, then triggers a normal
- * browser "Save As" download instead of parsing a response body.
- */
-export async function apiDownload(path: string, filename: string): Promise<void> {
-  const token = getToken();
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res = await fetch(`${API_URL}${path}`, { headers });
-  if (!res.ok) {
-    const errorBody = await res.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error(typeof errorBody.detail === "string" ? errorBody.detail : "Export failed");
-  }
-
-  const blob = await res.blob();
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.URL.revokeObjectURL(url);
-}

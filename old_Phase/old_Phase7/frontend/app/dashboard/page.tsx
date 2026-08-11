@@ -26,7 +26,6 @@ type Summary = {
   active_projects: number;
   open_tasks: number;
   pending_approvals: number;
-  saved_reports: number;
 };
 
 const LIVE_MODULES: { name: string; href: string; stat?: keyof Summary; label?: string }[] = [
@@ -38,10 +37,11 @@ const LIVE_MODULES: { name: string; href: string; stat?: keyof Summary; label?: 
   { name: "HR", href: "/hr", stat: "pending_leave_requests", label: "leave reqs" },
   { name: "Projects", href: "/projects", stat: "open_tasks", label: "open tasks" },
   { name: "Documents", href: "/documents", stat: "pending_approvals", label: "approvals" },
-  { name: "Reports", href: "/reports", stat: "saved_reports", label: "saved" },
 ];
 
-const PLACEHOLDER_MODULES: string[] = [];
+const PLACEHOLDER_MODULES = [
+  "Reports",
+];
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -109,7 +109,6 @@ export default function DashboardPage() {
           <SummaryTile label="Active Projects" value={summary.active_projects} />
           <SummaryTile label="Open Tasks" value={summary.open_tasks} />
           <SummaryTile label="Pending Approvals" value={summary.pending_approvals} />
-          <SummaryTile label="Saved Reports" value={summary.saved_reports} />
         </div>
       )}
 
