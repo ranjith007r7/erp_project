@@ -53,18 +53,6 @@ export default function ReportsPage() {
       .finally(() => setLoading(false));
   }
 
-  function handleTabChange(tab: ReportModule) {
-    // Clearing `data` here (not just relying on the effect below) matters:
-    // setActiveTab causes an immediate re-render, and without this, that
-    // render would try to draw e.g. FinanceReport using the PREVIOUS tab's
-    // data shape (still sitting in state until the new fetch resolves),
-    // which throws - a real bug found from your bug report. Clearing data
-    // synchronously means the render that happens before the fetch
-    // completes has nothing to draw, so it safely shows "Loading..." instead.
-    setData(null);
-    setActiveTab(tab);
-  }
-
   function loadSavedReports() {
     apiRequest<SavedReport[]>("/api/reports/saved", { auth: true }).then(setSavedReports).catch(() => {});
   }
@@ -124,7 +112,7 @@ export default function ReportsPage() {
         {TABS.map((tab) => (
           <button
             key={tab.key}
-            onClick={() => handleTabChange(tab.key)}
+            onClick={() => setActiveTab(tab.key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               activeTab === tab.key ? "bg-slate-800 text-white" : "bg-white text-slate-600 shadow-sm hover:bg-slate-100"
             }`}
@@ -153,7 +141,7 @@ export default function ReportsPage() {
 
       {!loading && data && (
         <div className="grid md:grid-cols-3 gap-6 mb-10">
-          <div key={activeTab} className="md:col-span-2 space-y-6">
+          <div className="md:col-span-2 space-y-6">
             {activeTab === "sales" && <SalesReport data={data} />}
             {activeTab === "finance" && <FinanceReport data={data} />}
             {activeTab === "inventory" && <InventoryReport data={data} />}
@@ -225,44 +213,38 @@ function BarList({ items }: { items: { label: string; value: number }[] }) {
 }
 
 function SalesReport({ data }: { data: ReportData }) {
-  const funnel = data.funnel ?? {};
   return (
     <>
       <div className="grid grid-cols-3 gap-4">
-        <Card label="Leads" value={funnel.leads ?? 0} />
-        <Card label="Sales Orders" value={funnel.sales_orders ?? 0} />
+        <Card label="Leads" value={data.funnel.leads} />
+        <Card label="Sales Orders" value={data.funnel.sales_orders} />
         <Card label="Win Rate" value={data.win_rate_pct != null ? `${data.win_rate_pct}%` : "—"} />
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 mb-2 text-sm">Monthly Revenue</h3>
-        <BarList items={(data.monthly_revenue ?? []).map((r: ReportData) => ({ label: r.month, value: r.total }))} />
+        <BarList items={data.monthly_revenue.map((r: ReportData) => ({ label: r.month, value: r.total }))} />
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 mb-2 text-sm">Top Products</h3>
-        <BarList items={(data.top_products ?? []).map((p: ReportData) => ({ label: p.name, value: p.revenue }))} />
+        <BarList items={data.top_products.map((p: ReportData) => ({ label: p.name, value: p.revenue }))} />
       </div>
     </>
   );
 }
 
 function FinanceReport({ data }: { data: ReportData }) {
-  const totalRevenue = data.total_revenue ?? 0;
-  const totalExpense = data.total_expense ?? 0;
-  const netProfit = data.net_profit ?? 0;
-  const monthly = data.monthly_revenue_expense ?? [];
-  const aging = data.accounts_receivable_aging ?? {};
   return (
     <>
       <div className="grid grid-cols-3 gap-4">
-        <Card label="Revenue" value={`₹${totalRevenue.toLocaleString("en-IN")}`} />
-        <Card label="Expense" value={`₹${totalExpense.toLocaleString("en-IN")}`} />
-        <Card label="Net Profit" value={`₹${netProfit.toLocaleString("en-IN")}`} />
+        <Card label="Revenue" value={`₹${data.total_revenue.toLocaleString("en-IN")}`} />
+        <Card label="Expense" value={`₹${data.total_expense.toLocaleString("en-IN")}`} />
+        <Card label="Net Profit" value={`₹${data.net_profit.toLocaleString("en-IN")}`} />
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 mb-2 text-sm">Monthly Revenue vs Expense</h3>
         <div className="bg-white rounded-lg shadow-sm p-4 space-y-3">
-          {monthly.length === 0 && <p className="text-sm text-slate-400">No data yet.</p>}
-          {monthly.map((m: ReportData) => (
+          {data.monthly_revenue_expense.length === 0 && <p className="text-sm text-slate-400">No data yet.</p>}
+          {data.monthly_revenue_expense.map((m: ReportData) => (
             <div key={m.month} className="text-xs">
               <p className="text-slate-600 mb-1">{m.month}</p>
               <div className="flex gap-1 items-center mb-0.5">
@@ -285,14 +267,14 @@ function FinanceReport({ data }: { data: ReportData }) {
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 mb-2 text-sm">
-          Accounts Receivable Aging ({data.unpaid_invoice_count ?? 0} unpaid)
+          Accounts Receivable Aging ({data.unpaid_invoice_count} unpaid)
         </h3>
         <BarList
           items={[
-            { label: "0–30 days", value: aging["0_30"] ?? 0 },
-            { label: "31–60 days", value: aging["31_60"] ?? 0 },
-            { label: "61–90 days", value: aging["61_90"] ?? 0 },
-            { label: "90+ days", value: aging["90_plus"] ?? 0 },
+            { label: "0–30 days", value: data.accounts_receivable_aging["0_30"] },
+            { label: "31–60 days", value: data.accounts_receivable_aging["31_60"] },
+            { label: "61–90 days", value: data.accounts_receivable_aging["61_90"] },
+            { label: "90+ days", value: data.accounts_receivable_aging["90_plus"] },
           ]}
         />
       </div>
@@ -301,19 +283,18 @@ function FinanceReport({ data }: { data: ReportData }) {
 }
 
 function InventoryReport({ data }: { data: ReportData }) {
-  const lowStockItems = data.low_stock_items ?? [];
   return (
     <>
       <div className="grid grid-cols-3 gap-4">
-        <Card label="Total Products" value={data.total_products ?? 0} />
-        <Card label="Stock Valuation" value={`₹${(data.stock_valuation ?? 0).toLocaleString("en-IN")}`} />
-        <Card label="Low Stock Items" value={data.low_stock_count ?? 0} />
+        <Card label="Total Products" value={data.total_products} />
+        <Card label="Stock Valuation" value={`₹${data.stock_valuation.toLocaleString("en-IN")}`} />
+        <Card label="Low Stock Items" value={data.low_stock_count} />
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 mb-2 text-sm">Low Stock Items</h3>
         <div className="bg-white rounded-lg shadow-sm divide-y">
-          {lowStockItems.length === 0 && <p className="p-3 text-sm text-slate-400">Nothing below reorder level. 🎉</p>}
-          {lowStockItems.map((item: ReportData, i: number) => (
+          {data.low_stock_items.length === 0 && <p className="p-3 text-sm text-slate-400">Nothing below reorder level. 🎉</p>}
+          {data.low_stock_items.map((item: ReportData, i: number) => (
             <div key={i} className="p-3 flex justify-between text-sm">
               <span className="text-slate-800">{item.name} {item.sku ? `(${item.sku})` : ""}</span>
               <span className="text-amber-600">{item.quantity} / reorder at {item.reorder_level}</span>
@@ -326,21 +307,20 @@ function InventoryReport({ data }: { data: ReportData }) {
 }
 
 function ProcurementReport({ data }: { data: ReportData }) {
-  const spendByVendor = data.spend_by_vendor ?? [];
   return (
     <>
       <div className="grid grid-cols-2 gap-4">
-        <Card label="Total Spend" value={`₹${(data.total_spend ?? 0).toLocaleString("en-IN")}`} />
-        <Card label="Vendors" value={spendByVendor.length} />
+        <Card label="Total Spend" value={`₹${data.total_spend.toLocaleString("en-IN")}`} />
+        <Card label="Vendors" value={data.spend_by_vendor.length} />
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 mb-2 text-sm">Spend by Vendor</h3>
-        <BarList items={spendByVendor.map((v: ReportData) => ({ label: v.vendor, value: v.spend }))} />
+        <BarList items={data.spend_by_vendor.map((v: ReportData) => ({ label: v.vendor, value: v.spend }))} />
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 mb-2 text-sm">PO Status Breakdown</h3>
         <BarList
-          items={Object.entries(data.status_breakdown ?? {}).map(([label, value]) => ({
+          items={Object.entries(data.status_breakdown).map(([label, value]) => ({
             label,
             value: value as number,
           }))}
@@ -354,16 +334,16 @@ function HrReport({ data }: { data: ReportData }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-4">
-        <Card label="Active Employees" value={data.active_employees ?? 0} />
-        <Card label="Pending Leave Requests" value={data.pending_leave_requests ?? 0} />
+        <Card label="Active Employees" value={data.active_employees} />
+        <Card label="Pending Leave Requests" value={data.pending_leave_requests} />
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 mb-2 text-sm">Headcount by Department</h3>
-        <BarList items={(data.headcount_by_department ?? []).map((d: ReportData) => ({ label: d.department, value: d.count }))} />
+        <BarList items={data.headcount_by_department.map((d: ReportData) => ({ label: d.department, value: d.count }))} />
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 mb-2 text-sm">Payroll Cost by Month</h3>
-        <BarList items={(data.payroll_cost_by_month ?? []).map((p: ReportData) => ({ label: p.month, value: p.total }))} />
+        <BarList items={data.payroll_cost_by_month.map((p: ReportData) => ({ label: p.month, value: p.total }))} />
       </div>
     </>
   );
@@ -374,18 +354,18 @@ function CrmReport({ data }: { data: ReportData }) {
     <>
       <div className="grid grid-cols-2 gap-4">
         <Card label="Lead Conversion" value={data.lead_conversion_pct != null ? `${data.lead_conversion_pct}%` : "—"} />
-        <Card label="Pipeline Stages" value={Object.keys(data.opportunities_by_stage ?? {}).length} />
+        <Card label="Pipeline Stages" value={Object.keys(data.opportunities_by_stage).length} />
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 mb-2 text-sm">Leads by Status</h3>
         <BarList
-          items={Object.entries(data.leads_by_status ?? {}).map(([label, value]) => ({ label, value: value as number }))}
+          items={Object.entries(data.leads_by_status).map(([label, value]) => ({ label, value: value as number }))}
         />
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 mb-2 text-sm">Pipeline Value by Stage</h3>
         <BarList
-          items={Object.entries(data.pipeline_value_by_stage ?? {}).map(([label, value]) => ({
+          items={Object.entries(data.pipeline_value_by_stage).map(([label, value]) => ({
             label,
             value: value as number,
           }))}
@@ -399,13 +379,13 @@ function ProjectsReport({ data }: { data: ReportData }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-4">
-        <Card label="Open Tasks" value={data.open_tasks ?? 0} />
-        <Card label="Project Statuses" value={Object.keys(data.projects_by_status ?? {}).length} />
+        <Card label="Open Tasks" value={data.open_tasks} />
+        <Card label="Project Statuses" value={Object.keys(data.projects_by_status).length} />
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 mb-2 text-sm">Projects by Status</h3>
         <BarList
-          items={Object.entries(data.projects_by_status ?? {}).map(([label, value]) => ({
+          items={Object.entries(data.projects_by_status).map(([label, value]) => ({
             label,
             value: value as number,
           }))}
