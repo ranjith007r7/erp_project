@@ -36,10 +36,6 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
-    # Runs any pending Alembic migrations, THEN starts the server. This
-    # is how the database schema gets created/updated now - never
-    # automatically inside the app anymore (see MANUAL.md Part 10).
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
 volumes:
   pgdata:
