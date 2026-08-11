@@ -56,16 +56,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     throw new Error(message);
   }
 
-  // A 204 (or any response with genuinely no body, e.g. our DELETE routes)
-  // has nothing for res.json() to parse — calling it anyway throws a
-  // browser SyntaxError even though the request succeeded. Caught this by
-  // tracing the real HTTP response (curl -i) against every call site
-  // rather than assuming success always means a JSON body.
-  if (res.status === 204) {
-    return undefined as T;
-  }
-  const text = await res.text();
-  return text ? JSON.parse(text) : (undefined as T);
+  return res.json();
 }
 
 /**

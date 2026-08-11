@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
-import { CustomFieldsSection } from "@/components/CustomFieldsSection";
 
 type Lead = {
   id: string;
@@ -26,7 +25,6 @@ export default function CRMPage() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [form, setForm] = useState({ name: "", company_name: "", email: "", source: "" });
   const [error, setError] = useState<string | null>(null);
-  const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
 
   function loadAll() {
     apiRequest<Lead[]>("/api/crm/leads", { auth: true }).then(setLeads).catch((e) => setError(e.message));
@@ -111,45 +109,31 @@ export default function CRMPage() {
           </form>
 
           <div className="space-y-2">
-            {leads.map((lead) => {
-              const expanded = expandedLeadId === lead.id;
-              return (
-                <div key={lead.id} className="bg-white rounded-lg shadow-sm p-3">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-medium text-slate-800">{lead.name}</p>
-                      <p className="text-xs text-slate-500">
-                        {lead.company_name} · {lead.source} ·{" "}
-                        <span
-                          className={
-                            lead.status === "converted" ? "text-green-600 font-medium" : "text-slate-400"
-                          }
-                        >
-                          {lead.status}
-                        </span>
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setExpandedLeadId(expanded ? null : lead.id)}
-                        className="text-xs text-slate-400 underline hover:text-slate-600"
-                      >
-                        {expanded ? "Hide fields" : "Fields"}
-                      </button>
-                      {lead.status !== "converted" && (
-                        <button
-                          onClick={() => handleConvert(lead.id)}
-                          className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700"
-                        >
-                          Convert →
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {expanded && <CustomFieldsSection entityType="lead" entityId={lead.id} />}
+            {leads.map((lead) => (
+              <div key={lead.id} className="bg-white rounded-lg shadow-sm p-3 flex justify-between items-center">
+                <div>
+                  <p className="font-medium text-slate-800">{lead.name}</p>
+                  <p className="text-xs text-slate-500">
+                    {lead.company_name} · {lead.source} ·{" "}
+                    <span
+                      className={
+                        lead.status === "converted" ? "text-green-600 font-medium" : "text-slate-400"
+                      }
+                    >
+                      {lead.status}
+                    </span>
+                  </p>
                 </div>
-              );
-            })}
+                {lead.status !== "converted" && (
+                  <button
+                    onClick={() => handleConvert(lead.id)}
+                    className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700"
+                  >
+                    Convert →
+                  </button>
+                )}
+              </div>
+            ))}
             {leads.length === 0 && <p className="text-sm text-slate-400">No leads yet.</p>}
           </div>
         </section>

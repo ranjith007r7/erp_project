@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
-import { CustomFieldsSection } from "@/components/CustomFieldsSection";
 
 type Category = { id: string; name: string };
 type Product = { id: string; name: string; sku: string | null; unit_price: string; reorder_level: number };
@@ -19,7 +18,6 @@ export default function InventoryPage() {
 
   const [categoryForm, setCategoryForm] = useState({ name: "" });
   const [productForm, setProductForm] = useState({ name: "", sku: "", unit_price: "", reorder_level: "0", category_id: "" });
-  const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
 
   function loadAll() {
     apiRequest<Category[]>("/api/inventory/categories", { auth: true }).then(setCategories).catch(() => {});
@@ -144,27 +142,15 @@ export default function InventoryPage() {
             {products.map((p) => {
               const qty = stockFor(p.id);
               const low = qty <= p.reorder_level;
-              const expanded = expandedProductId === p.id;
               return (
-                <div key={p.id} className="p-3 text-sm">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="text-slate-800 font-medium">{p.name}</p>
-                      <p className="text-xs text-slate-500">{p.sku || "no SKU"} · ₹{p.unit_price}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className={low ? "text-red-600 font-semibold text-xs" : "text-slate-500 text-xs"}>
-                        {qty} in stock {low && "· LOW"}
-                      </span>
-                      <button
-                        onClick={() => setExpandedProductId(expanded ? null : p.id)}
-                        className="text-xs text-slate-400 underline hover:text-slate-600"
-                      >
-                        {expanded ? "Hide fields" : "Fields"}
-                      </button>
-                    </div>
+                <div key={p.id} className="p-3 flex justify-between items-center text-sm">
+                  <div>
+                    <p className="text-slate-800 font-medium">{p.name}</p>
+                    <p className="text-xs text-slate-500">{p.sku || "no SKU"} · ₹{p.unit_price}</p>
                   </div>
-                  {expanded && <CustomFieldsSection entityType="product" entityId={p.id} />}
+                  <span className={low ? "text-red-600 font-semibold text-xs" : "text-slate-500 text-xs"}>
+                    {qty} in stock {low && "· LOW"}
+                  </span>
                 </div>
               );
             })}

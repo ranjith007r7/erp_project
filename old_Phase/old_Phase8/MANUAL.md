@@ -532,75 +532,11 @@ Same as always — `alembic upgrade head` runs automatically via Render's Start 
 
 ---
 
-## PART 17 — Phase 9: Custom Fields, Made Real
+## PART 17 — What's Next
 
-This is the phase the roadmap called the actual core of the "customizable base" pitch. Phase 1 created a `CustomField` model; nothing since then let an admin actually define one or have it show up anywhere. That gap is closed now.
+**All 10 of the TL's original modules are now built.** From here the roadmap (`ERP_Remaining_Roadmap_and_Testing_Guide.md`) splits into two tracks:
 
-### The two mechanisms
+- **Demo-Ready** (do this first): Custom Fields made real (an admin defines a field, it actually renders and saves in a form — the literal core of the "customizable base" pitch), then a UI/UX polish pass (replace `window.prompt()` interactions with real forms, wire up Notifications, mobile check).
+- **Client-Ready** (after that): RBAC enforcement on every route, a real `pytest` suite, security hardening (password reset, email verification, rate limiting), final QA + a seeded demo organization.
 
-1. **`CustomField`** — extended (not replaced) with `entity_type`, `options`, `is_required`, `is_active`, `display_order`, `created_at`. This is the DEFINITION: "Products have a Batch Number field, it's text, it's required."
-2. **`CustomFieldValue`** (new table) — `custom_field_id` / `entity_type` / `entity_id` / `value`. This is ONE actual value on ONE actual record. Deliberately built as its own table using the exact `entity_type`+`entity_id` polymorphic-attachment pattern Phase 7's `ApprovalRequest` and the Documents module already use — not a JSON blob bolted onto `Product`/`Lead`/`Customer` directly. Same reasoning as everywhere else in this codebase: cross-cutting concerns get their own table, not a column added to every table that might need them.
-
-### What we added
-
-| Piece | What it does |
-|---|---|
-| `app/models/custom_field.py` | `CustomField` extended, `CustomFieldValue` added |
-| `app/schemas/custom_field.py` | Definition CRUD schemas + bulk value get/set schemas |
-| `app/api/routes/custom_fields.py` | `POST/GET/PATCH/DELETE /api/custom-fields` (definitions), `GET/POST /api/custom-fields/values` (per-record values) |
-| `components/CustomFieldsSection.tsx` | The generic frontend piece — knows only `entityType`/`entityId`, renders inputs purely from `field_type` metadata. Zero per-module logic. Drop it anywhere with two props. |
-| `/settings/custom-fields` | Admin screen to define/deactivate/delete fields — the actual "customization" UI |
-| Inventory (`Product`) + CRM (`Lead`) | The two proof-of-mechanism modules, wired via an expand-per-row "Fields" toggle (neither module has a per-record detail page, so this matches the existing list-based UI rather than inventing a new pattern) |
-
-**Adding a third module later is a two-line change** — one new entry in `ENTITY_OPTIONS` in the settings page, one `<CustomFieldsSection entityType="..." entityId={...} />` at the call site. Nothing in the backend, the component, or the schemas changes. That's the entire point of building it this way.
-
-### Real bugs found by actually testing, not by guessing
-
-1. **`entity_id` typed as plain `str` on the values GET route.** A malformed value flowed straight to the DB layer and crashed with a raw 500 instead of a clean validation error. Fixed by typing it as `UUID` so FastAPI validates it before it ever reaches a query.
-2. **A genuine migration hazard, caught before it shipped, not after.** Autogenerate wanted to add `custom_fields.entity_type` as `NOT NULL` directly, with no backfill step. In practice this table has zero rows in every real deployment (the feature never had a route to write through until now) — but writing the migration that way regardless would have been the same category of mistake as the Phase 4 `products.sku` incident. Fixed by hand: add nullable → backfill → tighten to `NOT NULL`, the same shape used any time a column is added to a table that might already have rows.
-3. **A second real drift, caught by Alembic itself.** The first version of the model didn't declare `nullable=False` on `is_required`/`is_active`/`display_order`, but the migration set them `NOT NULL` with a server default — a real mismatch between what the model claimed and what the database actually enforced. Caught by running `alembic revision --autogenerate` a second time after applying the first migration and confirming it generated an **empty** migration (proof of zero drift) — it didn't, until the model was fixed to match.
-4. **`apiRequest` silently broken on `204` responses.** The `DELETE /api/custom-fields/{id}` route correctly returns `204 No Content` with an empty body. `lib/api.ts`'s `apiRequest` called `res.json()` unconditionally on any successful response — which throws a `SyntaxError` on a genuinely empty body. The error was caught by the calling code's `try/catch`, so it wouldn't have crashed the page, but every successful delete would have shown the user a confusing "error" message for a request that actually succeeded. Found by tracing the real `curl -i` response headers against what `lib/api.ts` actually does with them, not by assuming success always means a JSON body. Fixed in `lib/api.ts` itself (not just the one call site), so every future `204`-returning endpoint is safe automatically.
-
-### How this was tested
-
-Real local PostgreSQL, real Alembic migration (hand-corrected as above), real server, and this exact sequence run with `curl`:
-
-```
-define field on Product (text, required) → define field on Product (dropdown) → define field on Lead
-→ reject: dropdown with no options
-→ reject: duplicate field name on same entity_type
-→ create a real Product, create a real Lead
-→ GET values for the new Product BEFORE any are set → fields appear, value: null
-→ GET with a malformed entity_id → clean 422, not a 500
-→ SET two values on the Product → READ BACK → both persisted correctly
-→ SET a value on the Lead (different module) → READ BACK → proves the mechanism is genuinely generic
-→ reject: writing a Product field's ID against the Lead's entity_id
-→ UPSERT: re-save the same field → confirmed it overwrites, doesn't duplicate
-→ deactivate a field → confirmed it drops out of the live values list, but its stored value isn't deleted
-→ admin listing with include_inactive=true → confirms deactivated fields are still visible for management
-```
-All 17 steps passed. Frontend: real `npm run build`, clean, all 15 pages including the new `/settings/custom-fields`. Both servers were then booted together and every touched page (`/`, `/login`, `/settings/custom-fields`, `/inventory`, `/crm`) was hit over real HTTP and returned 200 with no server errors in the log.
-
-**One honest limitation of this session's testing:** a real browser click-through (Playwright) was attempted but blocked — the Chromium binary download domain (`cdn.playwright.dev`) isn't on this environment's network allowlist, the same category of restriction that blocked an unrelated `nodesource.com` apt repo earlier in this session. In its place, the actual JSON contract between the backend's real responses (captured live via `curl -i`) and what `CustomFieldsSection.tsx`/`lib/api.ts` do with them was traced by hand, field by field — which is how bug #4 above was actually found. This is a narrower substitute than a real click-through, and worth clicking through yourself once deployed, the same way every past phase has asked you to confirm.
-
-### Deploying this update
-
-```bash
-git add . && git commit -m "Phase 9: Custom Fields, made real" && git push
-# Render redeploys, runs `alembic upgrade head` automatically, adding
-# custom_field_values and extending custom_fields with the new columns.
-```
-
-Then: log in, go to Settings (top-right of the Dashboard), define a field on Product or Lead, go to that module, click "Fields" on a record, save a value, refresh the page, confirm it's still there.
-
----
-
-## PART 18 — What's Next
-
-**Demo-Ready progress:** Custom Fields (this phase) is done. Remaining on that track, per `ERP_Remaining_Roadmap_and_Testing_Guide.md`:
-- UI/UX polish — replace every `window.prompt()` interaction (Convert Lead, etc.) with a real form/modal, a consistent design pass, mobile check, wire up Notifications.
-
-**Client-Ready track (after that):** RBAC enforcement on every route (not just "logged in"), a real `pytest` suite, security hardening (password reset, email verification, login rate limiting), final regression QA + a seeded demo organization.
-
-See that document for the full breakdown and realistic timeline per your available hours. This section keeps growing with each phase — nothing above gets deleted, only added to.
-
+See that document for the full phase-by-phase breakdown and realistic timeline per your available hours. This section keeps growing with each phase — nothing above gets deleted, only added to.

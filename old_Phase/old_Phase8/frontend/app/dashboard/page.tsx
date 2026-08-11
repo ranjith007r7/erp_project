@@ -78,17 +78,12 @@ export default function DashboardPage() {
     <main className="min-h-screen p-8">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
-        <div className="flex items-center gap-4">
-          <Link href="/settings/custom-fields" className="text-sm text-slate-500 underline hover:text-slate-700">
-            Settings
-          </Link>
-          <button
-            onClick={handleLogout}
-            className="text-sm text-slate-500 underline hover:text-slate-700"
-          >
-            Log out
-          </button>
-        </div>
+        <button
+          onClick={handleLogout}
+          className="text-sm text-slate-500 underline hover:text-slate-700"
+        >
+          Log out
+        </button>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm p-6 max-w-md mb-8">

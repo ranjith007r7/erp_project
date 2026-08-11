@@ -9,7 +9,7 @@ from app.models.role import Role, Permission
 from app.models.user import User
 from app.models.audit_log import AuditLog
 from app.models.notification import Notification
-from app.models.custom_field import CustomField, CustomFieldValue
+from app.models.custom_field import CustomField
 from app.models.crm import Account, Contact, Lead, Opportunity
 from app.models.sales import Product, Customer, Quotation, QuotationItem, SalesOrder, SalesOrderItem, Invoice
 from app.models.finance import ChartOfAccounts, JournalEntry, JournalLine, Payment
@@ -28,7 +28,6 @@ __all__ = [
     "AuditLog",
     "Notification",
     "CustomField",
-    "CustomFieldValue",
     "Account",
     "Contact",
     "Lead",
