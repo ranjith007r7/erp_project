@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_org_id
+from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.hr import Department, Employee, Attendance, LeaveRequest, PayrollRun, Payslip
 from app.schemas.hr import (
     DepartmentCreate, DepartmentOut,
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/hr", tags=["hr"], dependencies=[Depends(get_curr
 
 
 # ---------------- Departments ----------------
-@router.post("/departments", response_model=DepartmentOut, status_code=201)
+@router.post("/departments", response_model=DepartmentOut, status_code=201, dependencies=[Depends(require_permission("hr", "create"))])
 def create_department(payload: DepartmentCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     dept = Department(org_id=org_id, name=payload.name)
     db.add(dept)
@@ -37,13 +37,13 @@ def create_department(payload: DepartmentCreate, db: Session = Depends(get_db), 
     return dept
 
 
-@router.get("/departments", response_model=list[DepartmentOut])
+@router.get("/departments", response_model=list[DepartmentOut], dependencies=[Depends(require_permission("hr", "view"))])
 def list_departments(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Department).filter(Department.org_id == org_id).all()
 
 
 # ---------------- Employees ----------------
-@router.post("/employees", response_model=EmployeeOut, status_code=201)
+@router.post("/employees", response_model=EmployeeOut, status_code=201, dependencies=[Depends(require_permission("hr", "create"))])
 def create_employee(payload: EmployeeCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     employee = Employee(org_id=org_id, **payload.model_dump())
     db.add(employee)
@@ -52,13 +52,13 @@ def create_employee(payload: EmployeeCreate, db: Session = Depends(get_db), org_
     return employee
 
 
-@router.get("/employees", response_model=list[EmployeeOut])
+@router.get("/employees", response_model=list[EmployeeOut], dependencies=[Depends(require_permission("hr", "view"))])
 def list_employees(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Employee).filter(Employee.org_id == org_id, Employee.status == "active").all()
 
 
 # ---------------- Leave Requests ----------------
-@router.post("/leave-requests", response_model=LeaveRequestOut, status_code=201)
+@router.post("/leave-requests", response_model=LeaveRequestOut, status_code=201, dependencies=[Depends(require_permission("hr", "create"))])
 def create_leave_request(payload: LeaveRequestCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     employee = db.query(Employee).filter(Employee.id == payload.employee_id, Employee.org_id == org_id).first()
     if not employee:
@@ -70,7 +70,7 @@ def create_leave_request(payload: LeaveRequestCreate, db: Session = Depends(get_
     return leave
 
 
-@router.get("/leave-requests", response_model=list[LeaveRequestOut])
+@router.get("/leave-requests", response_model=list[LeaveRequestOut], dependencies=[Depends(require_permission("hr", "view"))])
 def list_leave_requests(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return (
         db.query(LeaveRequest)
@@ -81,7 +81,7 @@ def list_leave_requests(db: Session = Depends(get_db), org_id: str = Depends(get
     )
 
 
-@router.patch("/leave-requests/{leave_id}/status", response_model=LeaveRequestOut)
+@router.patch("/leave-requests/{leave_id}/status", response_model=LeaveRequestOut, dependencies=[Depends(require_permission("hr", "approve"))])
 def update_leave_status(leave_id: str, payload: LeaveStatusUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     leave = (
         db.query(LeaveRequest)
@@ -110,7 +110,7 @@ def update_leave_status(leave_id: str, payload: LeaveStatusUpdate, db: Session =
 
 
 # ---------------- Attendance ----------------
-@router.post("/attendance", response_model=AttendanceOut, status_code=201)
+@router.post("/attendance", response_model=AttendanceOut, status_code=201, dependencies=[Depends(require_permission("hr", "create"))])
 def mark_attendance(payload: AttendanceMark, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     employee = db.query(Employee).filter(Employee.id == payload.employee_id, Employee.org_id == org_id).first()
     if not employee:
@@ -130,7 +130,7 @@ def mark_attendance(payload: AttendanceMark, db: Session = Depends(get_db), org_
     return record
 
 
-@router.get("/attendance", response_model=list[AttendanceOut])
+@router.get("/attendance", response_model=list[AttendanceOut], dependencies=[Depends(require_permission("hr", "view"))])
 def list_attendance(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return (
         db.query(Attendance)
@@ -142,7 +142,7 @@ def list_attendance(db: Session = Depends(get_db), org_id: str = Depends(get_org
 
 
 # ---------------- Payroll ----------------
-@router.post("/payroll-runs", response_model=PayrollRunOut, status_code=201)
+@router.post("/payroll-runs", response_model=PayrollRunOut, status_code=201, dependencies=[Depends(require_permission("hr", "create"))])
 def create_payroll_run(payload: PayrollRunCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     existing = db.query(PayrollRun).filter(
         PayrollRun.org_id == org_id, PayrollRun.month == payload.month, PayrollRun.year == payload.year
@@ -157,7 +157,7 @@ def create_payroll_run(payload: PayrollRunCreate, db: Session = Depends(get_db),
     return run
 
 
-@router.get("/payroll-runs", response_model=list[PayrollRunOut])
+@router.get("/payroll-runs", response_model=list[PayrollRunOut], dependencies=[Depends(require_permission("hr", "view"))])
 def list_payroll_runs(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return (
         db.query(PayrollRun)
@@ -168,7 +168,7 @@ def list_payroll_runs(db: Session = Depends(get_db), org_id: str = Depends(get_o
     )
 
 
-@router.post("/payroll-runs/{run_id}/process", response_model=PayrollRunOut)
+@router.post("/payroll-runs/{run_id}/process", response_model=PayrollRunOut, dependencies=[Depends(require_permission("hr", "edit"))])
 def process_payroll_run(run_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """
     Generates a Payslip for every active Employee (a flat 10% deduction,

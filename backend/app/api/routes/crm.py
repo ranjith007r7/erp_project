@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_org_id
+from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.crm import Account, Contact, Lead, Opportunity
 from app.schemas.crm import (
     AccountCreate, AccountOut,
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/crm", tags=["crm"], dependencies=[Depends(get_cu
 
 
 # ---------------- Accounts ----------------
-@router.post("/accounts", response_model=AccountOut, status_code=201)
+@router.post("/accounts", response_model=AccountOut, status_code=201, dependencies=[Depends(require_permission("crm", "create"))])
 def create_account(payload: AccountCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     account = Account(org_id=org_id, **payload.model_dump())
     db.add(account)
@@ -31,13 +31,13 @@ def create_account(payload: AccountCreate, db: Session = Depends(get_db), org_id
     return account
 
 
-@router.get("/accounts", response_model=list[AccountOut])
+@router.get("/accounts", response_model=list[AccountOut], dependencies=[Depends(require_permission("crm", "view"))])
 def list_accounts(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Account).filter(Account.org_id == org_id).order_by(Account.created_at.desc()).all()
 
 
 # ---------------- Contacts ----------------
-@router.post("/contacts", response_model=ContactOut, status_code=201)
+@router.post("/contacts", response_model=ContactOut, status_code=201, dependencies=[Depends(require_permission("crm", "create"))])
 def create_contact(payload: ContactCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     contact = Contact(org_id=org_id, **payload.model_dump())
     db.add(contact)
@@ -46,13 +46,13 @@ def create_contact(payload: ContactCreate, db: Session = Depends(get_db), org_id
     return contact
 
 
-@router.get("/contacts", response_model=list[ContactOut])
+@router.get("/contacts", response_model=list[ContactOut], dependencies=[Depends(require_permission("crm", "view"))])
 def list_contacts(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Contact).filter(Contact.org_id == org_id).all()
 
 
 # ---------------- Leads ----------------
-@router.post("/leads", response_model=LeadOut, status_code=201)
+@router.post("/leads", response_model=LeadOut, status_code=201, dependencies=[Depends(require_permission("crm", "create"))])
 def create_lead(payload: LeadCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     lead = Lead(org_id=org_id, **payload.model_dump())
     db.add(lead)
@@ -61,12 +61,12 @@ def create_lead(payload: LeadCreate, db: Session = Depends(get_db), org_id: str 
     return lead
 
 
-@router.get("/leads", response_model=list[LeadOut])
+@router.get("/leads", response_model=list[LeadOut], dependencies=[Depends(require_permission("crm", "view"))])
 def list_leads(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Lead).filter(Lead.org_id == org_id).order_by(Lead.created_at.desc()).all()
 
 
-@router.patch("/leads/{lead_id}/status", response_model=LeadOut)
+@router.patch("/leads/{lead_id}/status", response_model=LeadOut, dependencies=[Depends(require_permission("crm", "edit"))])
 def update_lead_status(lead_id: str, payload: LeadStatusUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     lead = db.query(Lead).filter(Lead.id == lead_id, Lead.org_id == org_id).first()
     if not lead:
@@ -77,7 +77,7 @@ def update_lead_status(lead_id: str, payload: LeadStatusUpdate, db: Session = De
     return lead
 
 
-@router.post("/leads/{lead_id}/convert", response_model=OpportunityOut, status_code=201)
+@router.post("/leads/{lead_id}/convert", response_model=OpportunityOut, status_code=201, dependencies=[Depends(require_permission("crm", "edit"))])
 def convert_lead(lead_id: str, payload: ConvertLeadRequest, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """
     The single most important CRM action: turns a Lead into a real Account
@@ -124,7 +124,7 @@ def convert_lead(lead_id: str, payload: ConvertLeadRequest, db: Session = Depend
 
 
 # ---------------- Opportunities ----------------
-@router.post("/opportunities", response_model=OpportunityOut, status_code=201)
+@router.post("/opportunities", response_model=OpportunityOut, status_code=201, dependencies=[Depends(require_permission("crm", "create"))])
 def create_opportunity(payload: OpportunityCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     opportunity = Opportunity(org_id=org_id, **payload.model_dump())
     db.add(opportunity)
@@ -133,12 +133,12 @@ def create_opportunity(payload: OpportunityCreate, db: Session = Depends(get_db)
     return opportunity
 
 
-@router.get("/opportunities", response_model=list[OpportunityOut])
+@router.get("/opportunities", response_model=list[OpportunityOut], dependencies=[Depends(require_permission("crm", "view"))])
 def list_opportunities(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Opportunity).filter(Opportunity.org_id == org_id).order_by(Opportunity.created_at.desc()).all()
 
 
-@router.patch("/opportunities/{opportunity_id}/stage", response_model=OpportunityOut)
+@router.patch("/opportunities/{opportunity_id}/stage", response_model=OpportunityOut, dependencies=[Depends(require_permission("crm", "edit"))])
 def update_opportunity_stage(opportunity_id: str, payload: OpportunityStageUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     opportunity = db.query(Opportunity).filter(Opportunity.id == opportunity_id, Opportunity.org_id == org_id).first()
     if not opportunity:

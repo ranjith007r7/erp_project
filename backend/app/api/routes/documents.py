@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_org_id
+from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.documents import Document, ApprovalWorkflow, ApprovalRequest, ApprovalStep
 from app.services.notifications import notify_role, notify_user
 from app.schemas.documents import (
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/documents", tags=["documents"], dependencies=[De
 
 
 # ---------------- Documents ----------------
-@router.post("", response_model=DocumentOut, status_code=201)
+@router.post("", response_model=DocumentOut, status_code=201, dependencies=[Depends(require_permission("documents", "create"))])
 def create_document(payload: DocumentCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id),
                      current_user=Depends(get_current_user)):
     doc = Document(org_id=org_id, uploaded_by=current_user.id, **payload.model_dump())
@@ -38,13 +38,13 @@ def create_document(payload: DocumentCreate, db: Session = Depends(get_db), org_
     return doc
 
 
-@router.get("", response_model=list[DocumentOut])
+@router.get("", response_model=list[DocumentOut], dependencies=[Depends(require_permission("documents", "view"))])
 def list_documents(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Document).filter(Document.org_id == org_id).order_by(Document.created_at.desc()).all()
 
 
 # ---------------- Approval Workflows (the reusable rules) ----------------
-@router.post("/workflows", response_model=ApprovalWorkflowOut, status_code=201)
+@router.post("/workflows", response_model=ApprovalWorkflowOut, status_code=201, dependencies=[Depends(require_permission("documents", "create"))])
 def create_workflow(payload: ApprovalWorkflowCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     workflow = ApprovalWorkflow(
         org_id=org_id,
@@ -58,13 +58,13 @@ def create_workflow(payload: ApprovalWorkflowCreate, db: Session = Depends(get_d
     return workflow
 
 
-@router.get("/workflows", response_model=list[ApprovalWorkflowOut])
+@router.get("/workflows", response_model=list[ApprovalWorkflowOut], dependencies=[Depends(require_permission("documents", "view"))])
 def list_workflows(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(ApprovalWorkflow).filter(ApprovalWorkflow.org_id == org_id).all()
 
 
 # ---------------- Approval Requests (instances of a rule) ----------------
-@router.post("/approval-requests", response_model=ApprovalRequestOut, status_code=201)
+@router.post("/approval-requests", response_model=ApprovalRequestOut, status_code=201, dependencies=[Depends(require_permission("documents", "create"))])
 def create_approval_request(payload: ApprovalRequestCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id),
                              current_user=Depends(get_current_user)):
     workflow = db.query(ApprovalWorkflow).filter(
@@ -100,7 +100,7 @@ def create_approval_request(payload: ApprovalRequestCreate, db: Session = Depend
     return request
 
 
-@router.get("/approval-requests", response_model=list[ApprovalRequestOut])
+@router.get("/approval-requests", response_model=list[ApprovalRequestOut], dependencies=[Depends(require_permission("documents", "view"))])
 def list_approval_requests(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return (
         db.query(ApprovalRequest)
@@ -112,7 +112,7 @@ def list_approval_requests(db: Session = Depends(get_db), org_id: str = Depends(
     )
 
 
-@router.post("/approval-requests/{request_id}/action", response_model=ApprovalRequestOut)
+@router.post("/approval-requests/{request_id}/action", response_model=ApprovalRequestOut, dependencies=[Depends(require_permission("documents", "approve"))])
 def action_approval_step(request_id: str, payload: ApprovalActionRequest, db: Session = Depends(get_db),
                           org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     """

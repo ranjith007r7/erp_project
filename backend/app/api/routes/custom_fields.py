@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_org_id
+from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.custom_field import CustomField, CustomFieldValue
 from app.schemas.custom_field import (
     CustomFieldCreate, CustomFieldUpdate, CustomFieldOut,
@@ -34,7 +34,7 @@ router = APIRouter(prefix="/api/custom-fields", tags=["custom-fields"], dependen
 
 # ---------------- Definitions ----------------
 
-@router.post("", response_model=CustomFieldOut, status_code=201)
+@router.post("", response_model=CustomFieldOut, status_code=201, dependencies=[Depends(require_permission("custom_fields", "create"))])
 def create_custom_field(payload: CustomFieldCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     if payload.field_type == "dropdown" and not payload.options:
         raise HTTPException(400, "dropdown fields require a non-empty options list")
@@ -54,7 +54,7 @@ def create_custom_field(payload: CustomFieldCreate, db: Session = Depends(get_db
     return field
 
 
-@router.get("", response_model=list[CustomFieldOut])
+@router.get("", response_model=list[CustomFieldOut], dependencies=[Depends(require_permission("custom_fields", "view"))])
 def list_custom_fields(
     entity_type: str | None = None,
     module: str | None = None,
@@ -77,7 +77,7 @@ def list_custom_fields(
     return query.order_by(CustomField.display_order, CustomField.created_at).all()
 
 
-@router.patch("/{field_id}", response_model=CustomFieldOut)
+@router.patch("/{field_id}", response_model=CustomFieldOut, dependencies=[Depends(require_permission("custom_fields", "edit"))])
 def update_custom_field(field_id: str, payload: CustomFieldUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     field = db.query(CustomField).filter(CustomField.id == field_id, CustomField.org_id == org_id).first()
     if not field:
@@ -91,7 +91,7 @@ def update_custom_field(field_id: str, payload: CustomFieldUpdate, db: Session =
     return field
 
 
-@router.delete("/{field_id}", status_code=204)
+@router.delete("/{field_id}", status_code=204, dependencies=[Depends(require_permission("custom_fields", "delete"))])
 def delete_custom_field(field_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """
     A hard delete, not a deactivate — cascades to every stored value via
@@ -109,7 +109,7 @@ def delete_custom_field(field_id: str, db: Session = Depends(get_db), org_id: st
 
 # ---------------- Values ----------------
 
-@router.get("/values", response_model=list[CustomFieldValueOut])
+@router.get("/values", response_model=list[CustomFieldValueOut], dependencies=[Depends(require_permission("custom_fields", "view"))])
 def get_custom_field_values(entity_type: str, entity_id: UUID, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """
     Every active field definition for entity_type, left-joined against
@@ -143,7 +143,7 @@ def get_custom_field_values(entity_type: str, entity_id: UUID, db: Session = Dep
     ]
 
 
-@router.post("/values", status_code=200)
+@router.post("/values", status_code=200, dependencies=[Depends(require_permission("custom_fields", "edit"))])
 def set_custom_field_values(payload: CustomFieldValuesSetRequest, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """
     Upsert every submitted value in one call. Validates each custom_field_id

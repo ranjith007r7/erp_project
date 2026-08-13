@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_org_id
+from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.finance import ChartOfAccounts, JournalEntry, Payment
 from app.models.sales import Invoice
 from app.schemas.finance import AccountOut, JournalEntryOut, PaymentCreate, PaymentOut
@@ -16,12 +16,12 @@ from app.services.accounting import post_payment_journal_entry
 router = APIRouter(prefix="/api/finance", tags=["finance"], dependencies=[Depends(get_current_user)])
 
 
-@router.get("/accounts", response_model=list[AccountOut])
+@router.get("/accounts", response_model=list[AccountOut], dependencies=[Depends(require_permission("finance", "view"))])
 def list_accounts(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(ChartOfAccounts).filter(ChartOfAccounts.org_id == org_id).order_by(ChartOfAccounts.code).all()
 
 
-@router.get("/journal-entries", response_model=list[JournalEntryOut])
+@router.get("/journal-entries", response_model=list[JournalEntryOut], dependencies=[Depends(require_permission("finance", "view"))])
 def list_journal_entries(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return (
         db.query(JournalEntry)
@@ -32,7 +32,7 @@ def list_journal_entries(db: Session = Depends(get_db), org_id: str = Depends(ge
     )
 
 
-@router.post("/payments", response_model=PaymentOut, status_code=201)
+@router.post("/payments", response_model=PaymentOut, status_code=201, dependencies=[Depends(require_permission("finance", "create"))])
 def record_payment(payload: PaymentCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """
     Records money received against an Invoice, marks the Invoice paid (or

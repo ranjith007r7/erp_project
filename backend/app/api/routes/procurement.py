@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_org_id
+from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.procurement import Vendor, PurchaseOrder, PurchaseOrderItem, GoodsReceipt
 from app.models.sales import Product
 from app.schemas.procurement import (
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/procurement", tags=["procurement"], dependencies
 
 
 # ---------------- Vendors ----------------
-@router.post("/vendors", response_model=VendorOut, status_code=201)
+@router.post("/vendors", response_model=VendorOut, status_code=201, dependencies=[Depends(require_permission("procurement", "create"))])
 def create_vendor(payload: VendorCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     vendor = Vendor(org_id=org_id, **payload.model_dump())
     db.add(vendor)
@@ -31,13 +31,13 @@ def create_vendor(payload: VendorCreate, db: Session = Depends(get_db), org_id: 
     return vendor
 
 
-@router.get("/vendors", response_model=list[VendorOut])
+@router.get("/vendors", response_model=list[VendorOut], dependencies=[Depends(require_permission("procurement", "view"))])
 def list_vendors(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Vendor).filter(Vendor.org_id == org_id).all()
 
 
 # ---------------- Purchase Orders ----------------
-@router.post("/purchase-orders", response_model=PurchaseOrderOut, status_code=201)
+@router.post("/purchase-orders", response_model=PurchaseOrderOut, status_code=201, dependencies=[Depends(require_permission("procurement", "create"))])
 def create_purchase_order(payload: PurchaseOrderCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     vendor = db.query(Vendor).filter(Vendor.id == payload.vendor_id, Vendor.org_id == org_id).first()
     if not vendor:
@@ -59,7 +59,7 @@ def create_purchase_order(payload: PurchaseOrderCreate, db: Session = Depends(ge
     return po
 
 
-@router.get("/purchase-orders", response_model=list[PurchaseOrderOut])
+@router.get("/purchase-orders", response_model=list[PurchaseOrderOut], dependencies=[Depends(require_permission("procurement", "view"))])
 def list_purchase_orders(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return (
         db.query(PurchaseOrder)
@@ -70,7 +70,7 @@ def list_purchase_orders(db: Session = Depends(get_db), org_id: str = Depends(ge
     )
 
 
-@router.post("/purchase-orders/{po_id}/receive", response_model=PurchaseOrderOut)
+@router.post("/purchase-orders/{po_id}/receive", response_model=PurchaseOrderOut, dependencies=[Depends(require_permission("procurement", "edit"))])
 def receive_purchase_order(po_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """
     The actual moment stock increases. A Purchase Order existing does NOT

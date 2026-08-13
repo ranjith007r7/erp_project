@@ -724,15 +724,76 @@ No Alembic step needed — confirmed no schema changed.
 
 ---
 
-## PART 22 — What's Next
+## PART 23 — Phase 11: RBAC Enforcement
 
-**Demo-Ready track: complete.** Custom Fields (Phase 9), Notifications + prompt/confirm replacement (Phase 10 part 1), and shared components + mobile + pagination (Phase 10 part 2) are all done and tested. Per the roadmap, that's the "tell a convincing story in a sales call, nothing embarrassing breaks on stage" bar cleared — with two honestly-flagged partial items: the design pass covers 9 of 13 pages' headers and 1 of 13 pages' full button set, and no real browser click-through has been possible in this environment all session.
+The biggest remaining piece of "customizable base" that was structure without behavior — Roles/Permissions have existed since Phase 1, but until this phase, no route anywhere actually checked one. Any logged-in user could do anything.
 
-**Client-Ready track — up next:**
-1. **RBAC enforcement on every route** (not just "logged in"). This phase's own testing ran into that exact gap directly — there's no way yet to create a second user with a non-Admin role, which limited how fully the Documents-module notification path could be proven. This is the single biggest remaining piece of "customizable base" that's still just structure, not behavior.
-2. A real `pytest` suite covering the logic that must never silently break (stock/value calculations, insufficient-stock rejection, payroll math, journal-entry balancing, multi-tenancy isolation).
-3. Security hardening — password reset, email verification, login rate limiting, secrets hygiene.
-4. Final regression QA + a seeded demo organization + a written demo walkthrough script.
+### The one scoping decision made up front, flagged rather than hidden
+
+The `Permission` model already anticipates five granular actions per module (`view`, `create`, `edit`, `delete`, `approve`), and signup already seeds all five for a brand-new org's Admin role. Given that, this phase applies the SAME granularity per route rather than collapsing to a simpler two-tier scheme — GET routes require `view`, POST-create routes require `create`, PATCH/status-change routes require `edit`, DELETE routes require `delete`, and the two genuinely approval-shaped actions (Documents' step-action, HR's leave-status-update) require `approve` specifically, since that's a precise semantic fit already built into the model. This isn't a shortcut — it's using the mechanism exactly as it was already designed, just finally wired up.
+
+### What was built
+
+| Piece | What it does |
+|---|---|
+| `app/api/deps.py`'s `require_permission(module, action)` | A dependency FACTORY — call it with the module/action a route needs, get back the actual check to attach. One function serves all 80 routes instead of 80 bespoke checks. |
+| `app/api/routes/roles.py` (new) | `POST/GET /api/core/roles`, `POST/GET/DELETE /api/core/roles/{id}/permissions`, `GET/POST /api/core/users`, `PATCH /api/core/users/{id}/role` — the piece that was missing before this phase and that made RBAC untestable: no way to create a second user with a different role. Gated behind `core` module permissions, same as everything else — Admin already has full `core` access from signup. |
+| Every route in every business module | `dependencies=[Depends(require_permission(module, action))]` added directly at the `@router` decorator level — applied to all **80 routes** across CRM, Sales, Finance, Inventory, Procurement, HR, Projects, Documents, Reports, Custom Fields, and Dashboard, via a scripted exact-match pass rather than 80 individual manual edits (lower risk of a typo breaking one route while fixing another). |
+| Notifications routes | Deliberately **NOT** gated behind `require_permission` — a notification is already scoped to `current_user.id` specifically (see Phase 10 part 1), so "can you see your own notifications" isn't a business-module permission question the same way "can you see the CRM pipeline" is. Noted as a decision, not an oversight. |
+
+### A real bug caught by reasoning, before it could lock anyone out
+
+Signup's seeded-modules list (`app/api/routes/auth.py`) was written in Phase 1 and never updated when Custom Fields (Phase 9) or Notifications (Phase 10) were added — so any org that signed up before this phase would have an Admin role with **zero** `Permission` rows for `custom_fields`. The moment enforcement went live, every existing admin would have been locked out of a module they're supposed to fully control. Fixed two ways: signup's module list now includes `custom_fields` going forward, AND `require_permission()` self-heals — if a role named "Admin" has genuinely zero permission rows for a module, that's treated as "this module didn't exist yet when the org signed up," and the full permission set is granted and persisted on the spot. Same philosophy as `get_account()`/`get_default_warehouse()`'s self-healing from earlier phases, applied to the same class of problem.
+
+### How this was tested — real, not assumed
+
+Real local PostgreSQL, real server. Confirmed **zero schema drift** (empty autogenerate migration — this phase only touches route decorators and one seeding list, no models changed).
+
+```
+Admin (full access from signup): GET /sales/products -> 200, POST -> 201
+
+Admin creates a "Sales Viewer" role, grants it ONLY sales.view
+Admin creates a second real user with that role
+Log in AS that second user (a real, distinct login — not simulated)
+
+Viewer GET /sales/products         -> 200  (granted)
+Viewer POST /sales/products        -> 403  "does not have 'create' access to 'sales'"
+Viewer GET /hr/employees           -> 403  "does not have 'view' access to 'hr'" (no hr permission granted at all)
+Viewer GET /core/users             -> 403  "does not have 'view' access to 'core'" (can't manage other users)
+```
+
+**Self-healing path, verified with properly org-scoped queries** (an early version of this test had an unscoped SQL query that gave a misleading result — caught and redone correctly rather than reported as-is):
+```
+Deleted a real org's Admin role's custom_fields Permission rows directly (simulating a
+  pre-Phase-9 org) -> confirmed 0 rows remain, properly scoped to that one org
+Admin hits a custom_fields route -> 200 (self-healed, not 403)
+Confirmed the self-heal wrote exactly 5 rows (one per action), not a partial or duplicate set
+Called the same route AGAIN -> still exactly 5 rows, not 10 -> self-heal is idempotent,
+  doesn't re-insert on every request once the gap is closed
+```
+
+**One honest limitation:** the previous phase's manual flagged not being able to fully test the Documents-module role-based notification path because no second-user-with-a-different-role capability existed. That gap is now closed by this phase's own `roles.py` — worth revisiting that test with a real non-Admin approver role now that it's possible, though it wasn't re-run this session since the underlying `notify_role()` mechanism was already proven correct in Phase 10 part 1.
+
+### Deploying this update
+
+```bash
+git add . && git commit -m "Phase 11: RBAC enforcement on every route" && git push
+```
+No Alembic step needed — no schema changed, only route-level dependencies and one seeding list.
+
+**Important operational note:** once this deploys, every EXISTING user in every EXISTING org who isn't the original Admin (i.e., anyone with `role_id = NULL` or a custom role with no permissions granted yet) will start getting 403s on everything. That's the correct, intended behavior — but it means this is the point where you'd actually go create real restricted roles for real team members via the new `/api/core/roles` endpoints, not something to deploy silently and forget.
+
+---
+
+## PART 24 — What's Next
+
+**Demo-Ready track: complete** (Phases 9–10). **RBAC enforcement (Phase 11): complete.**
+
+**Client-Ready track — remaining:**
+1. A real `pytest` suite covering the logic that must never silently break (stock/value calculations, insufficient-stock rejection, payroll math, journal-entry balancing, multi-tenancy isolation, and now RBAC's own permission-boundary cases).
+2. Security hardening — password reset, email verification, login rate limiting, secrets hygiene, basic monitoring.
+3. Final regression QA + a seeded demo organization with realistic sample data + a written demo walkthrough script.
+4. Two-org isolation stress test — flagged as open since Phase 1's original handoff document and never yet done: deliberately create two organizations side-by-side and verify Org A genuinely cannot see Org B's data through any endpoint.
 
 See `ERP_Remaining_Roadmap_and_Testing_Guide.md` for the full breakdown and realistic timeline per your available hours. This section keeps growing with each phase — nothing above gets deleted, only added to.
 

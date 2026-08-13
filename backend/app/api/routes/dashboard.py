@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_org_id
+from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.crm import Lead, Opportunity
 from app.models.sales import Quotation, SalesOrder, Invoice, Product
 from app.models.inventory import StockLevel
@@ -22,7 +22,7 @@ from app.models.reports import SavedReport
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"], dependencies=[Depends(get_current_user)])
 
 
-@router.get("/summary")
+@router.get("/summary", dependencies=[Depends(require_permission("dashboard", "view"))])
 def get_summary(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     # Low stock = a product whose current stock is at or below its
     # reorder_level. Products with no StockLevel row yet (never

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_org_id
+from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.sales import Product, Customer, Quotation, QuotationItem, SalesOrder, SalesOrderItem, Invoice
 from app.schemas.sales import (
     ProductCreate, ProductOut,
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api/sales", tags=["sales"], dependencies=[Depends(ge
 
 
 # ---------------- Products (minimal stub - see models/sales.py) ----------------
-@router.post("/products", response_model=ProductOut, status_code=201)
+@router.post("/products", response_model=ProductOut, status_code=201, dependencies=[Depends(require_permission("sales", "create"))])
 def create_product(payload: ProductCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     product = Product(org_id=org_id, **payload.model_dump())
     db.add(product)
@@ -40,13 +40,13 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db), org_id
     return product
 
 
-@router.get("/products", response_model=list[ProductOut])
+@router.get("/products", response_model=list[ProductOut], dependencies=[Depends(require_permission("sales", "view"))])
 def list_products(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Product).filter(Product.org_id == org_id).all()
 
 
 # ---------------- Customers ----------------
-@router.post("/customers", response_model=CustomerOut, status_code=201)
+@router.post("/customers", response_model=CustomerOut, status_code=201, dependencies=[Depends(require_permission("sales", "create"))])
 def create_customer(payload: CustomerCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     customer = Customer(org_id=org_id, **payload.model_dump())
     db.add(customer)
@@ -55,13 +55,13 @@ def create_customer(payload: CustomerCreate, db: Session = Depends(get_db), org_
     return customer
 
 
-@router.get("/customers", response_model=list[CustomerOut])
+@router.get("/customers", response_model=list[CustomerOut], dependencies=[Depends(require_permission("sales", "view"))])
 def list_customers(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Customer).filter(Customer.org_id == org_id).all()
 
 
 # ---------------- Quotations ----------------
-@router.post("/quotations", response_model=QuotationOut, status_code=201)
+@router.post("/quotations", response_model=QuotationOut, status_code=201, dependencies=[Depends(require_permission("sales", "create"))])
 def create_quotation(payload: QuotationCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     customer = db.query(Customer).filter(Customer.id == payload.customer_id, Customer.org_id == org_id).first()
     if not customer:
@@ -84,7 +84,7 @@ def create_quotation(payload: QuotationCreate, db: Session = Depends(get_db), or
     return quotation
 
 
-@router.get("/quotations", response_model=list[QuotationOut])
+@router.get("/quotations", response_model=list[QuotationOut], dependencies=[Depends(require_permission("sales", "view"))])
 def list_quotations(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return (
         db.query(Quotation)
@@ -95,7 +95,7 @@ def list_quotations(db: Session = Depends(get_db), org_id: str = Depends(get_org
     )
 
 
-@router.patch("/quotations/{quotation_id}/status", response_model=QuotationOut)
+@router.patch("/quotations/{quotation_id}/status", response_model=QuotationOut, dependencies=[Depends(require_permission("sales", "edit"))])
 def update_quotation_status(quotation_id: str, payload: QuotationStatusUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     quotation = db.query(Quotation).filter(Quotation.id == quotation_id, Quotation.org_id == org_id).first()
     if not quotation:
@@ -106,7 +106,7 @@ def update_quotation_status(quotation_id: str, payload: QuotationStatusUpdate, d
     return quotation
 
 
-@router.post("/quotations/{quotation_id}/accept", response_model=SalesOrderOut, status_code=201)
+@router.post("/quotations/{quotation_id}/accept", response_model=SalesOrderOut, status_code=201, dependencies=[Depends(require_permission("sales", "edit"))])
 def accept_quotation(quotation_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """
     Turns an accepted Quotation into a real Sales Order, copying its line
@@ -141,7 +141,7 @@ def accept_quotation(quotation_id: str, db: Session = Depends(get_db), org_id: s
 
 
 # ---------------- Sales Orders ----------------
-@router.get("/orders", response_model=list[SalesOrderOut])
+@router.get("/orders", response_model=list[SalesOrderOut], dependencies=[Depends(require_permission("sales", "view"))])
 def list_orders(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return (
         db.query(SalesOrder)
@@ -152,7 +152,7 @@ def list_orders(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)
     )
 
 
-@router.post("/orders/{order_id}/invoice", response_model=InvoiceOut, status_code=201)
+@router.post("/orders/{order_id}/invoice", response_model=InvoiceOut, status_code=201, dependencies=[Depends(require_permission("sales", "edit"))])
 def generate_invoice(order_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """
     Generates an Invoice from a Sales Order, issues stock for every line
@@ -210,6 +210,6 @@ def generate_invoice(order_id: str, db: Session = Depends(get_db), org_id: str =
     return invoice
 
 
-@router.get("/invoices", response_model=list[InvoiceOut])
+@router.get("/invoices", response_model=list[InvoiceOut], dependencies=[Depends(require_permission("sales", "view"))])
 def list_invoices(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Invoice).filter(Invoice.org_id == org_id).order_by(Invoice.created_at.desc()).all()

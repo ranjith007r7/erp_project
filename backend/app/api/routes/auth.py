@@ -44,7 +44,7 @@ def signup(payload: OrganizationSignup, db: Session = Depends(get_db)):
     # are added later, add their names to this list so a fresh org's Admin
     # role automatically has access to everything from day one.
     modules = ["core", "dashboard", "crm", "sales", "procurement", "inventory",
-               "finance", "hr", "projects", "documents", "reports"]
+               "finance", "hr", "projects", "documents", "reports", "custom_fields"]
     for module in modules:
         for action in ["view", "create", "edit", "delete", "approve"]:
             db.add(Permission(role_id=admin_role.id, module=module, action=action))

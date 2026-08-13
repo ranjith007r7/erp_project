@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_org_id
+from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.projects import Project, Task, TimeLog
 from app.schemas.projects import (
     ProjectCreate, ProjectOut, ProjectStatusUpdate,
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/projects", tags=["projects"], dependencies=[Depe
 
 
 # ---------------- Projects ----------------
-@router.post("", response_model=ProjectOut, status_code=201)
+@router.post("", response_model=ProjectOut, status_code=201, dependencies=[Depends(require_permission("projects", "create"))])
 def create_project(payload: ProjectCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     project = Project(org_id=org_id, **payload.model_dump())
     db.add(project)
@@ -23,12 +23,12 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db), org_id
     return project
 
 
-@router.get("", response_model=list[ProjectOut])
+@router.get("", response_model=list[ProjectOut], dependencies=[Depends(require_permission("projects", "view"))])
 def list_projects(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Project).filter(Project.org_id == org_id).all()
 
 
-@router.patch("/{project_id}/status", response_model=ProjectOut)
+@router.patch("/{project_id}/status", response_model=ProjectOut, dependencies=[Depends(require_permission("projects", "edit"))])
 def update_project_status(project_id: str, payload: ProjectStatusUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     project = db.query(Project).filter(Project.id == project_id, Project.org_id == org_id).first()
     if not project:
@@ -40,7 +40,7 @@ def update_project_status(project_id: str, payload: ProjectStatusUpdate, db: Ses
 
 
 # ---------------- Tasks ----------------
-@router.post("/tasks", response_model=TaskOut, status_code=201)
+@router.post("/tasks", response_model=TaskOut, status_code=201, dependencies=[Depends(require_permission("projects", "create"))])
 def create_task(payload: TaskCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     project = db.query(Project).filter(Project.id == payload.project_id, Project.org_id == org_id).first()
     if not project:
@@ -52,7 +52,7 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db), org_id: str 
     return task
 
 
-@router.get("/tasks", response_model=list[TaskOut])
+@router.get("/tasks", response_model=list[TaskOut], dependencies=[Depends(require_permission("projects", "view"))])
 def list_tasks(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return (
         db.query(Task)
@@ -62,7 +62,7 @@ def list_tasks(db: Session = Depends(get_db), org_id: str = Depends(get_org_id))
     )
 
 
-@router.patch("/tasks/{task_id}/status", response_model=TaskOut)
+@router.patch("/tasks/{task_id}/status", response_model=TaskOut, dependencies=[Depends(require_permission("projects", "edit"))])
 def update_task_status(task_id: str, payload: TaskStatusUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     task = (
         db.query(Task)
@@ -79,7 +79,7 @@ def update_task_status(task_id: str, payload: TaskStatusUpdate, db: Session = De
 
 
 # ---------------- Time Logs ----------------
-@router.post("/time-logs", response_model=TimeLogOut, status_code=201)
+@router.post("/time-logs", response_model=TimeLogOut, status_code=201, dependencies=[Depends(require_permission("projects", "create"))])
 def create_time_log(payload: TimeLogCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id),
                      current_user=Depends(get_current_user)):
     task = (
@@ -98,7 +98,7 @@ def create_time_log(payload: TimeLogCreate, db: Session = Depends(get_db), org_i
     return log
 
 
-@router.get("/time-logs", response_model=list[TimeLogOut])
+@router.get("/time-logs", response_model=list[TimeLogOut], dependencies=[Depends(require_permission("projects", "view"))])
 def list_time_logs(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return (
         db.query(TimeLog)

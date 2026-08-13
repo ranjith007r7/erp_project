@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.api.routes import auth, crm, sales, finance, inventory, procurement, hr, projects, documents, dashboard, reports, custom_fields, notifications
+from app.api.routes import auth, crm, sales, finance, inventory, procurement, hr, projects, documents, dashboard, reports, custom_fields, notifications, roles
 
 # Importing app.models here (even though unused directly) registers every
 # table with Base.metadata - needed so Alembic's autogenerate can see
@@ -35,6 +35,7 @@ app.include_router(documents.router)
 app.include_router(reports.router)
 app.include_router(custom_fields.router)
 app.include_router(notifications.router)
+app.include_router(roles.router)
 app.include_router(dashboard.router)
 
 # NOTE: there used to be a startup hook here calling

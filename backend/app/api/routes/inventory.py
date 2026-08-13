@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_org_id
+from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.inventory import ProductCategory, Warehouse, StockLevel, StockMovement
 from app.models.sales import Product
 from app.schemas.inventory import (
@@ -22,7 +22,7 @@ from app.services.inventory import get_default_warehouse
 router = APIRouter(prefix="/api/inventory", tags=["inventory"], dependencies=[Depends(get_current_user)])
 
 
-@router.post("/categories", response_model=ProductCategoryOut, status_code=201)
+@router.post("/categories", response_model=ProductCategoryOut, status_code=201, dependencies=[Depends(require_permission("inventory", "create"))])
 def create_category(payload: ProductCategoryCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     category = ProductCategory(org_id=org_id, name=payload.name)
     db.add(category)
@@ -31,12 +31,12 @@ def create_category(payload: ProductCategoryCreate, db: Session = Depends(get_db
     return category
 
 
-@router.get("/categories", response_model=list[ProductCategoryOut])
+@router.get("/categories", response_model=list[ProductCategoryOut], dependencies=[Depends(require_permission("inventory", "view"))])
 def list_categories(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(ProductCategory).filter(ProductCategory.org_id == org_id).all()
 
 
-@router.get("/warehouses", response_model=list[WarehouseOut])
+@router.get("/warehouses", response_model=list[WarehouseOut], dependencies=[Depends(require_permission("inventory", "view"))])
 def list_warehouses(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     # Ensures the default warehouse exists even if nothing has moved stock yet,
     # so the frontend always has at least one warehouse to show.
@@ -45,7 +45,7 @@ def list_warehouses(db: Session = Depends(get_db), org_id: str = Depends(get_org
     return db.query(Warehouse).filter(Warehouse.org_id == org_id).all()
 
 
-@router.get("/stock-levels", response_model=list[StockLevelOut])
+@router.get("/stock-levels", response_model=list[StockLevelOut], dependencies=[Depends(require_permission("inventory", "view"))])
 def list_stock_levels(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return (
         db.query(StockLevel)
@@ -55,7 +55,7 @@ def list_stock_levels(db: Session = Depends(get_db), org_id: str = Depends(get_o
     )
 
 
-@router.get("/movements", response_model=list[StockMovementOut])
+@router.get("/movements", response_model=list[StockMovementOut], dependencies=[Depends(require_permission("inventory", "view"))])
 def list_movements(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return (
         db.query(StockMovement)

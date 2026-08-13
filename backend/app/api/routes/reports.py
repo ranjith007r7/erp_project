@@ -23,7 +23,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_org_id
+from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.reports import SavedReport
 from app.schemas.reports import SavedReportCreate, SavedReportOut
 from app.services import reports as report_service
@@ -31,42 +31,42 @@ from app.services import reports as report_service
 router = APIRouter(prefix="/api/reports", tags=["reports"], dependencies=[Depends(get_current_user)])
 
 
-@router.get("/sales-summary")
+@router.get("/sales-summary", dependencies=[Depends(require_permission("reports", "view"))])
 def sales_summary(months: int = 6, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return report_service.sales_summary(db, org_id, months=months)
 
 
-@router.get("/finance-summary")
+@router.get("/finance-summary", dependencies=[Depends(require_permission("reports", "view"))])
 def finance_summary(months: int = 6, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return report_service.finance_summary(db, org_id, months=months)
 
 
-@router.get("/inventory-summary")
+@router.get("/inventory-summary", dependencies=[Depends(require_permission("reports", "view"))])
 def inventory_summary(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return report_service.inventory_summary(db, org_id)
 
 
-@router.get("/procurement-summary")
+@router.get("/procurement-summary", dependencies=[Depends(require_permission("reports", "view"))])
 def procurement_summary(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return report_service.procurement_summary(db, org_id)
 
 
-@router.get("/hr-summary")
+@router.get("/hr-summary", dependencies=[Depends(require_permission("reports", "view"))])
 def hr_summary(months: int = 6, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return report_service.hr_summary(db, org_id, months=months)
 
 
-@router.get("/crm-funnel")
+@router.get("/crm-funnel", dependencies=[Depends(require_permission("reports", "view"))])
 def crm_funnel(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return report_service.crm_funnel(db, org_id)
 
 
-@router.get("/projects-summary")
+@router.get("/projects-summary", dependencies=[Depends(require_permission("reports", "view"))])
 def projects_summary(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return report_service.projects_summary(db, org_id)
 
 
-@router.get("/saved", response_model=list[SavedReportOut])
+@router.get("/saved", response_model=list[SavedReportOut], dependencies=[Depends(require_permission("reports", "view"))])
 def list_saved_reports(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return (
         db.query(SavedReport)
@@ -76,7 +76,7 @@ def list_saved_reports(db: Session = Depends(get_db), org_id: str = Depends(get_
     )
 
 
-@router.post("/saved", response_model=SavedReportOut, status_code=201)
+@router.post("/saved", response_model=SavedReportOut, status_code=201, dependencies=[Depends(require_permission("reports", "create"))])
 def create_saved_report(
     payload: SavedReportCreate,
     db: Session = Depends(get_db),
@@ -99,7 +99,7 @@ def create_saved_report(
     return saved
 
 
-@router.delete("/saved/{report_id}", status_code=204)
+@router.delete("/saved/{report_id}", status_code=204, dependencies=[Depends(require_permission("reports", "delete"))])
 def delete_saved_report(report_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     saved = db.query(SavedReport).filter(SavedReport.id == report_id, SavedReport.org_id == org_id).first()
     if not saved:
@@ -136,7 +136,7 @@ def _flatten_for_csv(data: dict) -> list[dict]:
     return rows
 
 
-@router.get("/export/{report_type}")
+@router.get("/export/{report_type}", dependencies=[Depends(require_permission("reports", "view"))])
 def export_report_csv(report_type: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     fn = report_service.REPORT_FUNCTIONS.get(report_type)
     if not fn:
