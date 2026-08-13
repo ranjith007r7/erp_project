@@ -26,7 +26,17 @@ just doing:
    unique subdomain — exactly the same pattern used throughout this
    project's own manual curl-based testing all along, just automated.
 """
+import os
 import uuid
+
+# These must be set BEFORE `import app.main` below, because that import
+# chain instantiates app.core.config.settings at module level - and
+# Settings.JWT_SECRET_KEY now has no default (see config.py's docstring
+# on why), so importing the app at all would crash immediately without
+# this. setdefault() means a real CI-provided value always wins if one's
+# already set (see .github/workflows/ci.yml).
+os.environ.setdefault("JWT_SECRET_KEY", "pytest_test_secret_key_not_for_production")
+os.environ.setdefault("ALLOWED_ORIGINS", "http://localhost:3000")
 
 import pytest
 from fastapi.testclient import TestClient

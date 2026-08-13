@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, String, ForeignKey, DateTime
+from sqlalchemy import Column, String, ForeignKey, DateTime, Boolean, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -24,5 +24,28 @@ class User(Base):
     role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"), nullable=True)
     status = Column(String, default="active")  # active / disabled
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # --- Email verification (Phase 13) ---
+    # Deliberately NOT enforced on login yet — there's no real email
+    # provider wired up in this codebase (no SMTP/SendGrid/SES config
+    # anywhere), so blocking login on an unverified email would lock out
+    # every single existing user the moment this ships, with no way for
+    # them to actually receive a verification link. The mechanism is
+    # built and correct; flip it on once a real provider is connected.
+    email_verified = Column(Boolean, nullable=False, default=False)
+    verification_token_hash = Column(String, nullable=True)
+    verification_token_expires = Column(DateTime, nullable=True)
+
+    # --- Password reset (Phase 13) ---
+    # Stores a HASH of the reset token, never the raw token — same
+    # principle as password_hash. If the database ever leaked, raw
+    # tokens would be directly usable to take over any account; hashed
+    # tokens are not.
+    reset_token_hash = Column(String, nullable=True)
+    reset_token_expires = Column(DateTime, nullable=True)
+
+    # --- Login rate limiting (Phase 13) ---
+    failed_login_attempts = Column(Integer, nullable=False, default=0)
+    locked_until = Column(DateTime, nullable=True)
 
     role = relationship("Role")

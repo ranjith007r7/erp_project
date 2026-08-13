@@ -895,13 +895,151 @@ No Alembic step needed — pure frontend, consuming existing endpoints.
 
 ---
 
-## PART 28 — What's Next
+## PART 29 — Phase 13: Security Hardening
 
-**Demo-Ready track: complete** (Phases 9–10). **RBAC enforcement, backend AND frontend (Phase 11 + 11b): complete.** **Automated testing + CI (Phase 12): complete**, including the long-standing multi-tenancy isolation gap.
+The last item before pure QA/demo-prep. Covers all five things the roadmap named: password reset, email verification, login rate limiting, secrets hygiene, and basic monitoring.
 
-**Client-Ready track — remaining:**
-1. Security hardening — password reset, email verification, login rate limiting, secrets hygiene, basic monitoring.
-2. Final regression QA + a seeded demo organization with realistic sample data + a written demo walkthrough script.
+### The one honest constraint shaping this whole phase: no email provider exists
 
-See `ERP_Remaining_Roadmap_and_Testing_Guide.md` for the full breakdown and realistic timeline per your available hours. This section keeps growing with each phase — nothing above gets deleted, only added to.
+Nothing in this codebase has ever sent a real email — no SMTP, SendGrid, Resend, SES, nothing. Password reset and email verification both fundamentally need an email to arrive somewhere. Rather than skip both features or fake success silently, `app/services/email.py` logs the "sent" email clearly to the server console (visible in Render's Logs tab in production) — genuinely testable end-to-end in dev, honest rather than a silent black hole in production. Swapping in a real provider later is a five-line change in one function; nothing else in the app needs to know or care.
+
+**One deliberate, flagged scope decision:** email verification is fully built (token generated at signup, `/verify-email` endpoint, `email_verified` column) but **not enforced** — login doesn't check it. Enforcing it would lock out every single user the moment this ships, with no real email delivery for them to actually receive a link and unlock themselves. The mechanism is correct and ready; flip on the login check once a real provider is wired in.
+
+### A real secrets-hygiene bug, found on the first read of `config.py`
+
+`JWT_SECRET_KEY` had a weak, well-known **default value baked directly into source code** (`"change-this-to-a-long-random-string-before-deploying"`). If any deployment ever forgot to set the real environment variable, the app would boot successfully and silently sign every JWT with a secret anyone who's ever seen this codebase already knows — a genuine account-takeover vulnerability, not a style nit. Fixed by removing the default entirely and adding a validator that rejects both an empty value and the placeholder text — **the app now refuses to start** rather than run insecurely. Proven both directions:
+```
+JWT_SECRET_KEY unset  -> ImportError / pydantic ValidationError, app refuses to start
+JWT_SECRET_KEY set    -> imports and runs cleanly
+```
+
+### Login rate limiting
+
+Five failed attempts locks the account for 15 minutes (both configurable via `.env`) — and the lockout check runs **before** password verification, so a locked account rejects even the *correct* password until the window passes; otherwise "rate limiting" wouldn't actually limit anything.
+
+```
+5 wrong passwords -> all 401
+6th attempt, CORRECT password -> 429 "Too many failed login attempts. Try again in 14 minute(s)."
+Manually expire the lockout window (simulating 15 real minutes passing)
+Correct password -> 200, works again
+A successful login resets the failed-attempt counter to 0
+```
+
+### Password reset
+
+Reset tokens are stored **hashed** (SHA-256, not bcrypt — a token is already 32 bytes of real randomness via `secrets.token_urlsafe`, unlike a human password, so it doesn't need slow salted hashing, just protection if the database ever leaked). `/forgot-password` always returns the identical response whether or not the email exists — proven directly:
+```
+forgot-password for a REAL registered email -> 200 "If that email has an account..."
+forgot-password for a email that has never existed -> 200, IDENTICAL message
+```
+Full reset flow, tested end-to-end with the real token extracted from server logs (not assumed):
+```
+request reset -> token logged -> reset with it -> 200
+OLD password -> 401 (correctly invalidated)
+NEW password -> 200 (works)
+reuse the SAME token again -> 400 (single-use enforced, not replayable)
+an already-expired token -> 400 (checked separately from single-use)
+```
+
+### Basic monitoring
+
+`/health` previously only proved the Python process was alive — a FastAPI process can stay "up" while its database connection is completely dead (wrong credentials after a rotation, Supabase paused after 7 days of inactivity — a real, already-documented free-tier behavior in this project's own manual). It now runs an actual trivial query and reports `{"status": "ok", "database": "ok"}` or `"degraded"`/`"error"` — a dead DB shows up here immediately instead of only being discovered when a real user's request fails.
+
+### Two real bugs found by actually testing, not by guessing
+
+1. **The same NOT-NULL-with-no-backfill migration bug, a third time.** Autogenerate wanted `users.email_verified` and `users.failed_login_attempts` added as `NOT NULL` directly, on a table (`users`) that has real rows in every org ever created — including the user's own real deployed org. This would have hard-failed against any populated database. Fixed with the same nullable → backfill → tighten shape as Phase 4's `products.sku` and Phase 9's `custom_fields.entity_type` — the pattern is now well-established in this codebase, and worth recognizing on sight for the next new column on an old table.
+2. **A test-file bug in the NEW pytest suite, caught by literally rerunning it.** The first version of `test_security_hardening.py` used fixed literal email strings (`"lockout-test@test.com"`) instead of unique ones — the very first rerun against the same persistent test database (not even a different run, just running the suite twice) failed with "email already exists," because `email` is globally unique across the whole `users` table. Fixed by giving the new tests the same uuid-suffix discipline `conftest.py`'s `signup()` fixture already used correctly. Reran twice in a row against the same already-populated database afterward to actually prove the fix, not just assume a fresh database happening to pass once meant it was fixed.
+
+### How this was tested
+
+Real local PostgreSQL, real server, every flow above run against genuine HTTP requests with the real token values extracted from actual server log output — not fabricated or assumed. Full pytest suite: **22 passed** (16 from every previous phase, unaffected, plus 6 new security regression tests), run twice in a row against the same persistent database to prove idempotency, not just a lucky first pass.
+
+### Deploying this update
+
+```bash
+git add . && git commit -m "Phase 13: security hardening" && git push
+```
+**Before this deploy goes live, set a real `JWT_SECRET_KEY` in Render's environment variables** — generate one with `python -c "import secrets; print(secrets.token_urlsafe(48))"`. If it's still the placeholder text (or missing), the app will now correctly refuse to start rather than silently running insecurely — which is the point, but it does mean this is a required step before this specific deploy, not an optional one.
+
+---
+
+## PART 31 — A Real Privilege-Escalation Bug, Found Through Actual Use, Not Review
+
+This one matters enough to be direct about: this was **not caught by any of this project's own testing, code review, or the "flag risky decisions" discipline this manual keeps claiming to follow.** It was found by the user actually deploying Phase 11b and clicking through it — building a role, testing what it could and couldn't do, and specifically testing the failure case (demoting themselves) that every prior phase's testing skipped. That's a real gap in how thoroughly Phase 11/11b were verified before being called done, and it's recorded here plainly rather than folded quietly into a routine bugfix entry.
+
+### What was actually wrong
+
+Two related problems, one root cause:
+
+1. **No recovery path if the last Admin loses their role.** Every action that could change who has access — granting/revoking a permission, reassigning a user's role — was permitted purely based on whether the ACTING user's role allowed it, with zero consideration of what state the ORG would be left in afterward. A sole Admin demoting themselves (by accident, or via any role-management route) had no way back in — `/settings/roles` itself requires access to open, so once you're out, you're out, permanently, with no server-side or application-level recovery mechanism.
+
+2. **`core.edit` alone granted full privilege escalation.** Granting/revoking permissions and reassigning a user's role were gated behind the exact same generic `create`/`edit`/`delete` checkboxes used for ordinary business-data edits everywhere else in the app. A role with `view`/`edit`/`approve` across every module — deliberately built to look like a *limited* admin, with `create` and `delete` withheld — could still freely call the role-change endpoint and promote its own holder straight to Admin. The checkbox grid gave no indication that `core`/`edit` was fundamentally different from `sales`/`edit`.
+
+Root cause: the system had no concept of "controlling who has access" as its own kind of capability. It was just another `edit` action on another module, and the UI presented it as one checkbox among sixty with no visual distinction at all.
+
+### The fix
+
+**A new, dedicated capability: `core.manage_access`**, structurally separate from the standard view/create/edit/delete/approve grid — not a sixth column, a completely distinct concept. Only this specific permission now gates: granting or revoking any Permission on any Role, changing any User's role, and creating a user with a role assigned at creation time (closing an otherwise-obvious sidestep — assigning a powerful role at creation is functionally identical to "create, then change role", so it needed the same gate, not the weaker `core.create`).
+
+**A server-side "last admin standing" guard**, implemented as flush → check → commit-or-rollback: the mutation is tentatively applied to the database session (not yet committed), then `org_has_admin_equivalent_user()` checks whether at least one active user org-wide would still hold `manage_access` afterward. If not, the entire operation is rolled back and rejected with a 400 — not a warning, an actual rejection — regardless of which of the three routes was used to try to get there. This closes the exact self-demotion scenario the user tested, and does it at the data-invariant level rather than as a special case bolted onto one specific route, so it can't be bypassed by finding a different route to the same end state.
+
+**Self-healing for the deadlock this fix itself would otherwise create.** Every org that existed before this fix — including, right now, the one this was reported against — has an Admin role with zero rows for this brand-new capability. Enforced strictly with no accommodation, this would have permanently locked every existing Admin out of the very system meant to protect them: nobody could grant `manage_access` to anyone, because granting it now requires already having it. Extended the same self-heal pattern from Phase 11 (originally built for `custom_fields`/`notifications`) specifically for this case — an Admin role transparently receives `manage_access` the moment it's actually needed, no manual intervention required.
+
+**UI**: `manage_access` is not a grid checkbox. It's a separate, prominently-bordered card above the permission matrix, changes color when granted, explains in plain language exactly what it does, and requires an explicit confirmation dialog before granting (revoking goes through the same server-side guard regardless, so the confirmation there is about intent, not safety).
+
+### Verified against a real database, both exact scenarios from the report
+
+```
+SCENARIO 1 — the lockout:
+Sole Admin, real signup, real manage_access seeded directly (not self-healed)
+Attempt to change own role to a powerless role
+  -> 400, "This action would leave the organization with no user able to
+     manage roles and permissions..."
+Confirmed via re-query: role genuinely still "Admin", not just an error shown
+
+SCENARIO 2 — the escalation, recreated EXACTLY from the screenshot:
+Role "Secondary_Admin": view+edit+approve on all 12 modules, no create/delete,
+  no manage_access (identical configuration to the attached screenshot)
+Confirmed this role CAN still edit ordinary business data normally (sales.view -> 200)
+Attempt to change own role to Admin using only this configuration
+  -> 403, "Your role 'Secondary_Admin' does not have 'manage_access' access to 'core'."
+Attempt to grant itself ANY new permission (finance.delete) despite broad 'edit'
+  -> 403, same reason
+Confirmed via re-query: role genuinely still "Secondary_Admin"
+
+POSITIVE CASE — the guard isn't overly restrictive:
+A role holding REAL manage_access legitimately demotes the original Admin
+  -> 200, succeeds (another admin-equivalent — themselves — still remains)
+That same user, now the SOLE admin-equivalent, tries to revoke their own manage_access
+  -> 400, rejected
+Confirmed via re-query: permission genuinely still present, not just an error shown
+
+SELF-HEAL — the deadlock this fix could have created for existing orgs:
+Simulated a pre-fix org (deleted its Admin's manage_access row directly)
+Real Admin hits any manage_access-gated route
+  -> succeeds, self-heals, and the row is written back permanently
+```
+Every one of these was run with real HTTP requests against a real local Postgres database, not asserted from reading the code. 7 new permanent regression tests were added (`tests/test_rbac_privilege_escalation.py`) covering all of the above — full suite now **29 passed**.
+
+### What this means for the org that reported it
+
+Once this deploys, that real org's Admin role will self-heal `manage_access` automatically on first use of any affected route — no manual database work needed. The "Secondary_Admin" role already created during testing will need `manage_access` explicitly granted through the new UI control if it's meant to have real administrative power going forward; as configured in the screenshot, it correctly can no longer escalate itself, which was the point.
+
+### Deploying this update
+
+```bash
+git add . && git commit -m "Fix: privilege escalation via core.edit, and last-admin lockout" && git push
+```
+No Alembic migration needed — this is a permission-data and route-logic change, not a schema change.
+
+---
+
+## PART 32 — What's Next
+
+**Demo-Ready track: complete** (Phases 9–10). **RBAC, backend and frontend (Phase 11 + 11b): complete, including a real security fix found through actual deployed use.** **Automated testing + CI (Phase 12): complete.** **Security hardening (Phase 13): complete.**
+
+**Client-Ready track — one item remaining:**
+1. Final regression QA + a seeded demo organization with realistic sample data + a written demo walkthrough script.
+
+That's the last item on the entire roadmap. See `ERP_Remaining_Roadmap_and_Testing_Guide.md` for its original framing. This section keeps growing with each phase — nothing above gets deleted, only added to.
 

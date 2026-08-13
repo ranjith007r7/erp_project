@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models.user import User
-from app.models.role import Permission
+from app.models.role import Permission, Role
 
 # This tells FastAPI's auto-generated /docs page where to send a login
 # request from the "Authorize" button — it doesn't do any work itself.
@@ -59,6 +59,20 @@ def get_org_id(current_user: User = Depends(get_current_user)) -> str:
 ALL_ACTIONS = ["view", "create", "edit", "delete", "approve"]
 ADMIN_ROLE_NAME = "Admin"
 
+# --- The "who controls access" capability (added after a real security
+# finding, not planned from the start - see MANUAL.md's writeup) ---
+#
+# Deliberately NOT one of the five actions above, and deliberately never
+# added to ALL_ACTIONS. Granting/revoking a Permission and reassigning a
+# User's role are fundamentally different in kind from editing a sales
+# quotation - conflating them under a shared "edit" checkbox is exactly
+# what let core.edit alone grant full privilege escalation. This is its
+# own dedicated gate: only holding module="core", action="manage_access"
+# lets a role touch the permission system at all, full stop, regardless
+# of what create/edit/delete/approve checkboxes it happens to have.
+MANAGE_ACCESS_MODULE = "core"
+MANAGE_ACCESS_ACTION = "manage_access"
+
 
 def require_permission(module: str, action: str):
     """
@@ -93,6 +107,26 @@ def require_permission(module: str, action: str):
         if not role:
             raise HTTPException(status.HTTP_403_FORBIDDEN, detail="No role assigned to this user.")
 
+        # Dedicated self-heal for manage_access specifically. The generic
+        # "zero rows for this module -> grant everything" self-heal below
+        # does NOT fire for "core", because every existing Admin role
+        # already has rows there (the original 5 actions from signup) -
+        # this is a NEW action added to an EXISTING module, a different
+        # shape of gap than the "whole module didn't exist yet" case.
+        # Without this, every org that existed before this fix would be
+        # permanently locked out of ever granting manage_access to
+        # anyone, including their own real Admin - nobody could reach
+        # the routes that grant it, because those routes now REQUIRE it.
+        if module == MANAGE_ACCESS_MODULE and action == MANAGE_ACCESS_ACTION and role.name == ADMIN_ROLE_NAME:
+            already_has_it = db.query(Permission).filter(
+                Permission.role_id == role.id, Permission.module == MANAGE_ACCESS_MODULE,
+                Permission.action == MANAGE_ACCESS_ACTION,
+            ).first()
+            if not already_has_it:
+                db.add(Permission(role_id=role.id, module=MANAGE_ACCESS_MODULE, action=MANAGE_ACCESS_ACTION))
+                db.commit()
+                return
+
         existing_for_module = db.query(Permission).filter(
             Permission.role_id == role.id, Permission.module == module
         ).count()
@@ -113,3 +147,28 @@ def require_permission(module: str, action: str):
             )
 
     return dependency
+
+
+def org_has_admin_equivalent_user(db: Session, org_id: str) -> bool:
+    """
+    True if at least one ACTIVE user in this org currently holds
+    manage_access, via whatever role they have. Used as a guard, called
+    AFTER a mutation has been tentatively applied to the session (via
+    db.flush(), not yet committed) so this query sees the hypothetical
+    post-change state - see roles.py's grant/revoke/role-change routes
+    for how this gets used to reject (not just warn about) any action
+    that would leave the org with nobody able to manage access at all.
+    """
+    count = (
+        db.query(User)
+        .join(Role, User.role_id == Role.id)
+        .join(Permission, Permission.role_id == Role.id)
+        .filter(
+            User.org_id == org_id,
+            User.status == "active",
+            Permission.module == MANAGE_ACCESS_MODULE,
+            Permission.action == MANAGE_ACCESS_ACTION,
+        )
+        .count()
+    )
+    return count > 0

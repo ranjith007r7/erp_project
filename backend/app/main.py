@@ -1,7 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.database import get_db
 from app.api.routes import auth, crm, sales, finance, inventory, procurement, hr, projects, documents, dashboard, reports, custom_fields, notifications, roles
 
 # Importing app.models here (even though unused directly) registers every
@@ -11,8 +14,8 @@ import app.models  # noqa: F401
 
 app = FastAPI(
     title="Base ERP API",
-    description="Core/Platform + CRM + Sales + Finance + Inventory + Procurement + HR + Projects + Documents + Reports + Custom Fields - Phase 9",
-    version="0.9.0",
+    description="Core/Platform + CRM + Sales + Finance + Inventory + Procurement + HR + Projects + Documents + Reports + Custom Fields + RBAC - Phase 13",
+    version="0.13.0",
 )
 
 app.add_middleware(
@@ -53,6 +56,24 @@ def root():
 
 
 @app.get("/health")
-def health_check():
-    """Used by hosting providers to check the service is alive."""
-    return {"status": "ok"}
+def health_check(db: Session = Depends(get_db)):
+    """
+    Used by hosting providers to check the service is alive - but the
+    previous version of this only proved the Python process itself was
+    running, not that anything it actually depends on worked. A FastAPI
+    process can stay "up" while its database connection is completely
+    dead (wrong credentials after a rotation, DB out of connections,
+    Supabase paused after 7 days of inactivity - a real, documented
+    behavior in this project's own free-tier notes) - and the old
+    /health would have kept reporting "ok" the whole time. This runs an
+    actual trivial query, so a dead DB shows up here immediately instead
+    of only being discovered when a real user's request fails.
+    """
+    try:
+        db.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception:
+        db_status = "error"
+
+    overall_status = "ok" if db_status == "ok" else "degraded"
+    return {"status": overall_status, "database": db_status}

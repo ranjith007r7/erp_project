@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { PageHeader, Button, Input, Select, Card } from "@/components/ui";
+import { ConfirmModal } from "@/components/Modal";
 
 type Role = { id: string; org_id: string; name: string };
 type Permission = { id: string; role_id: string; module: string; action: string };
@@ -32,6 +33,7 @@ export default function RolesSettingsPage() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const [showManageAccessConfirm, setShowManageAccessConfirm] = useState(false);
 
   const [roleForm, setRoleForm] = useState({ name: "" });
   const [userForm, setUserForm] = useState({ name: "", email: "", password: "", role_id: "" });
@@ -83,6 +85,24 @@ export default function RolesSettingsPage() {
 
   function hasPermission(module: string, action: string): Permission | undefined {
     return permissions.find((p) => p.module === module && p.action === action);
+  }
+
+  function hasManageAccess(): boolean {
+    return !!hasPermission("core", "manage_access");
+  }
+
+  function handleManageAccessToggle() {
+    if (hasManageAccess()) {
+      // Revoking is already protected server-side by the last-admin
+      // guard, but still worth a confirm here since it's a real change
+      // in what this role can do - not because the button needs a
+      // second click to feel safe, but because undoing this by hand
+      // later means re-granting it, which is exactly the mistake this
+      // whole feature exists to prevent.
+      togglePermission("core", "manage_access");
+    } else {
+      setShowManageAccessConfirm(true);
+    }
   }
 
   async function togglePermission(module: string, action: string) {
@@ -197,6 +217,33 @@ export default function RolesSettingsPage() {
           {selectedRole && permissionsLoading && <p className="text-sm text-slate-400">Loading…</p>}
 
           {selectedRole && !permissionsLoading && (
+            <div
+              className={`mb-4 p-3 rounded-lg border-2 flex justify-between items-center ${
+                hasManageAccess() ? "bg-amber-50 border-amber-300" : "bg-slate-50 border-slate-200"
+              }`}
+            >
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  {hasManageAccess() ? "⚠️ " : ""}Manage Roles &amp; Permissions
+                </p>
+                <p className="text-xs text-slate-600 mt-0.5 max-w-md">
+                  Full control over every role and user in this organization — create/change roles,
+                  grant or revoke ANY permission, and assign any user (including this one) as Admin.
+                  This is separate from the checkboxes below on purpose: it is not the same kind of
+                  thing as editing business data.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant={hasManageAccess() ? "danger" : "primary"}
+                onClick={handleManageAccessToggle}
+              >
+                {hasManageAccess() ? "Revoke" : "Grant"}
+              </Button>
+            </div>
+          )}
+
+          {selectedRole && !permissionsLoading && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -289,6 +336,17 @@ export default function RolesSettingsPage() {
           {users.length === 0 && <p className="text-sm text-slate-400 py-2">No users yet.</p>}
         </div>
       </Card>
+
+      {showManageAccessConfirm && selectedRole && (
+        <ConfirmModal
+          title="Grant Manage Roles & Permissions?"
+          message={`"${selectedRole.name}" will be able to create/change roles, grant or revoke any permission, and make any user (including their own account) an Admin. Only grant this to someone you'd trust with full control of the system.`}
+          confirmLabel="Grant Full Access Control"
+          danger
+          onConfirm={() => togglePermission("core", "manage_access")}
+          onClose={() => setShowManageAccessConfirm(false)}
+        />
+      )}
     </main>
   );
 }

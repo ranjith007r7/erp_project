@@ -1,7 +1,23 @@
 """
-Role/Permission/User management. Gated behind module="core" permissions —
-Admin already has full "core" access from signup, so this doesn't need
-special-casing; it's just another module in the same system it manages.
+Role/Permission/User management.
+
+Two DIFFERENT gates apply here, deliberately not the same one:
+- Creating an empty role, or a user with NO role assigned, only needs
+  ordinary core.create — harmless on its own, grants no new capability.
+- Granting/revoking ANY permission, and assigning/changing ANY user's
+  role (including at user-creation time), requires the separate
+  core.manage_access capability - see app/api/deps.py's module
+  docstring for why this had to be split out from core.edit after a
+  real security finding: core.edit alone was previously enough to
+  reassign any user's role, including granting yourself Admin.
+
+Every one of those manage_access-gated mutations also runs through
+org_has_admin_equivalent_user() AFTER being tentatively applied (via
+db.flush(), not yet committed) - if the org would be left with zero
+active users holding manage_access, the whole operation is rejected
+and rolled back, not just warned about. This blocks the "last Admin
+locks themselves out with no recovery path" scenario regardless of
+which specific action someone used to get there.
 
 No email-invite flow exists (no outbound email anywhere in this codebase
 yet — that's Phase 13). Creating a user here sets a real password
@@ -12,7 +28,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.core.security import hash_password
-from app.api.deps import get_current_user, get_org_id, require_permission
+from app.api.deps import get_current_user, get_org_id, require_permission, org_has_admin_equivalent_user
 from app.models.role import Role, Permission
 from app.models.user import User
 from app.schemas.roles import (
@@ -21,6 +37,12 @@ from app.schemas.roles import (
 )
 
 router = APIRouter(prefix="/api/core", tags=["roles-users"], dependencies=[Depends(get_current_user)])
+
+LAST_ADMIN_ERROR = HTTPException(
+    400,
+    "This action would leave the organization with no user able to manage roles and "
+    "permissions. Grant 'Manage Roles & Permissions' to another active user first.",
+)
 
 
 # ---------------- Roles ----------------
@@ -41,7 +63,7 @@ def list_roles(db: Session = Depends(get_db), org_id: str = Depends(get_org_id))
     return db.query(Role).filter(Role.org_id == org_id).all()
 
 
-@router.post("/roles/{role_id}/permissions", response_model=PermissionOut, status_code=201, dependencies=[Depends(require_permission("core", "edit"))])
+@router.post("/roles/{role_id}/permissions", response_model=PermissionOut, status_code=201, dependencies=[Depends(require_permission("core", "manage_access"))])
 def grant_permission(role_id: str, payload: PermissionCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     role = db.query(Role).filter(Role.id == role_id, Role.org_id == org_id).first()
     if not role:
@@ -66,7 +88,7 @@ def list_role_permissions(role_id: str, db: Session = Depends(get_db), org_id: s
     return db.query(Permission).filter(Permission.role_id == role_id).all()
 
 
-@router.delete("/roles/{role_id}/permissions/{permission_id}", status_code=204, dependencies=[Depends(require_permission("core", "delete"))])
+@router.delete("/roles/{role_id}/permissions/{permission_id}", status_code=204, dependencies=[Depends(require_permission("core", "manage_access"))])
 def revoke_permission(role_id: str, permission_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     role = db.query(Role).filter(Role.id == role_id, Role.org_id == org_id).first()
     if not role:
@@ -74,7 +96,14 @@ def revoke_permission(role_id: str, permission_id: str, db: Session = Depends(ge
     perm = db.query(Permission).filter(Permission.id == permission_id, Permission.role_id == role_id).first()
     if not perm:
         raise HTTPException(404, "Permission not found")
+
     db.delete(perm)
+    db.flush()  # apply tentatively, visible to the check below, not yet committed
+
+    if not org_has_admin_equivalent_user(db, org_id):
+        db.rollback()
+        raise LAST_ADMIN_ERROR
+
     db.commit()
 
 
@@ -91,8 +120,15 @@ def list_users(db: Session = Depends(get_db), org_id: str = Depends(get_org_id))
     ]
 
 
-@router.post("/users", response_model=UserManagementOut, status_code=201, dependencies=[Depends(require_permission("core", "create"))])
+@router.post("/users", response_model=UserManagementOut, status_code=201, dependencies=[Depends(require_permission("core", "manage_access"))])
 def create_user(payload: UserCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+    """
+    Requires manage_access, not just core.create - assigning a role at
+    creation time is functionally identical to "create, then change
+    role", and only requiring create would let someone without
+    manage_access sidestep the role-change gate entirely by picking a
+    role_id (e.g. Admin's) directly in the creation payload instead.
+    """
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(400, "A user with this email already exists.")
@@ -118,7 +154,7 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), org_id: str 
     )
 
 
-@router.patch("/users/{user_id}/role", response_model=UserManagementOut, dependencies=[Depends(require_permission("core", "edit"))])
+@router.patch("/users/{user_id}/role", response_model=UserManagementOut, dependencies=[Depends(require_permission("core", "manage_access"))])
 def update_user_role(user_id: str, payload: UserRoleUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     user = db.query(User).filter(User.id == user_id, User.org_id == org_id).first()
     if not user:
@@ -127,7 +163,14 @@ def update_user_role(user_id: str, payload: UserRoleUpdate, db: Session = Depend
         role = db.query(Role).filter(Role.id == payload.role_id, Role.org_id == org_id).first()
         if not role:
             raise HTTPException(404, "Role not found in this organization.")
+
     user.role_id = payload.role_id
+    db.flush()  # apply tentatively, visible to the check below, not yet committed
+
+    if not org_has_admin_equivalent_user(db, org_id):
+        db.rollback()
+        raise LAST_ADMIN_ERROR
+
     db.commit()
     db.refresh(user)
     return UserManagementOut(
