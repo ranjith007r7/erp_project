@@ -105,7 +105,7 @@ export function CustomFieldsSection({ entityType, entityId }: { entityType: stri
 
       {error && <p className="text-xs text-red-600">{error}</p>}
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {values.map((v) => {
           const def = defs[v.custom_field_id];
           const current = draft[v.custom_field_id] ?? "";

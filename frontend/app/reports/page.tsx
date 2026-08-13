@@ -239,7 +239,7 @@ function SalesReport({ data }: { data: ReportData }) {
   const funnel = data.funnel ?? {};
   return (
     <>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card label="Leads" value={funnel.leads ?? 0} />
         <Card label="Sales Orders" value={funnel.sales_orders ?? 0} />
         <Card label="Win Rate" value={data.win_rate_pct != null ? `${data.win_rate_pct}%` : "—"} />
@@ -264,7 +264,7 @@ function FinanceReport({ data }: { data: ReportData }) {
   const aging = data.accounts_receivable_aging ?? {};
   return (
     <>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card label="Revenue" value={`₹${totalRevenue.toLocaleString("en-IN")}`} />
         <Card label="Expense" value={`₹${totalExpense.toLocaleString("en-IN")}`} />
         <Card label="Net Profit" value={`₹${netProfit.toLocaleString("en-IN")}`} />
@@ -315,7 +315,7 @@ function InventoryReport({ data }: { data: ReportData }) {
   const lowStockItems = data.low_stock_items ?? [];
   return (
     <>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card label="Total Products" value={data.total_products ?? 0} />
         <Card label="Stock Valuation" value={`₹${(data.stock_valuation ?? 0).toLocaleString("en-IN")}`} />
         <Card label="Low Stock Items" value={data.low_stock_count ?? 0} />
@@ -340,7 +340,7 @@ function ProcurementReport({ data }: { data: ReportData }) {
   const spendByVendor = data.spend_by_vendor ?? [];
   return (
     <>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card label="Total Spend" value={`₹${(data.total_spend ?? 0).toLocaleString("en-IN")}`} />
         <Card label="Vendors" value={spendByVendor.length} />
       </div>
@@ -364,7 +364,7 @@ function ProcurementReport({ data }: { data: ReportData }) {
 function HrReport({ data }: { data: ReportData }) {
   return (
     <>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card label="Active Employees" value={data.active_employees ?? 0} />
         <Card label="Pending Leave Requests" value={data.pending_leave_requests ?? 0} />
       </div>
@@ -383,7 +383,7 @@ function HrReport({ data }: { data: ReportData }) {
 function CrmReport({ data }: { data: ReportData }) {
   return (
     <>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card label="Lead Conversion" value={data.lead_conversion_pct != null ? `${data.lead_conversion_pct}%` : "—"} />
         <Card label="Pipeline Stages" value={Object.keys(data.opportunities_by_stage ?? {}).length} />
       </div>
@@ -409,7 +409,7 @@ function CrmReport({ data }: { data: ReportData }) {
 function ProjectsReport({ data }: { data: ReportData }) {
   return (
     <>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Card label="Open Tasks" value={data.open_tasks ?? 0} />
         <Card label="Project Statuses" value={Object.keys(data.projects_by_status ?? {}).length} />
       </div>

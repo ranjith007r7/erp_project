@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
+import { PageHeader } from "@/components/ui";
 
 type Vendor = { id: string; name: string };
 type Product = { id: string; name: string; unit_price: string };
@@ -66,12 +67,7 @@ export default function ProcurementPage() {
 
   return (
     <main className="min-h-screen p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">Procurement</h1>
-        <Link href="/dashboard" className="text-sm text-slate-500 underline">
-          ← Dashboard
-        </Link>
-      </div>
+      <PageHeader title="Procurement" />
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
@@ -114,7 +110,7 @@ export default function ProcurementPage() {
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input
               placeholder="Qty"
               type="number"

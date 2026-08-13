@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { NotificationBell } from "@/components/NotificationBell";
+import { PageHeader } from "@/components/ui";
 
 type Department = { id: string; name: string };
 type Employee = { id: string; name: string; designation: string | null; salary: string; department_id: string | null };
@@ -92,15 +92,7 @@ export default function HRPage() {
 
   return (
     <main className="min-h-screen p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">HR & Payroll</h1>
-        <div className="flex items-center gap-4">
-          <NotificationBell />
-          <Link href="/dashboard" className="text-sm text-slate-500 underline">
-            ← Dashboard
-          </Link>
-        </div>
-      </div>
+      <PageHeader title="HR & Payroll" actions={<NotificationBell />} />
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
@@ -128,7 +120,7 @@ export default function HRPage() {
             onChange={(e) => setEmpForm({ ...empForm, name: e.target.value })}
             className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
           />
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input
               placeholder="Designation"
               value={empForm.designation}
@@ -206,7 +198,7 @@ export default function HRPage() {
         <section>
           <h2 className="font-semibold text-slate-700 mb-3">Payroll</h2>
           <form onSubmit={createPayrollRun} className="bg-white rounded-xl shadow-sm p-3 space-y-2 mb-3">
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input
                 placeholder="Month (1-12)"
                 type="number"

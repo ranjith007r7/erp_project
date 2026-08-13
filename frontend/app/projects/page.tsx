@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
+import { PageHeader } from "@/components/ui";
 
 type Project = { id: string; name: string; status: string };
 type Task = { id: string; project_id: string; title: string; status: string; priority: string };
@@ -68,12 +69,7 @@ export default function ProjectsPage() {
 
   return (
     <main className="min-h-screen p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">Projects & Tasks</h1>
-        <Link href="/dashboard" className="text-sm text-slate-500 underline">
-          ← Dashboard
-        </Link>
-      </div>
+      <PageHeader title="Projects & Tasks" />
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 

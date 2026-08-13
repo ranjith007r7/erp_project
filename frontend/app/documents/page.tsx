@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { NotificationBell } from "@/components/NotificationBell";
+import { PageHeader } from "@/components/ui";
 
 type Doc = { id: string; title: string; file_url: string; related_type: string | null };
 type Workflow = { id: string; name: string; module: string };
@@ -76,15 +76,7 @@ export default function DocumentsPage() {
 
   return (
     <main className="min-h-screen p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">Documents & Workflow Approvals</h1>
-        <div className="flex items-center gap-4">
-          <NotificationBell />
-          <Link href="/dashboard" className="text-sm text-slate-500 underline">
-            ← Dashboard
-          </Link>
-        </div>
-      </div>
+      <PageHeader title="Documents & Workflow Approvals" actions={<NotificationBell />} />
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { CustomFieldsSection } from "@/components/CustomFieldsSection";
+import { PageHeader } from "@/components/ui";
+import { usePagination, PaginationControls } from "@/components/Pagination";
 
 type Category = { id: string; name: string };
 type Product = { id: string; name: string; sku: string | null; unit_price: string; reorder_level: number };
@@ -20,6 +22,8 @@ export default function InventoryPage() {
   const [categoryForm, setCategoryForm] = useState({ name: "" });
   const [productForm, setProductForm] = useState({ name: "", sku: "", unit_price: "", reorder_level: "0", category_id: "" });
   const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
+  const { pageItems: pagedProducts, page: productPage, totalPages: productTotalPages, setPage: setProductPage } =
+    usePagination(products, 10);
 
   function loadAll() {
     apiRequest<Category[]>("/api/inventory/categories", { auth: true }).then(setCategories).catch(() => {});
@@ -65,12 +69,7 @@ export default function InventoryPage() {
 
   return (
     <main className="min-h-screen p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">Inventory</h1>
-        <Link href="/dashboard" className="text-sm text-slate-500 underline">
-          ← Dashboard
-        </Link>
-      </div>
+      <PageHeader title="Inventory" />
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
@@ -91,7 +90,7 @@ export default function InventoryPage() {
 
         <form onSubmit={addProduct} className="bg-white rounded-xl shadow-sm p-4 space-y-2">
           <h2 className="font-semibold text-slate-700 text-sm">Add Product</h2>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input
               placeholder="Name"
               required
@@ -141,7 +140,7 @@ export default function InventoryPage() {
         <section>
           <h2 className="font-semibold text-slate-700 mb-3">Products & Stock</h2>
           <div className="bg-white rounded-lg shadow-sm divide-y">
-            {products.map((p) => {
+            {pagedProducts.map((p) => {
               const qty = stockFor(p.id);
               const low = qty <= p.reorder_level;
               const expanded = expandedProductId === p.id;
@@ -170,6 +169,7 @@ export default function InventoryPage() {
             })}
             {products.length === 0 && <p className="p-3 text-sm text-slate-400">No products yet.</p>}
           </div>
+          <PaginationControls page={productPage} totalPages={productTotalPages} onChange={setProductPage} />
         </section>
 
         <section>

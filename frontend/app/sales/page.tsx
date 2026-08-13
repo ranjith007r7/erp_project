@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
+import { PageHeader } from "@/components/ui";
 
 type Product = { id: string; name: string; unit_price: string };
 type Customer = { id: string; name: string };
@@ -103,12 +104,7 @@ export default function SalesPage() {
 
   return (
     <main className="min-h-screen p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">Sales</h1>
-        <Link href="/dashboard" className="text-sm text-slate-500 underline">
-          ← Dashboard
-        </Link>
-      </div>
+      <PageHeader title="Sales" />
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 

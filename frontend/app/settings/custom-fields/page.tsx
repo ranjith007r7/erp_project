@@ -129,7 +129,7 @@ export default function CustomFieldsSettingsPage() {
           className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
         />
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <select
             value={form.field_type}
             onChange={(e) => setForm({ ...form, field_type: e.target.value })}

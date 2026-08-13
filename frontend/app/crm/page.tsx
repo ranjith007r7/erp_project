@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { CustomFieldsSection } from "@/components/CustomFieldsSection";
 import { Modal } from "@/components/Modal";
+import { PageHeader, Button } from "@/components/ui";
 
 type Lead = {
   id: string;
@@ -76,12 +76,7 @@ export default function CRMPage() {
 
   return (
     <main className="min-h-screen p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-slate-800">CRM</h1>
-        <Link href="/dashboard" className="text-sm text-slate-500 underline">
-          ← Dashboard
-        </Link>
-      </div>
+      <PageHeader title="CRM" />
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
@@ -116,9 +111,7 @@ export default function CRMPage() {
               onChange={(e) => setForm({ ...form, source: e.target.value })}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
             />
-            <button className="w-full bg-slate-800 text-white rounded-lg py-2 text-sm font-medium hover:bg-slate-700">
-              Add Lead
-            </button>
+            <Button type="submit" className="w-full">Add Lead</Button>
           </form>
 
           <div className="space-y-2">
@@ -141,19 +134,16 @@ export default function CRMPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
+                      <Button
+                        variant="ghost"
                         onClick={() => setExpandedLeadId(expanded ? null : lead.id)}
-                        className="text-xs text-slate-400 underline hover:text-slate-600"
                       >
                         {expanded ? "Hide fields" : "Fields"}
-                      </button>
+                      </Button>
                       {lead.status !== "converted" && (
-                        <button
-                          onClick={() => openConvertModal(lead)}
-                          className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700"
-                        >
+                        <Button size="sm" onClick={() => openConvertModal(lead)}>
                           Convert →
-                        </button>
+                        </Button>
                       )}
                     </div>
                   </div>
