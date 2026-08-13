@@ -82,10 +82,7 @@ export default function DashboardPage() {
         <div className="flex items-center gap-4">
           <NotificationBell />
           <Link href="/settings/custom-fields" className="text-sm text-slate-500 underline hover:text-slate-700">
-            Custom Fields
-          </Link>
-          <Link href="/settings/roles" className="text-sm text-slate-500 underline hover:text-slate-700">
-            Roles & Permissions
+            Settings
           </Link>
           <button
             onClick={handleLogout}

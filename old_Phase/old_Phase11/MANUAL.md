@@ -785,123 +785,15 @@ No Alembic step needed — no schema changed, only route-level dependencies and 
 
 ---
 
-## PART 25 — Phase 12: A Real `pytest` Suite + CI
+## PART 24 — What's Next
 
-The second Client-Ready item, and it closes two gaps at once: the "logic that must never silently break" testing the roadmap named, AND the two-org isolation stress test flagged as open since the very first handoff document and never actually done until now.
-
-### A real, honest surprise: the CI workflow didn't exist
-
-The original Phase 1 handoff document describes a GitHub Actions workflow as already set up. It isn't in this codebase — `find . -iname ".github"` came back empty before this phase. Rather than assume it was lost somewhere and quietly recreate it without comment, flagging it here plainly: whatever the actual history, this session is the first time `.github/workflows/ci.yml` has existed in what's been handed forward. It's built now, and it actually runs pytest + a real Postgres service container + a frontend build on every push — not a stub.
-
-### Test infrastructure — three real design decisions
-
-| Decision | Why |
-|---|---|
-| A dedicated `erp_pytest_db`, never the dev database | Tests should never be able to touch real or manually-tested data, even by accident. |
-| Real Alembic migrations in the test fixture, not `Base.metadata.create_all()` | This project's own established rule (Part 7/10) is that `create_all()` can't alter existing tables and hid a real Phase 4 bug. Running the actual migration chain in the test fixture means every test run also re-proves every migration still applies cleanly to a fresh database — `create_all()` would silently skip that entirely. |
-| Isolation via a unique org per test (via `signup()`), not per-test transaction rollback | Almost every route in this app calls `db.commit()` directly mid-function — self-healing lookups, multi-step actions, the notification service all commit independently. A wrap-and-rollback pattern would fight that architecture throughout. Every test that needs data creates its own uniquely-subdomained org instead — the same pattern this whole project's manual curl testing has used all along, just automated. |
-
-### What's covered — 16 tests, all passing
-
-| File | What it locks in |
-|---|---|
-| `test_inventory_stock.py` | Insufficient-stock rejection leaves stock completely untouched (not partially decremented); sufficient stock succeeds and decrements exactly right. |
-| `test_finance_journal.py` | Every journal entry balances (debits == credits) across invoice generation AND payment recording; a duplicate payment on an already-paid invoice is rejected, not double-counted. |
-| `test_hr_payroll.py` | The exact payroll figures from Phase 5's own manual (₹60,000+₹40,000 gross → ₹54,000+₹36,000 net, ONE ₹90,000 balanced journal entry for the whole run); reprocessing an already-processed run is blocked. |
-| `test_multitenancy_isolation.py` | **Closes the standing gap.** Org B cannot see Org A's leads through a list endpoint, cannot fetch Org A's product by direct ID, cannot pay Org A's invoice, and cannot see Org A's users through the RBAC management endpoints. Four separate attack surfaces (list, direct-ID, cross-org write, admin endpoints), not just one. |
-| `test_rbac_permissions.py` | A view-only role can view but not create; a role with only `sales.view` has zero access to HR or to role/user management; the Admin role keeps full access; and — as a permanent regression test — the exact self-healing bug found and fixed in Phase 11 (an org's Admin role missing permission rows for a module added in a later phase self-heals to exactly 5 rows, not zero, not duplicated on repeat calls). |
-
-### Proof the suite has real teeth, not vacuous assertions
-
-Rather than trust that green checkmarks mean the tests are actually checking anything, one test's underlying protection was **deliberately disabled** and the suite rerun:
-```
-sed -i 's/if level.quantity < qty:/if False:  # DELIBERATELY BROKEN/' app/services/inventory.py
-pytest tests/test_inventory_stock.py -v
-  -> test_insufficient_stock_is_rejected_and_leaves_stock_untouched FAILED
-  -> test_sufficient_stock_succeeds_and_decrements_correctly PASSED (unaffected, as expected)
-```
-The test caught the deliberate break immediately. Reverted, reran the full suite: **16 passed**, confirming both that the fix was correctly restored and that the test itself isn't a false positive.
-
-### One real bug found along the way, in the tests themselves — not the app
-
-The first run of `test_finance_journal.py` and `test_multitenancy_isolation.py` failed with `KeyError: 'id'` on invoice creation. Root cause: those tests created a Product and tried to invoice it immediately, without ever receiving stock via a real Purchase Order first — so the app correctly rejected the invoice for insufficient stock (exactly the behavior `test_inventory_stock.py` proves), and the test's own assumption that `invoice["id"]` would exist was wrong. Fixed by adding the same `stock_product()` helper pattern already used correctly in `test_inventory_stock.py`, not by weakening the assertion or skipping the check.
-
-### How to run this yourself
-
-```bash
-cd backend
-createdb -O <your_pg_user> erp_pytest_db   # once, locally
-pip install -r requirements.txt
-DATABASE_URL="postgresql://<user>:<pass>@localhost:5432/erp_pytest_db" \
-JWT_SECRET_KEY="test_secret" ALLOWED_ORIGINS="http://localhost:3000" \
-pytest -v
-```
-On every `git push`, `.github/workflows/ci.yml` now does this automatically against a fresh Postgres service container GitHub provisions — no local setup needed to see it run, and a broken change gets caught before it ever reaches Render/Vercel.
-
-### One honest limitation
-
-The CI workflow's YAML was validated for correct syntax and every command in it was verified locally against real Postgres — but it hasn't been proven against GitHub's actual runner infrastructure, since that requires a real repo and a real push, which this environment can't do. Worth confirming it goes green on your first real push rather than assuming it will.
-
-### Deploying this update
-
-```bash
-git add . && git commit -m "Phase 12: pytest suite + CI workflow" && git push
-```
-No Alembic step needed against your real database — this phase only adds tests and CI config, no app schema or route changes.
-
----
-
-## PART 27 — Phase 11b: The Roles & Permissions Frontend
-
-Phase 11 shipped real RBAC enforcement, but with no UI — the only way to create a role, grant a permission, or create a second user was through Swagger's `/docs`. Flagged correctly as "not fully done" until a real page existed. This closes that.
-
-### `/settings/roles`
-
-Same layout conventions as `/settings/custom-fields` (Card-based sections, the Phase 10 `components/ui.tsx` primitives), now cross-linked from both the Dashboard and Custom Fields settings pages so neither is a dead end.
-
-| Section | What it does |
-|---|---|
-| Roles | Name + Add button, list below. Creating a role immediately selects it, so the next natural action (granting permissions) is one click away, not a second navigation. |
-| Permission matrix | Every module as a row, `view`/`create`/`edit`/`delete`/`approve` as checkbox columns, for whichever role is selected. Checking a box calls `POST /permissions`; unchecking calls `DELETE /permissions/{id}` — the actual permission ID is tracked per checkbox so the delete call is always exact, not a guess. |
-| Users | Name/email/password/role-dropdown to create, list below with each user's current role shown and changeable via its own dropdown (`PATCH /users/{id}/role`). |
-
-No new backend work — this consumes `/api/core/roles` and `/api/core/users` exactly as Phase 11 built them.
-
-### How this was tested — the exact loop, against a real server
-
-```
-Create role "Sales Viewer" (what the Add button does)         -> 201, real role returned
-List roles (what the Roles card renders)                      -> [Admin, Sales Viewer]
-Load permissions BEFORE granting anything                     -> [] (matrix shows all unchecked)
-Toggle ON sales.view (what clicking a checkbox does)           -> 201, permission created
-Reload permissions                                             -> [sales/view] (matrix shows exactly one checked box)
-Create user with this role (what the Add User form does)      -> 201, role_name correctly "Sales Viewer"
-List users                                                      -> Admin + Viewer User, each with correct role_name
-Toggle OFF sales.view (uncheck)                                 -> 204
-Reload permissions                                              -> [] again
-```
-Every step matched exactly what the component code does, verified against the real running API before being called done — not assumed from reading the schemas.
-
-Frontend: real `npm run build`, clean, `/settings/roles` compiled at 3.94 kB. Backend + frontend booted together, `/settings/roles`, `/settings/custom-fields`, and `/dashboard` all hit over real HTTP, all 200, no server-render errors.
-
-### Deploying this update
-
-```bash
-git add . && git commit -m "Phase 11b: Roles & Permissions frontend" && git push
-```
-No Alembic step needed — pure frontend, consuming existing endpoints.
-
-**Your turn:** the real proof this whole system works isn't in this manual — it's creating a restricted "Sales Viewer" role granting only `sales.view` through this new page, creating a second user with it, logging in as them, and confirming you can see Sales but get blocked everywhere else. That's the visual confirmation Phase 11 was missing until now.
-
----
-
-## PART 28 — What's Next
-
-**Demo-Ready track: complete** (Phases 9–10). **RBAC enforcement, backend AND frontend (Phase 11 + 11b): complete.** **Automated testing + CI (Phase 12): complete**, including the long-standing multi-tenancy isolation gap.
+**Demo-Ready track: complete** (Phases 9–10). **RBAC enforcement (Phase 11): complete.**
 
 **Client-Ready track — remaining:**
-1. Security hardening — password reset, email verification, login rate limiting, secrets hygiene, basic monitoring.
-2. Final regression QA + a seeded demo organization with realistic sample data + a written demo walkthrough script.
+1. A real `pytest` suite covering the logic that must never silently break (stock/value calculations, insufficient-stock rejection, payroll math, journal-entry balancing, multi-tenancy isolation, and now RBAC's own permission-boundary cases).
+2. Security hardening — password reset, email verification, login rate limiting, secrets hygiene, basic monitoring.
+3. Final regression QA + a seeded demo organization with realistic sample data + a written demo walkthrough script.
+4. Two-org isolation stress test — flagged as open since Phase 1's original handoff document and never yet done: deliberately create two organizations side-by-side and verify Org A genuinely cannot see Org B's data through any endpoint.
 
 See `ERP_Remaining_Roadmap_and_Testing_Guide.md` for the full breakdown and realistic timeline per your available hours. This section keeps growing with each phase — nothing above gets deleted, only added to.
 

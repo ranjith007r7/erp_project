@@ -101,14 +101,9 @@ export default function CustomFieldsSettingsPage() {
             Define extra fields for your organization — they'll appear on the matching record's form automatically.
           </p>
         </div>
-        <div className="flex items-center gap-4">
-          <Link href="/settings/roles" className="text-sm text-slate-500 underline hover:text-slate-700">
-            Roles & Permissions
-          </Link>
-          <Link href="/dashboard" className="text-sm text-slate-500 underline">
-            ← Dashboard
-          </Link>
-        </div>
+        <Link href="/dashboard" className="text-sm text-slate-500 underline">
+          ← Dashboard
+        </Link>
       </div>
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
