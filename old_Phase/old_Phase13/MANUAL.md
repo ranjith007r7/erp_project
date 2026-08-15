@@ -1034,59 +1034,12 @@ No Alembic migration needed — this is a permission-data and route-logic change
 
 ---
 
-## PART 33 — Phase 14: Final Regression QA + Seeded Demo Organization + Walkthrough Script
+## PART 32 — What's Next
 
-The last item on the entire roadmap.
+**Demo-Ready track: complete** (Phases 9–10). **RBAC, backend and frontend (Phase 11 + 11b): complete, including a real security fix found through actual deployed use.** **Automated testing + CI (Phase 12): complete.** **Security hardening (Phase 13): complete.**
 
-### Final regression QA
+**Client-Ready track — one item remaining:**
+1. Final regression QA + a seeded demo organization with realistic sample data + a written demo walkthrough script.
 
-Fresh pytest database, full suite rerun clean: **29 passed** (every test from every phase, unaffected by anything in this final pass). Frontend: fresh `npm run build`, clean, all 16 pages. Both servers booted together, every one of the 15 frontend routes hit over real HTTP — each returned genuine, correctly-rendered HTML (empty states, forms, and cross-links all present and correct), not just a bare 200 status code. Backend `/health` reports `{"status": "ok", "database": "ok"}`.
-
-### `backend/scripts/seed_demo_org.py`
-
-Deliberately calls the **real API endpoints** — the same ones the frontend calls — not direct SQL inserts. This matters: it means every business rule (stock checks, journal-entry balancing, self-healing accounts, RBAC seeding) runs exactly as it would for a real user, so the seeded data is *guaranteed* internally consistent by construction, not just plausible-looking rows placed directly into tables.
-
-Seeds one realistic organization ("Meridian Furnishings," a furniture company) touching every module: 5 products across 2 categories, a vendor with one received and one pending Purchase Order, 3 CRM leads (2 converted, 1 not), a full quote-to-cash cycle with one paid and one deliberately unpaid invoice, 3 employees with one pending and one approved leave request, a processed payroll run, an approval workflow with a request awaiting action, 2 custom fields defined and populated on real records, and a restricted "Sales Viewer" role with a real second login — a working RBAC demo, not just a description of one.
-
-**Run twice in a row against the real server, proving it's genuinely safe to rerun** — each run makes a uniquely-subdomained org (timestamp-based) and never collides with a previous run or touches existing data. Both runs succeeded with zero failures across all 8 modules touched.
-
-**Verified the actual data landed correctly**, not just that the script exited cleanly — logged in as the seeded admin and pulled the real dashboard summary:
-```
-leads: 3, open_opportunities: 2, quotations: 3, sales_orders: 2,
-unpaid_invoices: 1, low_stock_products: 2, pending_purchase_orders: 1,
-employees: 3, pending_leave_requests: 1, pending_approvals: 1
-```
-Every number matches what the script was designed to produce. One genuinely nice surprise, not scripted deliberately: `low_stock_products` came back as **2**, not the 1 that was explicitly designed in — the standing-desk purchase-and-sale sequence (8 received, 5 sold to Konnect Coworking) organically left exactly 3 units against a reorder level of 3, triggering a real low-stock flag as a *consequence* of the sale in the seed sequence, not a second hardcoded scenario. That's an honest, unplanned demonstration of the cross-module automation the whole platform is built on — noted in the walkthrough script as a talking point precisely because it wasn't staged.
-
-### `DEMO_WALKTHROUGH.md`
-
-A written, ordered walkthrough tied to the actual seeded data — no placeholder numbers, every figure in it is what the script above actually produces. Structured as roughly a 10-minute walkthrough: Dashboard → CRM pipeline → Sales quote-to-cash (both a paid and an unpaid ending, shown deliberately) → Inventory's low-stock story (including the organic second low-stock item, explained as it happens) → Procurement → Finance's balanced journal entries → HR/Payroll → Documents' generic approval engine → Custom Fields → Roles & Permissions (with a live login as the restricted Sales Viewer as the actual proof, not just a claim).
-
-Also includes an honest "what this demo does *not* show" section — Projects & Tasks left deliberately unseeded (an empty, ready-to-configure module), email verification/password reset explained plainly as working but not yet connected to a real email provider, and RBAC's deeper protections (multi-tenancy isolation, privilege-escalation guards) noted as already tested rather than something to click through live, since those are better proven by the automated test suite than a live demo.
-
-### Deploying this update
-
-```bash
-git add . && git commit -m "Phase 14: final regression QA, demo seed script, walkthrough script" && git push
-```
-No Alembic migration needed — this phase adds a script and a doc, no schema or route changes.
-
-To seed a demo org against your real deployed instance:
-```bash
-python3 backend/scripts/seed_demo_org.py --api-url https://your-backend.onrender.com
-```
-
----
-
-## PART 34 — Project Status: Roadmap Complete
-
-Every item on both tracks of `ERP_Remaining_Roadmap_and_Testing_Guide.md` is now done and tested:
-
-**Demo-Ready:** Custom Fields (9), Notifications + prompt/confirm replacement (10a), shared components + mobile + pagination (10b).
-
-**Client-Ready:** RBAC enforcement, backend and frontend (11, 11b) — including a real privilege-escalation and lockout fix found through actual deployed use, not caught in review. Automated testing + CI (12). Security hardening (13). Final regression QA + seeded demo org + walkthrough script (14).
-
-This doesn't mean the system is "finished" in the sense a static website would be — real ERPs are continuously configured and extended, and this manual's own Part 1 said as much on day one. It means every phase originally scoped is complete, tested against a real database with real requests, and documented honestly, including the gaps found along the way and how each was actually closed.
-
-What's genuinely still open, for the record, not because it's owed but because it's true: no real email provider is connected (password reset/verification work, delivery doesn't); Projects & Tasks has no demo data; and the deeper security-model changes from the privilege-escalation fix, while thoroughly tested, have not yet been exercised by a second human other than the person who found the original gap. Worth knowing before the first real client's data goes on this system, not because any of it is broken, but because "tested by the people who built it" and "tested by someone else" are genuinely different bars, and this project has always been honest about which one it's cleared.
+That's the last item on the entire roadmap. See `ERP_Remaining_Roadmap_and_Testing_Guide.md` for its original framing. This section keeps growing with each phase — nothing above gets deleted, only added to.
 
