@@ -130,6 +130,18 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     if user.status != "active":
         raise HTTPException(status_code=403, detail="This account has been disabled.")
 
+    # Enforced only now that real email delivery exists (Resend, added
+    # after Phase 13). Every account created BEFORE this point was
+    # grandfathered to email_verified=True by a one-time script (see
+    # scripts/grandfather_existing_users.py) specifically so this check
+    # doesn't lock out anyone who never had a real link to click -
+    # this only blocks accounts created from now on, who do.
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Please verify your email before logging in. Check your inbox for the verification link.",
+        )
+
     # Successful login clears any prior failed attempts / lockout.
     user.failed_login_attempts = 0
     user.locked_until = None

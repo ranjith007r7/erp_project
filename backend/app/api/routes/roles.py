@@ -144,6 +144,14 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), org_id: str 
         email=payload.email,
         password_hash=hash_password(payload.password),
         role_id=payload.role_id,
+        # Verified immediately, unlike public self-signup. An Admin
+        # creating this account directly (setting a real password for a
+        # real teammate) is a fundamentally different trust situation
+        # than a stranger self-signing-up with an unproven email - the
+        # Admin is the one vouching for this account's legitimacy here,
+        # not the email inbox. Requiring a verification click on top of
+        # that would just be friction with no real security benefit.
+        email_verified=True,
     )
     db.add(user)
     db.commit()

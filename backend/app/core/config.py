@@ -38,6 +38,19 @@ class Settings(BaseSettings):
     RESET_TOKEN_EXPIRE_MINUTES: int = 60
     VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
 
+    # --- Real email delivery (added after Phase 13 shipped with no
+    # provider connected) ---
+    # Empty string, not required - unlike JWT_SECRET_KEY, the app must
+    # still boot and run fully without this configured (every test, CI
+    # run, and local dev session doesn't have one). app/services/email.py
+    # checks this and falls back to console logging when it's empty.
+    RESEND_API_KEY: str = ""
+    # The real deployed frontend URL, used to build the links inside
+    # verification/reset emails. Defaults to localhost for local dev;
+    # MUST be set to the real Vercel URL in Render's environment for
+    # production, or every emailed link will point at localhost.
+    FRONTEND_URL: str = "http://localhost:3000"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @field_validator("JWT_SECRET_KEY")

@@ -115,7 +115,7 @@ repository from the command line" instructions.
 1. Go to render.com → New → Web Service → connect your GitHub repo.
 2. Root directory: `backend`
 3. Build command: `pip install -r requirements.txt`
-4. Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+4. Start command: `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT` — **not just `uvicorn ...`.** This is the single most important line in this whole setup: it means every future deploy automatically brings the database schema up to date before the server starts, so a new migration can never silently fail to apply the way one did in a real production incident on this project (see MANUAL.md's account of that below). If you're reading this because you already have a service running with just `uvicorn ...` as the Start Command, go fix it in Render's dashboard right now — Settings → Start Command — this is not optional or "whenever convenient."
 5. Instance type: **Free**
 6. Add environment variables (Render dashboard → Environment):
    - `DATABASE_URL` → the Supabase connection string from Step 2
@@ -1089,4 +1089,126 @@ Every item on both tracks of `ERP_Remaining_Roadmap_and_Testing_Guide.md` is now
 This doesn't mean the system is "finished" in the sense a static website would be — real ERPs are continuously configured and extended, and this manual's own Part 1 said as much on day one. It means every phase originally scoped is complete, tested against a real database with real requests, and documented honestly, including the gaps found along the way and how each was actually closed.
 
 What's genuinely still open, for the record, not because it's owed but because it's true: no real email provider is connected (password reset/verification work, delivery doesn't); Projects & Tasks has no demo data; and the deeper security-model changes from the privilege-escalation fix, while thoroughly tested, have not yet been exercised by a second human other than the person who found the original gap. Worth knowing before the first real client's data goes on this system, not because any of it is broken, but because "tested by the people who built it" and "tested by someone else" are genuinely different bars, and this project has always been honest about which one it's cleared.
+
+---
+
+## PART 35 — Production Incident: Login/Signup Broken After Deploying Phase 13 + Final
+
+Found by the user through actual deployed use, with real evidence (browser console + Render's live logs), not by anything in this project's own testing — worth stating plainly, same as the privilege-escalation incident before it.
+
+### What happened
+
+After deploying the cumulative zip containing Phase 13's security hardening, login (and, less visibly, signup) broke in production. The browser console showed a CORS error; Render's actual backend logs showed the real cause underneath it: `sqlalchemy.exc.ProgrammingError: (psycopg2.errors.UndefinedColumn) column users.email_verified does not exist`.
+
+### Root cause, empirically confirmed — not assumed
+
+Two things, both proven against a real local database, not inferred from reading code:
+
+1. **The CORS error was a genuine red herring.** Reproduced directly: a normal successful request carries `access-control-allow-origin`; a request that throws an unhandled 500 carries **no CORS headers at all**, because Starlette's `ServerErrorMiddleware` sits outside `CORSMiddleware` in the stack — its fallback 500 response bypasses CORS header injection entirely. The browser accurately reports "no CORS header present" for a failure that has nothing to do with CORS.
+
+2. **Phase 13's migration (`9f2fa35bb239`, adding `email_verified` and six related columns to `users`) never ran against the real Supabase database.** Reproduced by cleanly migrating a fresh local database only through the revision immediately before it, then hitting login: identical error, identical SQL, identical `sqlalche.me` reference link as the real production log. A related finding the user hadn't yet hit: **signup was equally broken** by the same root cause — the new-user INSERT's post-creation refresh touches those same missing columns.
+
+### Why it didn't run automatically — a real gap in what this project delivered, not a one-off mistake
+
+Two things, both confirmed by reading the actual files:
+
+- **`backend/Dockerfile`'s `CMD`** had always been plain `uvicorn app.main:app ...` — the migration step was never actually added to it, despite every phase since Phase 5 referring to "the Start Command that's been `alembic upgrade head && uvicorn ...` since Phase 5" as an established fact.
+- **`MANUAL.md`'s original Phase 1 deployment instructions (Part 3)** — the ones actually followed when the Render service was first created — still specified the Start Command as plain `uvicorn ...`, with no migration prefix. Every later phase's "Deploying this update" section talked about the corrected Start Command as if it were already in place, but none of them ever forced a concrete, mandatory "go update this one field in Render's dashboard right now" instruction — Phase 5's manual literally used the word "whenever convenient."
+
+The honest conclusion: this was never actually fixed at the source, only described as fixed in later documentation that assumed an earlier fix which never happened. **Fixed now**: `Dockerfile`'s `CMD` includes the migration step as a real safety net, and Part 3's original instructions are corrected in place — not just referenced correctly later.
+
+### The fix — verified end-to-end against a real database, not handed back untested
+
+```
+Fresh local Postgres, migrated only through the pre-Phase-13 revision (5ba8bc594079)
+  -> signup: FAILS (same INSERT-refresh error)
+  -> login:  FAILS (identical error to the real production log, confirmed byte-for-byte)
+
+Ran the actual fix: alembic upgrade head
+  -> all 7 missing columns confirmed present afterward
+
+Booted the server fresh against this now-fixed database:
+  -> signup a new org: 201, succeeds
+  -> login with a real browser-matching Origin header: 200, succeeds,
+     with the correct access-control-allow-origin header present this time
+  -> confirmed zero orphaned/corrupted rows left behind by the earlier
+     failed signup attempt - SQLAlchemy's transaction rolled back cleanly
+```
+
+### What to actually do
+
+1. **Immediate, one-time:** run `alembic upgrade head` directly against the real Supabase database (Session Pooler connection, port 5432, per this project's established convention) — unblocks login/signup within seconds.
+2. **Permanent:** in Render's dashboard, Settings → Start Command, change to `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT`. This is the one manual action needed — Render dashboard settings aren't part of the deployed codebase and can't be changed from a zip file.
+
+Once both are done, every future `git push` runs migrations automatically before the server starts, and this exact class of incident becomes structurally impossible rather than just documented as something to remember.
+
+---
+
+## PART 36 — Real Email Delivery: Verification, Password Reset, and Enforcement
+
+Closes the last honest gap flagged since Phase 13: password reset and email verification worked, but no real email ever left the server — everything landed in Render's logs, not an inbox.
+
+### Provider choice — verified against current 2026 data, not assumed
+
+**Resend, not SendGrid.** SendGrid killed its free-forever tier in May 2025 — it's now a 60-day trial (100/day) then **$19.95/month minimum**, which directly breaks this project's standing zero-cost constraint. Resend's free tier, confirmed across multiple current sources: **3,000 emails/month, 100/day, forever, no credit card.** Not a close call given the constraint.
+
+One real limitation to know: without verifying a custom domain (a DNS step, not done here), Resend only delivers from its shared `onboarding@resend.dev` address to the *same email address used to create the Resend account*. Fine for now — no domain setup needed to get this working today — and it conveniently makes end-to-end testing simple, since it's your own inbox by construction.
+
+### What changed
+
+| Piece | What it does |
+|---|---|
+| `app/services/email.py` | Calls Resend's real API when `RESEND_API_KEY` is set; falls back to the original console-log behavior when it isn't — every test, CI run, and local dev session keeps working identically either way, no real key required anywhere except production. |
+| `app/core/config.py` | New `RESEND_API_KEY` (optional, empty default — unlike `JWT_SECRET_KEY`, the app must still boot without it) and `FRONTEND_URL` (so emailed links point at your real deployed frontend, not `localhost`). |
+| `app/api/routes/auth.py`'s `login` | Now enforces `email_verified` — a real, working reject with a clear message, not just a column nobody checked. |
+| `app/api/routes/roles.py`'s `create_user` | Admin-created users (Settings → Users) are marked verified immediately, deliberately — an Admin directly creating a teammate's account is a different trust situation than a stranger's public self-signup; the Admin is vouching for the account, not the inbox. |
+| `frontend/app/forgot-password/page.tsx` | New. Email input, always shows the same generic message regardless of whether the email exists (mirrors the backend's existing anti-enumeration behavior). |
+| `frontend/app/reset-password/page.tsx` | New. Reads the token from the URL, sets a new password. |
+| `frontend/app/verify-email/page.tsx` | New — and a genuine gap caught before shipping, not after: the verification email has always linked to `/verify-email`, but that page never existed. Anyone who clicked a real link would have hit a 404. Built now. |
+| `frontend/app/login/page.tsx` | Added a "Forgot password?" link — it linked nowhere before. |
+| `backend/scripts/grandfather_existing_users.py` | New, standalone, run once by hand — not folded into `alembic upgrade head`. |
+
+### The self-lockout risk, caught before it shipped, not after
+
+Turning on `email_verified` enforcement unconditionally would have immediately locked out every account that already exists — including the one just recovered from the last incident — since none of them ever had a real link to click. Caught this **before** running the test suite, by reasoning through it, not by the tests failing and then explaining it away: fixed with the grandfather script (a one-time, explicit, separately-run data correction — deliberately *not* bundled into the Alembic chain, so nothing email-related can silently ride along on a routine future deploy) plus marking admin-created users verified at creation.
+
+### Real regression this reasoning also caught, proactively
+
+Enforcing verification at login would have broken nearly the entire pytest suite — every test that creates a second user via `/api/core/users` and logs in as them (RBAC tests, security-hardening tests) would have started failing, since new users default to unverified. Fixed the same way as the production risk (mark admin-created users verified at creation) **before** running the suite, confirmed by then actually running it: **29 passed**, zero regressions.
+
+### How this was tested — and the honest boundary of what I could prove myself
+
+Real local Postgres, real server, every flow below run against genuine HTTP requests:
+```
+Signup -> verification email logged with the CORRECT FRONTEND_URL (not localhost)
+Fresh login attempt before verifying -> 403, clear message
+Verify using the real token extracted from the log -> 200
+Login again -> 200, succeeds
+Grandfather script: 2 unverified users -> updated to 2 verified -> 0 remain
+Run the script a SECOND time -> correctly reports "nothing to do" (idempotent)
+A previously-blocked pre-existing account -> logs in successfully after grandfathering
+Full pytest suite -> 29 passed, zero regressions
+Frontend: real npm run build, clean, 21 pages (3 new)
+Both servers booted together: hit the EXACT verify-email link extracted from
+  a real server log -> 200, real page, not a 404
+/forgot-password, /reset-password -> both load; login page shows the new link
+```
+
+**What I could not test myself, and told you so before building rather than after:** Resend's API domain isn't reachable from this environment's network — I cannot make a real API call to it, and therefore cannot prove an email actually lands in a real inbox. Everything above proves the code is correct and the console-log fallback path works end-to-end; it does not prove real delivery. That step needs you.
+
+### What you need to do
+
+1. Sign up at resend.com with your real email (the same one you want test emails delivered to, per the no-custom-domain limitation above).
+2. Dashboard → API Keys → Create API Key → copy it.
+3. Render → Environment Variables → add `RESEND_API_KEY` with that value, and `FRONTEND_URL` set to `https://erp-project-dusky.vercel.app` (your real Vercel URL).
+4. Deploy this update.
+5. Run `backend/scripts/grandfather_existing_users.py` **once**, the same way you ran the Alembic fix — same `DATABASE_URL`, no `JWT_SECRET_KEY` needed for this particular script.
+6. Trigger a real signup or a real "Forgot password?" request using your own email, and check your inbox. Tell me what actually arrived — that's the step only you can verify.
+
+### Deploying this update
+
+```bash
+git add . && git commit -m "Real email delivery via Resend, verification enforcement, forgot/reset-password pages" && git push
+```
+No Alembic migration needed — confirmed zero schema drift. The grandfather script above is separate from this deploy and needs to be run once, by hand, either just before or just after.
 
