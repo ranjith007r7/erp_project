@@ -19,30 +19,13 @@ from app.models.role import Role, Permission
 from app.models.user import User
 from app.schemas.auth import (
     OrganizationSignup, LoginRequest, TokenResponse, UserOut,
-    ForgotPasswordRequest, ResetPasswordRequest, VerifyEmailRequest, ResendVerificationRequest,
+    ForgotPasswordRequest, ResetPasswordRequest, VerifyEmailRequest,
 )
 from app.api.deps import get_current_user
 from app.services.accounting import seed_default_accounts
 from app.services.email import send_password_reset_email, send_verification_email
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-
-
-def _issue_verification_token(db: Session, user: User) -> None:
-    """
-    The one place a fresh verification token gets generated and emailed -
-    called by both signup (a user's first token) and resend-verification
-    (a replacement one). Overwriting verification_token_hash here is what
-    makes a fresh token implicitly invalidate whatever token came before
-    it: only one hash can be "the current one" at a time, so the old
-    link stops working the moment a new one is issued, with no separate
-    invalidation step needed.
-    """
-    raw_token, token_hash = generate_one_time_token()
-    user.verification_token_hash = token_hash
-    user.verification_token_expires = datetime.now(timezone.utc) + timedelta(hours=settings.VERIFICATION_TOKEN_EXPIRE_HOURS)
-    user.last_verification_email_sent_at = datetime.now(timezone.utc)
-    send_verification_email(user.email, raw_token)
 
 
 @router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -83,14 +66,18 @@ def signup(payload: OrganizationSignup, db: Session = Depends(get_db)):
     # it on first use of a manage_access-gated route.
     db.add(Permission(role_id=admin_role.id, module="core", action="manage_access"))
 
-    # 3. Create the first user, as that org's Admin. email_verified
-    #    starts False; a verification token is issued below.
+    # 3. Create the first user, as that org's Admin. email_verified starts
+    #    False and a verification token is generated - see the User model
+    #    docstring for why this isn't yet ENFORCED at login.
+    raw_verify_token, verify_hash = generate_one_time_token()
     admin_user = User(
         org_id=org.id,
         name=payload.admin_name,
         email=payload.admin_email,
         password_hash=hash_password(payload.admin_password),
         role_id=admin_role.id,
+        verification_token_hash=verify_hash,
+        verification_token_expires=datetime.now(timezone.utc) + timedelta(hours=settings.VERIFICATION_TOKEN_EXPIRE_HOURS),
     )
     db.add(admin_user)
 
@@ -98,11 +85,10 @@ def signup(payload: OrganizationSignup, db: Session = Depends(get_db)):
     #    the moment this organization exists - see app/services/accounting.py
     seed_default_accounts(db, org.id)
 
-    db.flush()  # admin_user needs a real id before _issue_verification_token touches it
-    _issue_verification_token(db, admin_user)
-
     db.commit()
     db.refresh(admin_user)
+
+    send_verification_email(admin_user.email, raw_verify_token)
 
     token = create_access_token({
         "sub": str(admin_user.id),
@@ -153,8 +139,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     if not user.email_verified:
         raise HTTPException(
             status_code=403,
-            detail="Please verify your email before logging in. Check your inbox for the verification "
-                   "link, or use 'Resend verification email' if you can't find it.",
+            detail="Please verify your email before logging in. Check your inbox for the verification link.",
         )
 
     # Successful login clears any prior failed attempts / lockout.
@@ -179,7 +164,6 @@ def get_me(current_user: User = Depends(get_current_user)):
         email=current_user.email,
         org_id=str(current_user.org_id),
         status=current_user.status,
-        email_verified=current_user.email_verified,
     )
 
 
@@ -244,52 +228,3 @@ def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)):
     db.commit()
 
     return {"message": "Email verified."}
-
-
-RESEND_VERIFICATION_COOLDOWN_SECONDS = 60
-
-
-@router.post("/resend-verification", status_code=200)
-def resend_verification(payload: ResendVerificationRequest, db: Session = Depends(get_db)):
-    """
-    Real gap this closes: before this route existed, a user whose
-    original verification link expired (24h), landed in spam, or was
-    just closed without clicking, had NO self-service way back in - the
-    only path was someone manually updating the database. Not something
-    a real end user should ever need a developer to fix for them.
-
-    Same anti-enumeration shape as forgot-password: ALWAYS returns the
-    identical generic message, whether the email doesn't exist, is
-    already verified, or genuinely gets a fresh email - none of those
-    three real states are distinguishable from the response.
-
-    Rate limited via last_verification_email_sent_at rather than a
-    request-counting scheme like login's lockout - this only needs to
-    stop rapid-fire re-triggering (someone mashing "resend" or a script
-    hammering an arbitrary email), not track a security-relevant
-    attempt count the way wrong-password attempts do. A flat cooldown
-    is the simpler, sufficient tool for that job.
-    """
-    user = db.query(User).filter(User.email == payload.email).first()
-
-    generic_response = {"message": "If that email needs verification, a new link has been sent."}
-
-    if not user or user.email_verified:
-        return generic_response
-
-    if user.last_verification_email_sent_at:
-        last_sent = user.last_verification_email_sent_at
-        if not last_sent.tzinfo:
-            last_sent = last_sent.replace(tzinfo=timezone.utc)
-        seconds_since = (datetime.now(timezone.utc) - last_sent).total_seconds()
-        if seconds_since < RESEND_VERIFICATION_COOLDOWN_SECONDS:
-            # Deliberately still the generic message, not a "wait N
-            # seconds" error - revealing the cooldown timer would itself
-            # confirm this email exists and is unverified, exactly the
-            # enumeration this route is supposed to avoid.
-            return generic_response
-
-    _issue_verification_token(db, user)
-    db.commit()
-
-    return generic_response

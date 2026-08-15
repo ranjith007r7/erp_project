@@ -39,16 +39,11 @@ class VerifyEmailRequest(BaseModel):
     token: str
 
 
-class ResendVerificationRequest(BaseModel):
-    email: EmailStr
-
-
 class UserOut(BaseModel):
     id: str
     name: str
     email: str
     org_id: str
     status: str
-    email_verified: bool
 
     model_config = {"from_attributes": True}

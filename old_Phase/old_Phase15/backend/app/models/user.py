@@ -25,19 +25,16 @@ class User(Base):
     status = Column(String, default="active")  # active / disabled
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # --- Email verification ---
-    # Enforced at login since real email delivery was connected (see
-    # MANUAL.md's "Real Email Delivery" entry) - was deliberately NOT
-    # enforced in Phase 13, when this comment used to explain why.
+    # --- Email verification (Phase 13) ---
+    # Deliberately NOT enforced on login yet — there's no real email
+    # provider wired up in this codebase (no SMTP/SendGrid/SES config
+    # anywhere), so blocking login on an unverified email would lock out
+    # every single existing user the moment this ships, with no way for
+    # them to actually receive a verification link. The mechanism is
+    # built and correct; flip it on once a real provider is connected.
     email_verified = Column(Boolean, nullable=False, default=False)
     verification_token_hash = Column(String, nullable=True)
     verification_token_expires = Column(DateTime, nullable=True)
-    # Cooldown for the resend-verification endpoint - prevents a user
-    # (or anyone spamming an arbitrary email into that endpoint) from
-    # triggering unlimited real sends and burning through Resend's
-    # 100/day free-tier quota. See the resend_verification route in
-    # app/api/routes/auth.py.
-    last_verification_email_sent_at = Column(DateTime, nullable=True)
 
     # --- Password reset (Phase 13) ---
     # Stores a HASH of the reset token, never the raw token — same

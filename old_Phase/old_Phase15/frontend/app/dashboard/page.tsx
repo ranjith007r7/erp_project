@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiRequest, clearToken, getToken } from "@/lib/api";
 import { NotificationBell } from "@/components/NotificationBell";
-import { VerificationBanner } from "@/components/VerificationBanner";
 
 type CurrentUser = {
   id: string;
@@ -13,7 +12,6 @@ type CurrentUser = {
   email: string;
   org_id: string;
   status: string;
-  email_verified: boolean;
 };
 
 type Summary = {
@@ -97,8 +95,6 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
-
-      {user && !user.email_verified && <VerificationBanner email={user.email} />}
 
       <div className="bg-white rounded-xl shadow-sm p-6 max-w-md mb-8">
         <p className="text-slate-500 text-sm mb-1">Logged in as</p>
