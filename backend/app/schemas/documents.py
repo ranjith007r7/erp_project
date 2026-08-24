@@ -15,12 +15,18 @@ class DocumentCreate(BaseModel):
 class DocumentOut(BaseModel):
     id: UUID
     title: str
-    file_url: str
+    file_url: Optional[str] = None
+    storage_key: Optional[str] = None
     related_type: Optional[str] = None
     related_id: Optional[UUID] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DocumentDownloadOut(BaseModel):
+    url: str
+    expires_in_seconds: int
 
 
 class WorkflowStep(BaseModel):

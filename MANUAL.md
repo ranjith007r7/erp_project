@@ -1323,3 +1323,132 @@ git add . && git commit -m "Invite-by-email flow" && git push
 ```
 One migration (`11388e004306`, three nullable columns) — applies itself automatically via Render's Start Command, no manual step needed.
 
+---
+
+## PART 39 — Recurring/Scheduled Jobs
+
+Nothing in this app has ever run on its own — every action, until now, was triggered by a person clicking something. Closes that gap with two jobs: a daily overdue-invoice reminder and a weekly report digest.
+
+### Mechanism — checked current pricing before choosing it, not assumed
+
+Verified before building: **Render's own Cron Jobs feature is not free** — minimum $1/month per cron service, a genuinely separate paid service type from the free web service tier this project runs on. That rules out the obvious-looking "just use Render's cron" option.
+
+This validates a decision this project's own Phase 1 manual already made and never built on: **GitHub Actions scheduled workflows**, free within generous limits, calling a dedicated backend HTTP endpoint on a timer. No always-on worker, no Redis/Celery (dropped back in Phase 1 for the same free-tier reason), no new paid infrastructure anywhere.
+
+### A genuinely different kind of endpoint
+
+Every route built until now is scoped to one logged-in user's org via their JWT. These two endpoints run triggered by GitHub's servers, with no human logged in, and need to act across *every* org in one call — so they're gated by a new shared secret (`CRON_SECRET`, checked via an `X-Cron-Secret` header) instead of `get_current_user`, living in their own router (`app/api/routes/scheduled_jobs.py`).
+
+### The two jobs
+
+| Job | Schedule | What it does |
+|---|---|---|
+| `POST /api/internal/jobs/overdue-invoices` | Daily | Finds every unpaid invoice past its due date, across every org, and sends one digest-style notification per org to that org's Admin(s) — reusing `notify_role()` exactly as-is, no new notification logic. |
+| `POST /api/internal/jobs/weekly-digest` | Weekly | Pulls real numbers from the *existing* Reports service (`sales_summary`/`finance_summary` — the same functions the Reports page's live view calls) and emails a short summary to each org's Admin(s). |
+
+**A real risk caught before it could ship:** the overdue-invoice job could easily have written `"overdue"` back onto `Invoice.status` — the model's own comment already anticipated that value. Checked first, and both the Dashboard and Finance report filter strictly on `status == "unpaid"` to build their unpaid-invoice counts; doing that would have made every overdue invoice silently vanish from both. Fixed by never writing to invoices at all — "overdue" stays a derived condition (`due_date < today AND status == "unpaid"`), computed fresh every run, matching this project's own long-standing "never store what you can calculate" principle. Verified directly: ran the job against a real overdue invoice and confirmed the Dashboard's and Finance report's unpaid counts were byte-identical before and after.
+
+**A second real bug, caught by checking the actual source instead of trusting my own draft:** the weekly digest's first version read `total_revenue` from `sales_summary`'s output — a key that doesn't exist there at all (it's in `finance_summary`). Every real digest would have silently shown ₹0.00 for revenue, forever, with no error anywhere to reveal it. Caught by reading `reports.py`'s actual return dictionaries before trusting the draft, not by a test failure.
+
+### Verified end-to-end against a real server, real invoices, real numbers
+
+```
+No secret header -> 401 | Wrong secret -> 401 | Correct secret, no data -> 200, zero counts
+
+Real signup -> real product -> real stock -> real invoice, backdated 5 days overdue
+Notifications before: 0
+Run the job -> unread count: 1, message: "1 invoice(s) are now overdue, totaling 2,000.00..."
+  (the exact real invoice amount, not a placeholder)
+
+Dashboard's unpaid_invoices count, and Finance report's unpaid_invoice_count:
+  BEFORE the job runs: 1  |  AFTER the job runs: 1  (unchanged, confirming no mutation)
+
+Weekly digest, run for real across 19 accumulated test orgs:
+  every logged digest showed the CORRECT, real revenue/profit/top-product
+  numbers for that specific org, not zeros or placeholders
+
+Full pytest suite -> 46 passed (5 new), zero regressions
+```
+
+### What you need to do
+
+1. Generate a secret: `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
+2. Add it to Render as `CRON_SECRET`.
+3. Add the *same* value to GitHub: repo → Settings → Secrets and variables → Actions → New repository secret → `CRON_SECRET`.
+4. Add one repo **variable** (not secret, since it's not sensitive): `BACKEND_URL` → your real Render URL, e.g. `https://erp-project-bceo.onrender.com`.
+5. Deploy this update.
+
+You can test the whole pipeline immediately without waiting for the schedule: GitHub → your repo → Actions tab → "Scheduled Jobs" workflow → **Run workflow** → pick either job → run it manually once, then check Render's logs for the real result.
+
+### Deploying this update
+
+```bash
+git add . && git commit -m "Recurring scheduled jobs: overdue invoice reminders, weekly report digest" && git push
+
+```
+No Alembic migration needed — confirmed zero schema drift, this phase only adds routes, settings, and a GitHub Actions workflow file.
+
+---
+
+## PART 40 — Real File Uploads (Cloudflare R2) + Resend Cooldown Countdown
+
+Two items, delivered together: Documents finally accepts a genuine file upload instead of only a pasted URL, and the "Resend verification email" button gets a real countdown — which also fixed a latent bug found while building the countdown.
+
+### File uploads — provider choice verified against current 2026 data, not assumed
+
+**Cloudflare R2, not S3.** R2's free tier is genuinely permanent — 10GB storage, 1M writes/10M reads per month, zero egress fees, forever. S3's free tier expires after 12 months and is smaller (5GB). One real friction point worth knowing: **Cloudflare requires a credit card on file to enable R2, even on the free tier** — you won't be charged unless you exceed the limits, but it's a different signup experience than Resend's zero-payment-info flow.
+
+### Design — private bucket, nothing public, existing flow untouched
+
+Documents can hold real business records (contracts, HR files, invoices) — treated as sensitive by default, matching this project's existing posture elsewhere (hashed tokens, RBAC on every route). The bucket is **private**; every download goes through a fresh presigned URL (10-minute expiry) generated on demand, never stored, since a stored one would just silently stop working later.
+
+The original "paste a URL" flow (`POST /api/documents`) was left **completely untouched** — a new nullable `storage_key` column was added alongside the existing `file_url` (loosened to nullable, the safe direction for a schema change — no backfill needed, existing rows keep their real values). A real Document row has exactly one of the two, never both.
+
+| Piece | What it does |
+|---|---|
+| `app/services/storage.py` | boto3 S3-compatible client pointed at R2's endpoint. `upload_file()` validates type/size before ever touching the network; `generate_presigned_url()` for downloads. |
+| `POST /api/documents/upload` | Real multipart upload, gated by `documents.create` (same as the existing JSON route). |
+| `GET /api/documents/{id}/download` | Gated by `documents.view`; the `org_id` filter in the query is the actual access-control boundary, not the storage key's org-scoped prefix. |
+| Documents page | "Upload File" / "Paste a Link" toggle, matching the pattern already established for Settings → Users' "Send Invite" / "Set Password Directly." |
+
+### A real bug caught by my own testing, not left for later
+
+Testing with a deliberately malformed `R2_ACCOUNT_ID` crashed with a raw 500 instead of a clean error — `boto3.client()` raised a plain `ValueError` on the malformed endpoint URL, *before any network call even happened*, and the code only caught `botocore.exceptions.ClientError`, which is narrower than that. Fixed by broadening to a bare `except Exception`, matching `email.py`'s already-established pattern for external service calls — re-tested against the exact same failure and confirmed it now returns a clean 502 with a real, diagnosable message.
+
+### A genuinely interesting, honestly-reported finding — not overclaimed
+
+Testing with syntactically-valid-but-fake credentials got back a **real HTTP 403 with correctly-formatted S3 API error XML/JSON**, parsed cleanly by botocore into `"An error occurred (403) when calling the PutObject operation: Forbidden"`. That specific error shape strongly suggests this environment can actually reach Cloudflare's real R2 endpoint — a different, more favorable boundary than Resend's domain, which was flatly blocked at the network level every time. This wasn't chased further: real R2 credentials are sensitive, and asking for them to be pasted into a chat conversation isn't appropriate regardless of what the network boundary turns out to be. Full real-upload verification is still yours to do, same as email.
+
+### Verified end-to-end, everything provable without real credentials
+
+```
+Unconfigured storage -> 503, clean, not a crash
+Existing JSON "paste a URL" flow -> completely unaffected, file_url set, storage_key null
+Disallowed file type (.exe) -> 400, rejected before ever touching storage.py
+Oversized file (>10MB) -> 400, rejected before ever touching storage.py
+Missing documents.create permission -> 403, same gate as the existing route
+Malformed R2 credentials -> 502 with a real, diagnosable message (the bug fix above, re-verified)
+
+Multi-tenancy: Org B attempts to download Org A's real document by ID -> 404
+  (not "forbidden" - doesn't even confirm the document exists)
+Org A, same document -> correctly passes the ownership check, reaches the storage-config boundary
+
+Full pytest suite -> 52 passed (6 new for uploads), zero regressions
+Frontend: real npm run build, clean, 22 pages, /documents grew exactly as expected
+```
+
+### Resend cooldown countdown — and a related bug it fixed
+
+**A real latent bug, found while building the requested polish, not the polish itself:** the "Resend verification email" button never had any code path that reset it back to clickable — once clicked, it stayed permanently disabled for the rest of that page session, even long after the real 60-second server-side cooldown had passed. This existed in both places the button appears (the Dashboard's `VerificationBanner` and the login page's inline resend prompt).
+
+Fixed both with a real countdown matching the backend's actual `RESEND_VERIFICATION_COOLDOWN_SECONDS = 60` value: shows "Resend in 47s" ticking down, then automatically returns to clickable at zero — rather than a generic "Sent" message with no indication of when trying again might actually work.
+
+Verified the compiled production bundles for both `login` and `dashboard` genuinely contain the countdown logic, not just the source file.
+
+### Deploying this update
+
+```bash
+git add . && git commit -m "Real file uploads via Cloudflare R2, resend-cooldown countdown fix" && git push
+```
+One migration (`56a6e2322d1a`) — applies itself automatically via Render's Start Command. To actually enable uploads: create an R2 bucket at dash.cloudflare.com, generate an API token, and add `R2_ACCOUNT_ID`/`R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`/`R2_BUCKET_NAME` to Render's environment variables — until then, the upload button will show a clear "not configured yet" message rather than fail silently.
+

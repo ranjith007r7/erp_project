@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiRequest, setToken } from "@/lib/api";
+
+// Must match RESEND_VERIFICATION_COOLDOWN_SECONDS in
+// app/api/routes/auth.py - a UI mirror of a real server-side rule, not
+// the actual enforcement (the backend still rejects an early request
+// no matter what this shows).
+const RESEND_COOLDOWN_SECONDS = 60;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,13 +18,23 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isUnverifiedError, setIsUnverifiedError] = useState(false);
-  const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent">("idle");
+  const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "cooldown">("idle");
+  const [resendSecondsLeft, setResendSecondsLeft] = useState(0);
+
+  useEffect(() => {
+    if (resendStatus !== "cooldown") return;
+    if (resendSecondsLeft <= 0) {
+      setResendStatus("idle");
+      return;
+    }
+    const timer = setTimeout(() => setResendSecondsLeft((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendStatus, resendSecondsLeft]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setIsUnverifiedError(false);
-    setResendStatus("idle");
     setLoading(true);
     try {
       const data = await apiRequest<{ access_token: string }>("/api/auth/login", {
@@ -44,7 +60,8 @@ export default function LoginPage() {
     setResendStatus("sending");
     try {
       await apiRequest("/api/auth/resend-verification", { method: "POST", body: { email } });
-      setResendStatus("sent");
+      setResendStatus("cooldown");
+      setResendSecondsLeft(RESEND_COOLDOWN_SECONDS);
     } catch {
       setResendStatus("idle");
     }
@@ -97,8 +114,8 @@ export default function LoginPage() {
               >
                 {resendStatus === "sending"
                   ? "Sending..."
-                  : resendStatus === "sent"
-                  ? "Sent — check your inbox"
+                  : resendStatus === "cooldown"
+                  ? `Resend in ${resendSecondsLeft}s`
                   : "Resend verification email"}
               </button>
             )}

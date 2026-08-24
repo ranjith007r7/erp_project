@@ -4,10 +4,11 @@ code, and hands you the result. Every protected endpoint in every future
 module will use get_current_user the same way — this is the ONE place
 that checks "is this request's login token valid?" for the whole app.
 """
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Header, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import decode_access_token
 from app.models.user import User
@@ -172,3 +173,18 @@ def org_has_admin_equivalent_user(db: Session, org_id: str) -> bool:
         .count()
     )
     return count > 0
+
+
+def verify_cron_secret(x_cron_secret: str = Header(default="")) -> None:
+    """
+    Gates the scheduled-job endpoints (app/api/routes/scheduled_jobs.py).
+    Deliberately NOT get_current_user - these run triggered by GitHub
+    Actions on a timer, with no human logged in and no org to scope to
+    (the jobs themselves loop across every org). A constant-time
+    comparison isn't used here on purpose: this guards two low-value,
+    non-financial-transaction endpoints (send a reminder, send a report),
+    not account takeover - the added complexity isn't proportionate here,
+    unlike password/token comparisons elsewhere in this codebase.
+    """
+    if not settings.CRON_SECRET or x_cron_secret != settings.CRON_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid or missing cron secret.")

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, apiUpload } from "@/lib/api";
 import { NotificationBell } from "@/components/NotificationBell";
-import { PageHeader } from "@/components/ui";
+import { PageHeader, Button } from "@/components/ui";
 
-type Doc = { id: string; title: string; file_url: string; related_type: string | null };
+type Doc = { id: string; title: string; file_url: string | null; storage_key: string | null; related_type: string | null };
 type Workflow = { id: string; name: string; module: string };
 type Step = { step_order: number; role_required: string; status: string };
 type ApprovalRequest = { id: string; entity_type: string; status: string; steps: Step[] };
@@ -17,6 +17,10 @@ export default function DocumentsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [docForm, setDocForm] = useState({ title: "", file_url: "" });
+  const [addDocMode, setAddDocMode] = useState<"upload" | "link">("upload");
+  const [uploadTitle, setUploadTitle] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [workflowForm, setWorkflowForm] = useState({ name: "", module: "", step1: "", step2: "" });
   const [entityForm, setEntityForm] = useState({ workflow_id: "", entity_type: "" });
 
@@ -33,6 +37,44 @@ export default function DocumentsPage() {
     await apiRequest("/api/documents", { method: "POST", auth: true, body: docForm }).catch((err) => setError(err.message));
     setDocForm({ title: "", file_url: "" });
     loadAll();
+  }
+
+  async function handleFileUpload(e: React.FormEvent) {
+    e.preventDefault();
+    if (!uploadFile) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("title", uploadTitle);
+      formData.append("file", uploadFile);
+      await apiUpload("/api/documents/upload", formData);
+      setUploadTitle("");
+      setUploadFile(null);
+      loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleDownload(doc: Doc) {
+    setError(null);
+    if (doc.storage_key) {
+      // A real upload - get a FRESH presigned URL (they expire after
+      // 10 minutes, so this can't be cached from an earlier load) and
+      // open it directly; the browser talks to R2 from here on, not
+      // back through our API.
+      try {
+        const result = await apiRequest<{ url: string }>(`/api/documents/${doc.id}/download`, { auth: true });
+        window.open(result.url, "_blank");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not generate a download link");
+      }
+    } else if (doc.file_url) {
+      window.open(doc.file_url, "_blank");
+    }
   }
 
   async function addWorkflow(e: React.FormEvent) {
@@ -81,12 +123,55 @@ export default function DocumentsPage() {
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
       <div className="grid md:grid-cols-3 gap-6 mb-8">
-        <form onSubmit={addDocument} className="bg-white rounded-xl shadow-sm p-4 space-y-2">
-          <h2 className="font-semibold text-slate-700 text-sm">Upload Document</h2>
-          <input placeholder="Title" required value={docForm.title} onChange={(e) => setDocForm({ ...docForm, title: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-          <input placeholder="File URL" required value={docForm.file_url} onChange={(e) => setDocForm({ ...docForm, file_url: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-          <button className="w-full bg-slate-800 text-white rounded-lg py-2 text-sm font-medium hover:bg-slate-700">Add Document</button>
-        </form>
+        <div className="bg-white rounded-xl shadow-sm p-4 space-y-2">
+          <div className="flex justify-between items-center">
+            <h2 className="font-semibold text-slate-700 text-sm">Add Document</h2>
+            <div className="flex text-xs rounded-lg overflow-hidden border border-slate-300">
+              <button
+                type="button"
+                onClick={() => setAddDocMode("upload")}
+                className={`px-2 py-1 ${addDocMode === "upload" ? "bg-slate-800 text-white" : "bg-white text-slate-600"}`}
+              >
+                Upload File
+              </button>
+              <button
+                type="button"
+                onClick={() => setAddDocMode("link")}
+                className={`px-2 py-1 ${addDocMode === "link" ? "bg-slate-800 text-white" : "bg-white text-slate-600"}`}
+              >
+                Paste a Link
+              </button>
+            </div>
+          </div>
+
+          {addDocMode === "upload" ? (
+            <form onSubmit={handleFileUpload} className="space-y-2">
+              <input
+                placeholder="Title"
+                required
+                value={uploadTitle}
+                onChange={(e) => setUploadTitle(e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              />
+              <input
+                type="file"
+                required
+                onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                className="w-full text-sm"
+              />
+              <p className="text-xs text-slate-400">PDF, Office docs, or images, up to 10MB.</p>
+              <Button type="submit" disabled={uploading} className="w-full">
+                {uploading ? "Uploading..." : "Upload"}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={addDocument} className="space-y-2">
+              <input placeholder="Title" required value={docForm.title} onChange={(e) => setDocForm({ ...docForm, title: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+              <input placeholder="File URL" required value={docForm.file_url} onChange={(e) => setDocForm({ ...docForm, file_url: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+              <Button type="submit" className="w-full">Add Document</Button>
+            </form>
+          )}
+        </div>
 
         <form onSubmit={addWorkflow} className="bg-white rounded-xl shadow-sm p-4 space-y-2">
           <h2 className="font-semibold text-slate-700 text-sm">Define Approval Workflow</h2>
@@ -142,10 +227,16 @@ export default function DocumentsPage() {
           <h2 className="font-semibold text-slate-700 mb-3">Documents</h2>
           <div className="bg-white rounded-lg shadow-sm divide-y">
             {documents.map((d) => (
-              <a key={d.id} href={d.file_url} target="_blank" rel="noreferrer" className="p-3 text-sm block hover:bg-slate-50">
-                <p className="text-slate-800">{d.title}</p>
+              <button
+                key={d.id}
+                onClick={() => handleDownload(d)}
+                className="p-3 text-sm block w-full text-left hover:bg-slate-50"
+              >
+                <p className="text-slate-800">
+                  {d.title} {d.storage_key && <span className="text-xs text-slate-400">(uploaded)</span>}
+                </p>
                 <p className="text-xs text-slate-400">{d.related_type || "general"}</p>
-              </a>
+              </button>
             ))}
             {documents.length === 0 && <p className="p-3 text-sm text-slate-400">No documents yet.</p>}
           </div>

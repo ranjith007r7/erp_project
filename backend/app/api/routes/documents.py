@@ -10,15 +10,16 @@ entity_type/entity_id - it does NOT need its own approval logic.
 """
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.documents import Document, ApprovalWorkflow, ApprovalRequest, ApprovalStep
 from app.services.notifications import notify_role, notify_user
+from app.services.storage import upload_file, generate_presigned_url
 from app.schemas.documents import (
-    DocumentCreate, DocumentOut,
+    DocumentCreate, DocumentOut, DocumentDownloadOut,
     ApprovalWorkflowCreate, ApprovalWorkflowOut,
     ApprovalRequestCreate, ApprovalRequestOut,
     ApprovalActionRequest,
@@ -41,6 +42,62 @@ def create_document(payload: DocumentCreate, db: Session = Depends(get_db), org_
 @router.get("", response_model=list[DocumentOut], dependencies=[Depends(require_permission("documents", "view"))])
 def list_documents(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Document).filter(Document.org_id == org_id).order_by(Document.created_at.desc()).all()
+
+
+@router.post("/upload", response_model=DocumentOut, status_code=201, dependencies=[Depends(require_permission("documents", "create"))])
+async def upload_document(
+    title: str = Form(...),
+    related_type: str | None = Form(None),
+    related_id: str | None = Form(None),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    org_id: str = Depends(get_org_id),
+    current_user=Depends(get_current_user),
+):
+    """
+    A genuinely different creation path from POST /api/documents above -
+    that one takes a JSON body with a caller-provided file_url; this one
+    takes a real multipart file, uploads it to R2, and stores the
+    resulting storage_key instead. file_url stays null for documents
+    created this way - see the Document model's docstring on why one
+    real Document has exactly one of the two, never both.
+    """
+    content = await file.read()
+    storage_key = upload_file(org_id, file.filename or "upload", content, file.content_type or "application/octet-stream")
+
+    doc = Document(
+        org_id=org_id,
+        title=title,
+        storage_key=storage_key,
+        uploaded_by=current_user.id,
+        related_type=related_type,
+        related_id=related_id or None,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+
+@router.get("/{document_id}/download", response_model=DocumentDownloadOut, dependencies=[Depends(require_permission("documents", "view"))])
+def get_document_download_url(document_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+    """
+    Generates a FRESH presigned URL on every call rather than returning
+    anything stored - presigned URLs expire (10 minutes here) by design,
+    so persisting one would just mean it silently stops working later.
+    The org_id filter below is the actual access control: even a valid,
+    guessed document_id from another org returns 404, not someone else's
+    file - the storage key's org-scoped prefix is a convenience for
+    humans browsing the bucket directly, not the real security boundary.
+    """
+    doc = db.query(Document).filter(Document.id == document_id, Document.org_id == org_id).first()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    if not doc.storage_key:
+        raise HTTPException(400, "This document has no uploaded file - it was created with an external file_url instead.")
+
+    url = generate_presigned_url(doc.storage_key, expires_in_seconds=600)
+    return DocumentDownloadOut(url=url, expires_in_seconds=600)
 
 
 # ---------------- Approval Workflows (the reusable rules) ----------------

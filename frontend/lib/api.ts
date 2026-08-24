@@ -94,3 +94,31 @@ export async function apiDownload(path: string, filename: string): Promise<void>
   link.remove();
   window.URL.revokeObjectURL(url);
 }
+
+/**
+ * For endpoints that accept a real file (multipart/form-data) rather
+ * than JSON - apiRequest's body handling assumes JSON throughout, so
+ * uploads need their own path. Deliberately does NOT set a Content-Type
+ * header: the browser sets multipart/form-data with the correct
+ * boundary string itself when the body is a FormData object, and
+ * setting it manually here would break that boundary generation.
+ */
+export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({ detail: "Upload failed" }));
+    throw new Error(typeof errorBody.detail === "string" ? errorBody.detail : "Upload failed");
+  }
+
+  const text = await res.text();
+  return text ? JSON.parse(text) : (undefined as T);
+}

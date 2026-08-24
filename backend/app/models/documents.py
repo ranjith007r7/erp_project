@@ -10,10 +10,19 @@ from app.core.database import Base
 
 class Document(Base):
     """
-    A stored file reference. file_url points at external storage (S3/R2/
-    Cloudinary in production - not built yet, so this holds a plain URL
-    for now). related_type/related_id let a document attach to ANY other
-    record (an Invoice, an Employee, a Purchase Order) without needing a
+    A stored file reference. Two ways a document gets attached, both
+    valid: (1) file_url — a plain external link someone pasted in
+    (Google Drive, an existing S3 bucket, anything), the original design;
+    (2) storage_key — set when the file was genuinely uploaded through
+    this app to Cloudflare R2 (see app/services/storage.py). A document
+    has exactly one of the two, never both, and file_url had to become
+    nullable to allow the upload path to leave it empty - loosening a
+    NOT NULL constraint is always safe on a populated table (existing
+    rows keep their real values), unlike the reverse direction, which
+    needs a backfill.
+
+    related_type/related_id let a document attach to ANY other record
+    (an Invoice, an Employee, a Purchase Order) without needing a
     separate join table per module.
     """
     __tablename__ = "documents"
@@ -21,7 +30,8 @@ class Document(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     title = Column(String, nullable=False)
-    file_url = Column(String, nullable=False)
+    file_url = Column(String, nullable=True)
+    storage_key = Column(String, nullable=True)
     uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     related_type = Column(String, nullable=True)   # e.g. "invoice", "employee"
     related_id = Column(UUID(as_uuid=True), nullable=True)

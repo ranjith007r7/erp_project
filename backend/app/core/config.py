@@ -56,6 +56,30 @@ class Settings(BaseSettings):
     # production, or every emailed link will point at localhost.
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # --- Scheduled jobs (GitHub Actions cron, not a paid Render worker -
+    # Render's own Cron Jobs feature has no free tier) ---
+    # A shared secret, not a user JWT - these two endpoints run with no
+    # human logged in, triggered by GitHub's servers on a timer. Empty by
+    # default and the dependency in deps.py REJECTS every request when
+    # this is empty, rather than silently allowing unauthenticated access -
+    # same fail-closed posture as JWT_SECRET_KEY, just without forcing the
+    # whole app to refuse to boot, since these two endpoints are optional.
+    CRON_SECRET: str = ""
+
+    # --- Real file storage (Cloudflare R2 - checked current pricing
+    # before choosing it: R2's free tier is genuinely permanent - 10GB
+    # storage, 1M writes/10M reads per month, zero egress fees, forever -
+    # unlike S3's free tier, which expires after 12 months) ---
+    # All empty by default, same posture as RESEND_API_KEY - the app
+    # must still boot and run fully without these configured; the
+    # upload/download endpoints return a clear error instead of
+    # crashing when storage isn't set up yet.
+    R2_ACCOUNT_ID: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET_NAME: str = ""
+    MAX_UPLOAD_SIZE_MB: int = 10
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @field_validator("JWT_SECRET_KEY")
