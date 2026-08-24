@@ -22,7 +22,7 @@ class User(Base):
     email = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
     role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"), nullable=True)
-    status = Column(String, default="active")  # active / disabled
+    status = Column(String, default="active")  # active / disabled / invited
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # --- Email verification ---
@@ -50,5 +50,24 @@ class User(Base):
     # --- Login rate limiting (Phase 13) ---
     failed_login_attempts = Column(Integer, nullable=False, default=0)
     locked_until = Column(DateTime, nullable=True)
+
+    # --- Invite-by-email ---
+    # An invited user's password_hash is set to a hash of a random,
+    # unguessable placeholder at invite time - NOT left null. This
+    # avoids loosening password_hash's existing NOT NULL constraint
+    # (a schema change with its own risk, given this project's recent
+    # migration history) while still being cryptographically impossible
+    # to log in with until accept-invite sets a real password. status
+    # is "invited" until accept-invite flips it to "active" - a real
+    # invited row is otherwise a normal User row in every other respect.
+    invite_token_hash = Column(String, nullable=True)
+    invite_token_expires = Column(DateTime, nullable=True)
+    # Separate from last_verification_email_sent_at on purpose - an
+    # invited user never goes through the separate email-verification
+    # flow at all (accepting the invite IS the verification, since
+    # clicking a real emailed link already proves inbox ownership), so
+    # conflating the two cooldowns would be tracking unrelated things
+    # under one column.
+    last_invite_email_sent_at = Column(DateTime, nullable=True)
 
     role = relationship("Role")

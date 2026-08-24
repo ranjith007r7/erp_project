@@ -37,6 +37,9 @@ export default function RolesSettingsPage() {
 
   const [roleForm, setRoleForm] = useState({ name: "" });
   const [userForm, setUserForm] = useState({ name: "", email: "", password: "", role_id: "" });
+  const [inviteForm, setInviteForm] = useState({ name: "", email: "", role_id: "" });
+  const [addUserMode, setAddUserMode] = useState<"invite" | "password">("invite");
+  const [resendStatus, setResendStatus] = useState<Record<string, "idle" | "sending" | "sent">>({});
 
   function loadRoles() {
     apiRequest<Role[]>("/api/core/roles", { auth: true })
@@ -144,6 +147,37 @@ export default function RolesSettingsPage() {
       loadUsers();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create user");
+    }
+  }
+
+  async function handleSendInvite(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    try {
+      await apiRequest("/api/core/invites", {
+        method: "POST",
+        auth: true,
+        body: {
+          name: inviteForm.name,
+          email: inviteForm.email,
+          role_id: inviteForm.role_id || null,
+        },
+      });
+      setInviteForm({ name: "", email: "", role_id: "" });
+      loadUsers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send invite");
+    }
+  }
+
+  async function handleResendInvite(userId: string) {
+    setResendStatus((prev) => ({ ...prev, [userId]: "sending" }));
+    try {
+      await apiRequest(`/api/core/invites/${userId}/resend`, { method: "POST", auth: true });
+      setResendStatus((prev) => ({ ...prev, [userId]: "sent" }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to resend invite");
+      setResendStatus((prev) => ({ ...prev, [userId]: "idle" }));
     }
   }
 
@@ -278,59 +312,130 @@ export default function RolesSettingsPage() {
 
       {/* Users */}
       <Card className="p-4 max-w-3xl">
-        <h2 className="font-semibold text-slate-700 text-sm mb-3">Users</h2>
+        <div className="flex justify-between items-center mb-3">
+          <h2 className="font-semibold text-slate-700 text-sm">Users</h2>
+          <div className="flex text-xs rounded-lg overflow-hidden border border-slate-300">
+            <button
+              onClick={() => setAddUserMode("invite")}
+              className={`px-3 py-1.5 ${addUserMode === "invite" ? "bg-slate-800 text-white" : "bg-white text-slate-600"}`}
+            >
+              Send Invite
+            </button>
+            <button
+              onClick={() => setAddUserMode("password")}
+              className={`px-3 py-1.5 ${addUserMode === "password" ? "bg-slate-800 text-white" : "bg-white text-slate-600"}`}
+            >
+              Set Password Directly
+            </button>
+          </div>
+        </div>
 
-        <form onSubmit={handleCreateUser} className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-          <Input
-            placeholder="Name"
-            value={userForm.name}
-            onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
-            required
-          />
-          <Input
-            type="email"
-            placeholder="Email"
-            value={userForm.email}
-            onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
-            required
-          />
-          <Input
-            type="password"
-            placeholder="Password (min 8 characters)"
-            value={userForm.password}
-            onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-            required
-            minLength={8}
-          />
-          <Select
-            value={userForm.role_id}
-            onChange={(e) => setUserForm({ ...userForm, role_id: e.target.value })}
-          >
-            <option value="">No role assigned</option>
-            {roles.map((r) => (
-              <option key={r.id} value={r.id}>{r.name}</option>
-            ))}
-          </Select>
-          <Button type="submit" className="sm:col-span-2">Add User</Button>
-        </form>
+        {addUserMode === "invite" ? (
+          <form onSubmit={handleSendInvite} className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+            <p className="text-xs text-slate-500 sm:col-span-2">
+              Sends a real email with a link — they'll set their own password. Nothing to type in
+              for them here.
+            </p>
+            <Input
+              placeholder="Name"
+              value={inviteForm.name}
+              onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
+              required
+            />
+            <Input
+              type="email"
+              placeholder="Email"
+              value={inviteForm.email}
+              onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+              required
+            />
+            <Select
+              value={inviteForm.role_id}
+              onChange={(e) => setInviteForm({ ...inviteForm, role_id: e.target.value })}
+              className="sm:col-span-2"
+            >
+              <option value="">No role assigned</option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </Select>
+            <Button type="submit" className="sm:col-span-2">Send Invite</Button>
+          </form>
+        ) : (
+          <form onSubmit={handleCreateUser} className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+            <Input
+              placeholder="Name"
+              value={userForm.name}
+              onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+              required
+            />
+            <Input
+              type="email"
+              placeholder="Email"
+              value={userForm.email}
+              onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+              required
+            />
+            <Input
+              type="password"
+              placeholder="Password (min 8 characters)"
+              value={userForm.password}
+              onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+              required
+              minLength={8}
+            />
+            <Select
+              value={userForm.role_id}
+              onChange={(e) => setUserForm({ ...userForm, role_id: e.target.value })}
+            >
+              <option value="">No role assigned</option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </Select>
+            <Button type="submit" className="sm:col-span-2">Add User</Button>
+          </form>
+        )}
 
         <div className="divide-y">
           {users.map((u) => (
             <div key={u.id} className="py-2 flex justify-between items-center text-sm">
               <div>
-                <p className="text-slate-800 font-medium">{u.name}</p>
+                <p className="text-slate-800 font-medium">
+                  {u.name}
+                  {u.status === "invited" && (
+                    <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full align-middle">
+                      Invite pending
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-slate-500">{u.email}</p>
               </div>
-              <Select
-                value={u.role_id ?? ""}
-                onChange={(e) => handleChangeUserRole(u.id, e.target.value)}
-                className="w-48"
-              >
-                <option value="">No role assigned</option>
-                {roles.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
-                ))}
-              </Select>
+              <div className="flex items-center gap-2">
+                {u.status === "invited" && (
+                  <button
+                    onClick={() => handleResendInvite(u.id)}
+                    disabled={resendStatus[u.id] === "sending"}
+                    className="text-xs text-slate-500 underline hover:text-slate-700 disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {resendStatus[u.id] === "sending"
+                      ? "Sending..."
+                      : resendStatus[u.id] === "sent"
+                      ? "Sent"
+                      : "Resend invite"}
+                  </button>
+                )}
+                <Select
+                  value={u.role_id ?? ""}
+                  onChange={(e) => handleChangeUserRole(u.id, e.target.value)}
+                  className="w-48"
+                >
+                  <option value="">No role assigned</option>
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </Select>
+              </div>
             </div>
           ))}
           {users.length === 0 && <p className="text-sm text-slate-400 py-2">No users yet.</p>}

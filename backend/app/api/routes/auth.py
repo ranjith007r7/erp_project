@@ -1,7 +1,8 @@
 """
 Auth endpoints: signup, login (with rate limiting), password reset,
-email verification. See app/services/email.py for why "email" here means
-"logged to console", not actually delivered — no provider is configured.
+email verification, and accepting an invite. All real email sends go
+through app/services/email.py, which delivers via Resend when
+RESEND_API_KEY is configured or falls back to logging when it isn't.
 """
 from datetime import datetime, timedelta, timezone
 
@@ -20,6 +21,7 @@ from app.models.user import User
 from app.schemas.auth import (
     OrganizationSignup, LoginRequest, TokenResponse, UserOut,
     ForgotPasswordRequest, ResetPasswordRequest, VerifyEmailRequest, ResendVerificationRequest,
+    AcceptInviteRequest,
 )
 from app.api.deps import get_current_user
 from app.services.accounting import seed_default_accounts
@@ -120,6 +122,27 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     # or the password was the wrong part, that helps attackers guess.
     invalid_error = HTTPException(status_code=401, detail="Incorrect email or password.")
 
+    # Checked BEFORE password verification, deliberately, for a real
+    # reason: an invited-but-not-yet-accepted user's password_hash is a
+    # hash of a random, unguessable placeholder (see roles.py's
+    # create_invite) - verify_password() would ALWAYS fail for them, so
+    # if this check ran after password verification, they'd just get
+    # the generic "incorrect email or password" forever with no way to
+    # know why. This does mean an invited/disabled account's status is
+    # revealed regardless of the password entered - a narrower
+    # disclosure than public enumeration risks like forgot-password
+    # (this only reveals pending-invite/disabled status for a specific
+    # email within a specific org, not "does any account anywhere on
+    # the internet exist for this address"), and worth it for the real
+    # usability gap it closes.
+    if user and user.status == "invited":
+        raise HTTPException(
+            status_code=403,
+            detail="This account hasn't been activated yet. Check your email for an invitation link.",
+        )
+    if user and user.status == "disabled":
+        raise HTTPException(status_code=403, detail="This account has been disabled.")
+
     # Lockout check happens BEFORE password verification - a locked
     # account should reject even the CORRECT password until the lockout
     # window passes, otherwise "rate limiting" wouldn't actually rate-limit.
@@ -140,9 +163,6 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
                 user.locked_until = now + timedelta(minutes=settings.LOGIN_LOCKOUT_MINUTES)
             db.commit()
         raise invalid_error
-
-    if user.status != "active":
-        raise HTTPException(status_code=403, detail="This account has been disabled.")
 
     # Enforced only now that real email delivery exists (Resend, added
     # after Phase 13). Every account created BEFORE this point was
@@ -293,3 +313,47 @@ def resend_verification(payload: ResendVerificationRequest, db: Session = Depend
     db.commit()
 
     return generic_response
+
+
+@router.post("/accept-invite", response_model=TokenResponse, status_code=200)
+def accept_invite(payload: AcceptInviteRequest, db: Session = Depends(get_db)):
+    """
+    Public - the invitee has no credentials at all yet, so this can't
+    require auth. Looks up purely by the token's hash, same pattern as
+    reset-password/verify-email, and returns the same generic
+    invalid/expired message either way - no distinction between "wrong
+    token", "already accepted", or "expired", so a guessed token can't
+    be used to fingerprint which case it hit.
+
+    Accepting the invite counts as email verification too, deliberately
+    - clicking a real emailed link already proves inbox ownership, so a
+    SEPARATE verification email/click right after would just be
+    redundant friction with no additional security benefit.
+    """
+    hashed = hash_token(payload.token)
+    user = db.query(User).filter(User.invite_token_hash == hashed, User.status == "invited").first()
+
+    invalid_error = HTTPException(status_code=400, detail="Invalid or expired invite link.")
+
+    if not user or not user.invite_token_expires:
+        raise invalid_error
+
+    expires = user.invite_token_expires if user.invite_token_expires.tzinfo else user.invite_token_expires.replace(tzinfo=timezone.utc)
+    if expires < datetime.now(timezone.utc):
+        raise invalid_error
+
+    user.password_hash = hash_password(payload.password)
+    user.status = "active"
+    user.email_verified = True
+    user.invite_token_hash = None
+    user.invite_token_expires = None
+    db.commit()
+    db.refresh(user)
+
+    role_name = user.role.name if user.role else None
+    token = create_access_token({
+        "sub": str(user.id),
+        "org_id": str(user.org_id),
+        "role": role_name,
+    })
+    return TokenResponse(access_token=token)

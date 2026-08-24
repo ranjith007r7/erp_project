@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     # --- Password reset / email verification token lifetime ---
     RESET_TOKEN_EXPIRE_MINUTES: int = 60
     VERIFICATION_TOKEN_EXPIRE_HOURS: int = 24
+    # Longer than verification's 24h - accepting an invite to join a
+    # company is less time-sensitive than "verify the email you just
+    # used two minutes ago", and an invitee might reasonably not check
+    # their inbox again for a few days.
+    INVITE_TOKEN_EXPIRE_HOURS: int = 168  # 7 days
 
     # --- Real email delivery (added after Phase 13 shipped with no
     # provider connected) ---

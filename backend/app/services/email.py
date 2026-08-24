@@ -77,3 +77,13 @@ def send_verification_email(to: str, raw_token: str) -> None:
         subject="Verify your email",
         body=f"Click here to verify your email (expires in 24 hours):\n{verify_link}",
     )
+
+
+def send_invite_email(to: str, org_name: str, raw_token: str) -> None:
+    accept_link = f"{settings.FRONTEND_URL}/accept-invite?token={raw_token}"
+    send_email(
+        to=to,
+        subject=f"You've been invited to join {org_name}",
+        body=f"You've been invited to join {org_name}. Click here to set up your account "
+             f"(expires in 7 days):\n{accept_link}",
+    )
