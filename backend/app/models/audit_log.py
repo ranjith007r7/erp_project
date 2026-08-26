@@ -3,6 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import Column, String, ForeignKey, DateTime
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 
 from app.core.database import Base
 
@@ -23,3 +24,5 @@ class AuditLog(Base):
     entity = Column(String, nullable=False)     # e.g. "Invoice", "Employee"
     entity_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User")

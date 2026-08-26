@@ -26,6 +26,7 @@ from app.schemas.sales import (
 )
 from app.services.accounting import post_invoice_journal_entry
 from app.services.inventory import issue_stock
+from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/api/sales", tags=["sales"], dependencies=[Depends(get_current_user)])
 
@@ -153,7 +154,7 @@ def list_orders(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)
 
 
 @router.post("/orders/{order_id}/invoice", response_model=InvoiceOut, status_code=201, dependencies=[Depends(require_permission("sales", "edit"))])
-def generate_invoice(order_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+def generate_invoice(order_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     """
     Generates an Invoice from a Sales Order, issues stock for every line
     item (Inventory), AND posts the matching Journal Entry (Finance) - all
@@ -205,6 +206,7 @@ def generate_invoice(order_id: str, db: Session = Depends(get_db), org_id: str =
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    log_audit_event(db, org_id, current_user.id, "generate_invoice", "Invoice", invoice.id)
     db.commit()
     db.refresh(invoice)
     return invoice

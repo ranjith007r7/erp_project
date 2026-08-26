@@ -18,6 +18,7 @@ from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.documents import Document, ApprovalWorkflow, ApprovalRequest, ApprovalStep
 from app.services.notifications import notify_role, notify_user
 from app.services.storage import upload_file, generate_presigned_url
+from app.services.audit import log_audit_event
 from app.schemas.documents import (
     DocumentCreate, DocumentOut, DocumentDownloadOut,
     ApprovalWorkflowCreate, ApprovalWorkflowOut,
@@ -222,6 +223,7 @@ def action_approval_step(request_id: str, payload: ApprovalActionRequest, db: Se
             next_step = min(remaining, key=lambda s: s.step_order)
             notify_role(db, org_id, next_step.role_required, f"A {request.entity_type} needs your approval.")
 
+    log_audit_event(db, org_id, current_user.id, f"approval_{payload.decision}", "ApprovalRequest", request.id)
     db.commit()
     db.refresh(request)
     return request

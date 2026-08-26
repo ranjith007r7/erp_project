@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { PageHeader } from "@/components/ui";
+import { usePagination, PaginationControls } from "@/components/Pagination";
 
 type Product = { id: string; name: string; unit_price: string };
 type Customer = { id: string; name: string };
@@ -18,6 +19,7 @@ export default function SalesPage() {
   const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [orders, setOrders] = useState<SalesOrder[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const { pageItems: pagedInvoices, page: invoicePage, totalPages: invoiceTotalPages, setPage: setInvoicePage } = usePagination(invoices, 10);
   const [error, setError] = useState<string | null>(null);
 
   const [productForm, setProductForm] = useState({ name: "", unit_price: "" });
@@ -239,7 +241,7 @@ export default function SalesPage() {
         <section>
           <h2 className="font-semibold text-slate-700 mb-3">Invoices</h2>
           <div className="space-y-2">
-            {invoices.map((inv) => (
+            {pagedInvoices.map((inv) => (
               <div key={inv.id} className="bg-white rounded-lg shadow-sm p-3">
                 <p className="text-sm font-medium text-slate-800">
                   ₹{Number(inv.amount).toLocaleString("en-IN")}
@@ -249,6 +251,7 @@ export default function SalesPage() {
             ))}
             {invoices.length === 0 && <p className="text-sm text-slate-400">No invoices yet.</p>}
           </div>
+          <PaginationControls page={invoicePage} totalPages={invoiceTotalPages} onChange={setInvoicePage} />
         </section>
       </div>
     </main>

@@ -35,6 +35,7 @@ class PurchaseOrder(Base):
     total = Column(Numeric(12, 2), default=0)
 
     items = relationship("PurchaseOrderItem", back_populates="purchase_order", cascade="all, delete-orphan")
+    vendor = relationship("Vendor")
 
 
 class PurchaseOrderItem(Base):

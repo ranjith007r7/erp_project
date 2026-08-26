@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/api";
 import { CustomFieldsSection } from "@/components/CustomFieldsSection";
 import { Modal } from "@/components/Modal";
 import { PageHeader, Button } from "@/components/ui";
+import { usePagination, PaginationControls } from "@/components/Pagination";
 
 type Lead = {
   id: string;
@@ -28,6 +29,7 @@ export default function CRMPage() {
   const [form, setForm] = useState({ name: "", company_name: "", email: "", source: "" });
   const [error, setError] = useState<string | null>(null);
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
+  const { pageItems: pagedLeads, page: leadPage, totalPages: leadTotalPages, setPage: setLeadPage } = usePagination(leads, 10);
   const [convertingLead, setConvertingLead] = useState<Lead | null>(null);
   const [convertForm, setConvertForm] = useState({ opportunity_name: "", value: "" });
 
@@ -115,7 +117,7 @@ export default function CRMPage() {
           </form>
 
           <div className="space-y-2">
-            {leads.map((lead) => {
+            {pagedLeads.map((lead) => {
               const expanded = expandedLeadId === lead.id;
               return (
                 <div key={lead.id} className="bg-white rounded-lg shadow-sm p-3">
@@ -153,6 +155,7 @@ export default function CRMPage() {
             })}
             {leads.length === 0 && <p className="text-sm text-slate-400">No leads yet.</p>}
           </div>
+          <PaginationControls page={leadPage} totalPages={leadTotalPages} onChange={setLeadPage} />
         </section>
 
         {/* Opportunities */}

@@ -17,6 +17,8 @@ from app.schemas.procurement import (
     PurchaseOrderCreate, PurchaseOrderOut,
 )
 from app.services.inventory import receive_stock
+from app.services.notifications import notify_role
+from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/api/procurement", tags=["procurement"], dependencies=[Depends(get_current_user)])
 
@@ -71,7 +73,7 @@ def list_purchase_orders(db: Session = Depends(get_db), org_id: str = Depends(ge
 
 
 @router.post("/purchase-orders/{po_id}/receive", response_model=PurchaseOrderOut, dependencies=[Depends(require_permission("procurement", "edit"))])
-def receive_purchase_order(po_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+def receive_purchase_order(po_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     """
     The actual moment stock increases. A Purchase Order existing does NOT
     mean stock exists - only receiving it does, exactly mirroring how a
@@ -100,6 +102,12 @@ def receive_purchase_order(po_id: str, db: Session = Depends(get_db), org_id: st
     po.status = "received"
     db.add(GoodsReceipt(org_id=org_id, po_id=po.id, received_date=date.today()))
 
+    # Real trigger #2 of 2 - a PO being received is exactly the kind of
+    # "something happened" event that should surface as a notification,
+    # not something someone has to remember to go check Procurement for.
+    notify_role(db, org_id, "Admin", f"Purchase order from {po.vendor.name if po.vendor else 'a vendor'} has been received — stock updated.")
+
+    log_audit_event(db, org_id, current_user.id, "receive_purchase_order", "PurchaseOrder", po.id)
     db.commit()
     db.refresh(po)
     return po

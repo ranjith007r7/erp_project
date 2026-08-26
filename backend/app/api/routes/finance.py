@@ -12,6 +12,8 @@ from app.models.finance import ChartOfAccounts, JournalEntry, Payment
 from app.models.sales import Invoice
 from app.schemas.finance import AccountOut, JournalEntryOut, PaymentCreate, PaymentOut
 from app.services.accounting import post_payment_journal_entry
+from app.services.notifications import notify_role
+from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/api/finance", tags=["finance"], dependencies=[Depends(get_current_user)])
 
@@ -33,7 +35,7 @@ def list_journal_entries(db: Session = Depends(get_db), org_id: str = Depends(ge
 
 
 @router.post("/payments", response_model=PaymentOut, status_code=201, dependencies=[Depends(require_permission("finance", "create"))])
-def record_payment(payload: PaymentCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+def record_payment(payload: PaymentCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     """
     Records money received against an Invoice, marks the Invoice paid (or
     partially - see note below), and posts the matching Journal Entry -
@@ -64,6 +66,12 @@ def record_payment(payload: PaymentCreate, db: Session = Depends(get_db), org_id
     # reasonable Phase-4-or-later refinement, not needed for the demo story.
     invoice.status = "paid"
 
+    # Real trigger #1 of 2 for "notifications only cover a few things" -
+    # invoice payment recorded is exactly the kind of event a real org
+    # would want to know about without someone manually checking Finance.
+    notify_role(db, org_id, "Admin", f"Payment of {payment.amount} recorded against an invoice — now marked paid.")
+
+    log_audit_event(db, org_id, current_user.id, "record_payment", "Invoice", invoice.id)
     db.commit()
     db.refresh(payment)
     return payment

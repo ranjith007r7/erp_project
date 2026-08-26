@@ -89,6 +89,9 @@ export default function DashboardPage() {
           <Link href="/settings/roles" className="text-sm text-slate-500 underline hover:text-slate-700">
             Roles & Permissions
           </Link>
+          <Link href="/settings/audit-log" className="text-sm text-slate-500 underline hover:text-slate-700">
+            Audit Log
+          </Link>
           <button
             onClick={handleLogout}
             className="text-sm text-slate-500 underline hover:text-slate-700"

@@ -43,6 +43,7 @@ from app.schemas.roles import (
     UserCreate, UserRoleUpdate, UserManagementOut, InviteCreate,
 )
 from app.services.email import send_invite_email
+from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/api/core", tags=["roles-users"], dependencies=[Depends(get_current_user)])
 
@@ -72,7 +73,7 @@ def list_roles(db: Session = Depends(get_db), org_id: str = Depends(get_org_id))
 
 
 @router.post("/roles/{role_id}/permissions", response_model=PermissionOut, status_code=201, dependencies=[Depends(require_permission("core", "manage_access"))])
-def grant_permission(role_id: str, payload: PermissionCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+def grant_permission(role_id: str, payload: PermissionCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     role = db.query(Role).filter(Role.id == role_id, Role.org_id == org_id).first()
     if not role:
         raise HTTPException(404, "Role not found")
@@ -83,6 +84,8 @@ def grant_permission(role_id: str, payload: PermissionCreate, db: Session = Depe
         return existing  # idempotent - granting the same permission twice isn't an error
     perm = Permission(role_id=role_id, module=payload.module, action=payload.action)
     db.add(perm)
+    db.flush()  # populate perm.id (Python-side UUID default only resolves at flush) before logging it
+    log_audit_event(db, org_id, current_user.id, "grant_permission", "Permission", perm.id)
     db.commit()
     db.refresh(perm)
     return perm
@@ -97,7 +100,7 @@ def list_role_permissions(role_id: str, db: Session = Depends(get_db), org_id: s
 
 
 @router.delete("/roles/{role_id}/permissions/{permission_id}", status_code=204, dependencies=[Depends(require_permission("core", "manage_access"))])
-def revoke_permission(role_id: str, permission_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+def revoke_permission(role_id: str, permission_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     role = db.query(Role).filter(Role.id == role_id, Role.org_id == org_id).first()
     if not role:
         raise HTTPException(404, "Role not found")
@@ -112,6 +115,7 @@ def revoke_permission(role_id: str, permission_id: str, db: Session = Depends(ge
         db.rollback()
         raise LAST_ADMIN_ERROR
 
+    log_audit_event(db, org_id, current_user.id, "revoke_permission", "Permission", permission_id)
     db.commit()
 
 
@@ -129,7 +133,7 @@ def list_users(db: Session = Depends(get_db), org_id: str = Depends(get_org_id))
 
 
 @router.post("/users", response_model=UserManagementOut, status_code=201, dependencies=[Depends(require_permission("core", "manage_access"))])
-def create_user(payload: UserCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+def create_user(payload: UserCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     """
     Requires manage_access, not just core.create - assigning a role at
     creation time is functionally identical to "create, then change
@@ -162,6 +166,8 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), org_id: str 
         email_verified=True,
     )
     db.add(user)
+    db.flush()  # populate user.id before logging it
+    log_audit_event(db, org_id, current_user.id, "create_user", "User", user.id)
     db.commit()
     db.refresh(user)
     return UserManagementOut(
@@ -171,7 +177,7 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), org_id: str 
 
 
 @router.patch("/users/{user_id}/role", response_model=UserManagementOut, dependencies=[Depends(require_permission("core", "manage_access"))])
-def update_user_role(user_id: str, payload: UserRoleUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+def update_user_role(user_id: str, payload: UserRoleUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     user = db.query(User).filter(User.id == user_id, User.org_id == org_id).first()
     if not user:
         raise HTTPException(404, "User not found")
@@ -187,6 +193,7 @@ def update_user_role(user_id: str, payload: UserRoleUpdate, db: Session = Depend
         db.rollback()
         raise LAST_ADMIN_ERROR
 
+    log_audit_event(db, org_id, current_user.id, "change_user_role", "User", user.id)
     db.commit()
     db.refresh(user)
     return UserManagementOut(

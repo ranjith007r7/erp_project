@@ -1496,3 +1496,73 @@ No migration needed — pure logic fix in `app/services/email.py`.
 
 **Two related, still-open items from this same conversation, not yet built — your call:** the raw, unstyled JSON validation error the signup page can show on a bad subdomain (e.g. uppercase letters), and the complete lack of any visible confirmation when signup actually succeeds (it silently redirects to the dashboard with no "Success!" moment at all, which is what caused the original confusion this whole thread started from). Both are real, reproducible, and worth fixing — say the word and they're next.
 
+---
+
+## PART 42 — Audit Log, Wider Pagination, Two New Notification Triggers
+
+Three of six requested items, built and fully tested. The other three (global search, bulk actions, CSV import) were deliberately deferred with reasons given upfront, not silently dropped — see the request that prompted this phase.
+
+### Audit Log — a real feature, not just the model that's existed since Phase 1
+
+Confirmed via direct code search before starting: `AuditLog` has existed since Phase 1 with a clean, correct shape, and **nothing anywhere in the codebase had ever written to it or read from it.**
+
+| Piece | What it does |
+|---|---|
+| `app/services/audit.py` | `log_audit_event()` — the one place anything writes to the log. Deliberately does NOT call `db.commit()` itself, so an audit entry is always part of the SAME transaction as the mutation it records — if that mutation rolls back, the audit entry rolls back with it. |
+| `GET /api/core/audit-log` | Read-only, `core.view` gated (same convention as listing roles/users), capped at the 500 most recent entries. |
+| `frontend/app/settings/audit-log/page.tsx` | New page, paginated from day one (20/page), plain-language action labels instead of raw action strings. |
+
+**Wired into 8 real mutation points**, prioritized around what the privilege-escalation incident earlier in this project actually needed and didn't have: `grant_permission`, `revoke_permission`, `create_user`, `change_user_role`, approval actions (approve/reject), `record_payment`, `receive_purchase_order`, `process_payroll`, `generate_invoice`. Honest scope note, stated plainly rather than implied: this is **not** every mutation across the whole app — a genuinely complete audit trail covering every create/update/delete everywhere would be a much larger, separate pass. Plain role *creation* (an empty role, zero permissions) was deliberately left un-logged, matching `roles.py`'s own existing reasoning that this is harmless on its own.
+
+**A real bug caught before it shipped, not after:** `Permission.id` and `User.id` use Python-side UUID defaults (`default=uuid.uuid4`) that SQLAlchemy only resolves at flush time, not at object construction. The first draft logged `entity_id` immediately after building the object, before any flush — every audit entry for `grant_permission` and `create_user` would have recorded `entity_id: null`, permanently. Caught by testing, not code review: fixed by adding `db.flush()` before each audit call that needs a freshly-generated ID, confirmed with a real request showing a genuine, non-null UUID in the response.
+
+**A second real bug, also caught by testing, in a completely different file:** wiring the audit call into Sales' `generate_invoice()` route added the function call but not its import — `NameError: name 'log_audit_event' is not defined`, a real 500 on real invoice generation, caught by running the exact business flow (product → stock → invoice → payment) that a real demo would run. Fixed, and every other file touched this session was then systematically grep-checked for the same class of mistake (call present, import present) rather than trusting memory that it had been done correctly everywhere.
+
+### Two new notification triggers
+
+Both reuse the existing `notify_role()` service exactly as-is:
+- **Payment recorded** → notifies Admin, with the real amount.
+- **Purchase order received** → notifies Admin, with the real vendor name.
+
+**A third real bug found while building the PO one:** the code referenced `po.vendor.name`, but `PurchaseOrder` had no `vendor` relationship defined at all — only the raw `vendor_id` foreign key column. Would have crashed on the very first real PO receipt. Fixed by adding the relationship to the model (no migration needed — relationships aren't database columns, only foreign keys are).
+
+### Pagination extended to the three lists explicitly requested
+
+CRM Leads, Sales Invoices, HR Employees — each wired to the exact same `usePagination`/`PaginationControls` component built in Phase 10, reused without modification. Verified against a genuinely large dataset: created 25 real leads via the API, confirmed the pagination math (10/page → 3 pages, last page holding the remaining 5) against that real 25-item array, not a small or synthetic one.
+
+**Honest coverage note:** other lists across the app (Sales quotations/orders, Procurement vendors/purchase orders, Documents, HR leave requests) were not extended this pass — the three done were the ones explicitly named.
+
+### Verified end-to-end, including a full real business flow
+
+```
+Grant a permission -> real audit entry, real non-null entity_id, real user_name (join confirmed working)
+Multi-tenancy: Org B's audit log stays empty while Org A's has real entries
+Restricted role without core.view -> 403 on the audit log route itself
+
+Full business flow: create product -> receive PO -> generate quotation -> accept ->
+  generate invoice -> record payment
+  -> PO receipt: real notification ("...has been received — stock updated"),
+     real audit entry
+  -> Invoice generation: initially crashed (missing import, caught immediately),
+     fixed, re-ran the SAME flow end-to-end -> succeeded, real audit entry
+  -> Payment: real notification ("Payment of 2000 recorded..."), real audit entry
+
+Pagination: 25 real leads created via API -> confirmed 3 pages, last page = 5 items,
+  matching the exact Node-run slicing logic against this real dataset size
+
+Full pytest suite -> 57 passed (5 new), zero regressions
+Frontend: real npm run build, clean, 23 routes, new audit-log page compiled correctly
+Full-stack: booted both servers, /crm /hr /sales /settings/audit-log all 200
+```
+
+**One test bug caught and fixed along the way, in my own test, not the shipped code:** a first-draft multi-tenancy test assumed plain role *creation* would produce an audit entry — it doesn't, by design (see above). The test was wrong, not the feature; fixed the test to exercise `grant_permission` instead, which is actually wired in.
+
+### Deploying this update
+
+```bash
+git add . && git commit -m "Audit log, wider pagination, invoice-paid and PO-received notifications" && git push
+```
+No Alembic migration needed — confirmed zero schema drift (the `PurchaseOrder.vendor` addition is a relationship, not a column).
+
+**Still open from the original six, deferred deliberately, not silently:** global search, bulk actions, and CSV import — each flagged with a specific reason at the start of this phase (new architecture decisions, direct interaction with the RBAC last-admin-guard, and untrusted-data validation risk respectively), not bundled in to avoid rushing their testing.
+

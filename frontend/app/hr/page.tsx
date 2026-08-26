@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { NotificationBell } from "@/components/NotificationBell";
 import { PageHeader } from "@/components/ui";
+import { usePagination, PaginationControls } from "@/components/Pagination";
 
 type Department = { id: string; name: string };
 type Employee = { id: string; name: string; designation: string | null; salary: string; department_id: string | null };
@@ -14,6 +15,7 @@ type PayrollRun = { id: string; month: number; year: number; status: string; pay
 export default function HRPage() {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const { pageItems: pagedEmployees, page: employeePage, totalPages: employeeTotalPages, setPage: setEmployeePage } = usePagination(employees, 10);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -156,7 +158,7 @@ export default function HRPage() {
         <section>
           <h2 className="font-semibold text-slate-700 mb-3">Employees</h2>
           <div className="bg-white rounded-lg shadow-sm divide-y">
-            {employees.map((e) => (
+            {pagedEmployees.map((e) => (
               <div key={e.id} className="p-3 text-sm">
                 <p className="text-slate-800 font-medium">{e.name}</p>
                 <p className="text-xs text-slate-500">{e.designation || "—"} · ₹{Number(e.salary).toLocaleString("en-IN")}/mo</p>
@@ -164,6 +166,7 @@ export default function HRPage() {
             ))}
             {employees.length === 0 && <p className="p-3 text-sm text-slate-400">No employees yet.</p>}
           </div>
+          <PaginationControls page={employeePage} totalPages={employeeTotalPages} onChange={setEmployeePage} />
         </section>
 
         <section>

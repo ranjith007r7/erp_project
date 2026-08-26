@@ -23,6 +23,7 @@ from app.schemas.hr import (
 )
 from app.services.accounting import post_payroll_journal_entry
 from app.services.notifications import notify_user
+from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/api/hr", tags=["hr"], dependencies=[Depends(get_current_user)])
 
@@ -169,7 +170,7 @@ def list_payroll_runs(db: Session = Depends(get_db), org_id: str = Depends(get_o
 
 
 @router.post("/payroll-runs/{run_id}/process", response_model=PayrollRunOut, dependencies=[Depends(require_permission("hr", "edit"))])
-def process_payroll_run(run_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+def process_payroll_run(run_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     """
     Generates a Payslip for every active Employee (a flat 10% deduction,
     for demo purposes - a real system would model tax slabs, PF, etc. as
@@ -203,6 +204,7 @@ def process_payroll_run(run_id: str, db: Session = Depends(get_db), org_id: str 
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+    log_audit_event(db, org_id, current_user.id, "process_payroll", "PayrollRun", run.id)
     db.commit()
     db.refresh(run)
     return run
