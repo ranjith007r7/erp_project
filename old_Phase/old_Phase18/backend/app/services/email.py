@@ -27,7 +27,14 @@ FROM_ADDRESS = "Base ERP <onboarding@resend.dev>"
 
 def send_email(to: str, subject: str, body: str) -> None:
     if not settings.RESEND_API_KEY:
-        _log_fallback(to, subject, body, reason="no RESEND_API_KEY configured")
+        logger.warning(
+            "\n"
+            "==================== EMAIL NOT ACTUALLY SENT (no RESEND_API_KEY configured) ====================\n"
+            f"To: {to}\n"
+            f"Subject: {subject}\n"
+            f"{body}\n"
+            "==================================================================================================="
+        )
         return
 
     html_body = body.replace("\n", "<br>")
@@ -45,35 +52,13 @@ def send_email(to: str, subject: str, body: str) -> None:
             # in app/services/notifications.py. The caller already
             # returns a generic "if that email exists..." response
             # regardless of whether the send worked, so this failing
-            # doesn't change what the user sees.
-            #
-            # Real bug fixed here, found via actual use: this branch
-            # used to log ONLY the error, never the email's actual
-            # content - meaning the moment a real RESEND_API_KEY got
-            # configured, every REJECTED send (e.g. Resend's "you can
-            # only send to your own address" limit) silently lost the
-            # one thing that made this whole system testable without
-            # real delivery: the actual link, visible in Render's logs.
-            # Now falls back to logging the full content on ANY failure,
-            # not just when no key is configured at all.
+            # doesn't change what the user sees - it just means the
+            # link never arrives, which is diagnosable here in the logs.
             logger.error(f"Resend API returned {response.status_code} sending to {to}: {response.text}")
-            _log_fallback(to, subject, body, reason=f"Resend rejected the send (HTTP {response.status_code})")
         else:
             logger.info(f"Email sent via Resend to {to}: {subject!r} (id={response.json().get('id')})")
     except Exception as e:
         logger.error(f"Failed to send email via Resend to {to}: {e}")
-        _log_fallback(to, subject, body, reason=f"a network/client error occurred: {e}")
-
-
-def _log_fallback(to: str, subject: str, body: str, reason: str) -> None:
-    logger.warning(
-        "\n"
-        f"==================== EMAIL NOT DELIVERED ({reason}) ====================\n"
-        f"To: {to}\n"
-        f"Subject: {subject}\n"
-        f"{body}\n"
-        "=========================================================================="
-    )
 
 
 def send_password_reset_email(to: str, raw_token: str) -> None:

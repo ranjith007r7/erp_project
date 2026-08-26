@@ -1384,7 +1384,7 @@ You can test the whole pipeline immediately without waiting for the schedule: Gi
 
 ```bash
 git add . && git commit -m "Recurring scheduled jobs: overdue invoice reminders, weekly report digest" && git push
-```
+
 ```
 No Alembic migration needed — confirmed zero schema drift, this phase only adds routes, settings, and a GitHub Actions workflow file.
 
@@ -1451,48 +1451,4 @@ Verified the compiled production bundles for both `login` and `dashboard` genuin
 git add . && git commit -m "Real file uploads via Cloudflare R2, resend-cooldown countdown fix" && git push
 ```
 One migration (`56a6e2322d1a`) — applies itself automatically via Render's Start Command. To actually enable uploads: create an R2 bucket at dash.cloudflare.com, generate an API token, and add `R2_ACCOUNT_ID`/`R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`/`R2_BUCKET_NAME` to Render's environment variables — until then, the upload button will show a clear "not configured yet" message rather than fail silently.
-
----
-
-## PART 41 — A Real Bug Found Through Use: Rejected Emails Lost Their Own Link
-
-Found by the user directly, mid-testing — trying to reset a second account's password (one that wasn't the Resend-verified address) and finding nothing usable in Render's logs, only an error.
-
-### What was actually wrong
-
-`send_email()`'s fallback logging — the thing that's made every single email flow in this project testable without real delivery, from Phase 13 onward — only fired when `RESEND_API_KEY` was completely unset. The moment a real key got configured (which happened naturally, once verification/invite testing needed it), that safety net silently stopped covering the one case it mattered most for: **a real send that Resend actively rejects** (exactly what happens for any address other than the Resend account's own — the same domain-verification limit hit repeatedly throughout this project). In that specific case, only the error got logged; the actual link — the one thing needed to complete the flow manually — was gone, with no way to recover it.
-
-This wasn't a corner case someone might never hit. It's the *exact* situation every test of email delivery in this project has run into, over and over, the moment a real API key exists.
-
-### The fix
-
-`send_email()` now falls back to logging the full email content — including the real link — on **every** failure path, not just "no key configured": a rejected send (any 4xx/5xx from Resend) and a network/client exception both now log the actual content alongside the error, not instead of it. A successful send still doesn't need the fallback, since it presumably worked.
-
-### Verified against the exact real scenario, not assumed fixed
-
-```
-Real signup (fires a verification email automatically)
-Real forgot-password request
-Both configured WITH a real API key set, forcing the actual send-attempt path
-  (not the "no key" fallback - that path was never broken)
-
-Result: BOTH the error AND the real link now appear in the log:
-  "Resend API returned 403 sending to ...: Host not in allowlist..."
-  "==================== EMAIL NOT DELIVERED (Resend rejected the send (HTTP 403)) ===================="
-  "http://localhost:3000/verify-email?token=..."
-  "http://localhost:3000/reset-password?token=..."
-
-Full pytest suite -> 52 passed, zero regressions
-```
-
-One incidental confirmation from this test: `api.resend.com` is genuinely unreachable from this sandbox's network ("Host not in allowlist"), unlike Cloudflare R2's API, which returned a real response in earlier testing. Consistent with, not contradicting, the earlier finding.
-
-### Deploying this update
-
-```bash
-git add . && git commit -m "Fix: rejected email sends lost their own link once a real API key was configured" && git push
-```
-No migration needed — pure logic fix in `app/services/email.py`.
-
-**Two related, still-open items from this same conversation, not yet built — your call:** the raw, unstyled JSON validation error the signup page can show on a bad subdomain (e.g. uppercase letters), and the complete lack of any visible confirmation when signup actually succeeds (it silently redirects to the dashboard with no "Success!" moment at all, which is what caused the original confusion this whole thread started from). Both are real, reproducible, and worth fixing — say the word and they're next.
 
