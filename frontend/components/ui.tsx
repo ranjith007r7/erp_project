@@ -6,6 +6,14 @@
  * "primary action" treatments. These primitives are the fix: one
  * definition per semantic type, used everywhere instead of copy-pasted.
  *
+ * Every primitive here carries real dark: variants - found through
+ * actual use that adding a dark-mode-aware page background globally,
+ * without dark: classes on the shared primitives every page is built
+ * from, produced BROKEN pages (illegible near-invisible text), not just
+ * inconsistent-looking ones. Fixing dark mode here is the highest-
+ * leverage single change available, since most of the app's 23 pages
+ * build their headers/cards/buttons/inputs from these exact functions.
+ *
  * Deliberately NOT "use client" — these are plain functions with no
  * hooks, so they work in both server and client components.
  */
@@ -13,10 +21,10 @@ import type { ButtonHTMLAttributes, InputHTMLAttributes, SelectHTMLAttributes } 
 import Link from "next/link";
 
 const BUTTON_VARIANTS = {
-  primary: "bg-slate-800 text-white hover:bg-slate-700",
-  secondary: "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50",
+  primary: "bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-300",
+  secondary: "bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-100 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600",
   danger: "bg-red-600 text-white hover:bg-red-700",
-  ghost: "text-slate-500 hover:text-slate-700 underline",
+  ghost: "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 underline",
 } as const;
 
 const BUTTON_SIZES = {
@@ -30,7 +38,7 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 export function Button({ variant = "primary", size = "md", className = "", ...props }: ButtonProps) {
-  const base = variant === "ghost" ? "" : "rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed";
+  const base = variant === "ghost" ? "" : "rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors";
   const sizeClass = variant === "ghost" ? "text-sm" : BUTTON_SIZES[size];
   return (
     <button
@@ -46,13 +54,13 @@ export function Input({ label, className = "", id, ...props }: InputProps) {
   const input = (
     <input
       id={id}
-      className={`w-full border border-slate-300 rounded-lg px-3 py-2 text-sm ${className}`.trim()}
+      className={`w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg px-3 py-2 text-sm ${className}`.trim()}
       {...props}
     />
   );
   if (!label) return input;
   return (
-    <label htmlFor={id} className="block text-sm text-slate-600">
+    <label htmlFor={id} className="block text-sm text-slate-600 dark:text-slate-300">
       {label}
       <div className="mt-1">{input}</div>
     </label>
@@ -65,7 +73,7 @@ export function Select({ label, className = "", id, children, ...props }: Select
   const select = (
     <select
       id={id}
-      className={`w-full border border-slate-300 rounded-lg px-3 py-2 text-sm ${className}`.trim()}
+      className={`w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 text-sm ${className}`.trim()}
       {...props}
     >
       {children}
@@ -73,7 +81,7 @@ export function Select({ label, className = "", id, children, ...props }: Select
   );
   if (!label) return select;
   return (
-    <label htmlFor={id} className="block text-sm text-slate-600">
+    <label htmlFor={id} className="block text-sm text-slate-600 dark:text-slate-300">
       {label}
       <div className="mt-1">{select}</div>
     </label>
@@ -81,7 +89,7 @@ export function Select({ label, className = "", id, children, ...props }: Select
 }
 
 export function Card({ className = "", children }: { className?: string; children: React.ReactNode }) {
-  return <div className={`bg-white rounded-xl shadow-sm ${className}`.trim()}>{children}</div>;
+  return <div className={`bg-white dark:bg-slate-800 rounded-xl shadow-sm dark:shadow-none dark:border dark:border-slate-700 ${className}`.trim()}>{children}</div>;
 }
 
 /**
@@ -92,21 +100,29 @@ export function Card({ className = "", children }: { className?: string; childre
  */
 export function PageHeader({
   title,
+  description,
   backHref = "/dashboard",
   backLabel = "← Dashboard",
   actions,
 }: {
   title: string;
+  description?: string;
   backHref?: string;
   backLabel?: string;
   actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex justify-between items-center mb-6">
-      <h1 className="text-2xl font-bold text-slate-800">{title}</h1>
+    <div className="flex justify-between items-start mb-6 flex-wrap gap-2">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{title}</h1>
+        {description && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-xl">{description}</p>}
+      </div>
       <div className="flex items-center gap-4">
         {actions}
-        <Link href={backHref} className="text-sm text-slate-500 underline hover:text-slate-700">
+        <Link
+          href={backHref}
+          className="text-sm text-slate-500 dark:text-slate-400 underline hover:text-slate-700 dark:hover:text-slate-200"
+        >
           {backLabel}
         </Link>
       </div>

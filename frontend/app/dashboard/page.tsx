@@ -8,10 +8,9 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { VerificationBanner } from "@/components/VerificationBanner";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { SkeletonStatTile, SkeletonCard } from "@/components/Skeleton";
-import { OrgBranding } from "@/components/OrgBranding";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
-  Settings2, Shield, ScrollText, LogOut,
+  Settings2, Shield, ScrollText, LogOut, Palette,
   Users2, ShoppingCart, Wallet, Package, Truck, UserRound, FolderKanban, FileText, BarChart3,
 } from "lucide-react";
 
@@ -94,11 +93,10 @@ export default function DashboardPage() {
   }
 
   return (
-    <OrgBranding>
-      <main className="min-h-screen p-8">
-        <div className="flex justify-between items-center mb-8 gap-4 flex-wrap">
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Dashboard</h1>
-          <GlobalSearch />
+    <main className="min-h-screen p-8">
+      <div className="flex justify-between items-center mb-8 gap-4 flex-wrap">
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Dashboard</h1>
+        <GlobalSearch />
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <NotificationBell />
@@ -119,6 +117,12 @@ export default function DashboardPage() {
               className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
             >
               <ScrollText size={16} /> Audit Log
+            </Link>
+            <Link
+              href="/settings/appearance"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+            >
+              <Palette size={16} /> Appearance
             </Link>
             <button
               onClick={handleLogout}
@@ -179,7 +183,6 @@ export default function DashboardPage() {
         })}
       </div>
       </main>
-    </OrgBranding>
   );
 }
 

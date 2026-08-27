@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { ConfirmModal } from "@/components/Modal";
+import { PageHeader } from "@/components/ui";
 
 type CustomField = {
   id: string;
@@ -94,32 +95,28 @@ export default function CustomFieldsSettingsPage() {
 
   return (
     <main className="min-h-screen p-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Custom Fields</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Define extra fields for your organization — they'll appear on the matching record's form automatically.
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link href="/settings/roles" className="text-sm text-slate-500 underline hover:text-slate-700">
+      <PageHeader
+        title="Custom Fields"
+        description="Define extra fields for your organization — they'll appear on the matching record's form automatically."
+        actions={
+          <Link
+            href="/settings/roles"
+            className="text-sm text-slate-500 dark:text-slate-400 underline hover:text-slate-700 dark:hover:text-slate-200"
+          >
             Roles & Permissions
           </Link>
-          <Link href="/dashboard" className="text-sm text-slate-500 underline">
-            ← Dashboard
-          </Link>
-        </div>
-      </div>
+        }
+      />
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
-      <form onSubmit={handleCreate} className="bg-white rounded-xl shadow-sm p-4 mb-8 max-w-2xl space-y-2">
-        <h2 className="font-semibold text-slate-700 text-sm">Add a Field</h2>
+      <form onSubmit={handleCreate} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm dark:border dark:border-slate-700 p-4 mb-8 max-w-2xl space-y-2">
+        <h2 className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Add a Field</h2>
 
         <select
           value={ENTITY_OPTIONS.find((o) => o.module === form.module && o.entity_type === form.entity_type)?.label}
           onChange={(e) => handleEntityChange(e.target.value)}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+          className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 text-sm"
         >
           {ENTITY_OPTIONS.map((o) => (
             <option key={o.label} value={o.label}>{o.label}</option>
@@ -131,21 +128,21 @@ export default function CustomFieldsSettingsPage() {
           required
           value={form.field_name}
           onChange={(e) => setForm({ ...form, field_name: e.target.value })}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+          className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg px-3 py-2 text-sm"
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <select
             value={form.field_type}
             onChange={(e) => setForm({ ...form, field_type: e.target.value })}
-            className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            className="border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 text-sm"
           >
             {FIELD_TYPES.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
 
-          <label className="flex items-center gap-2 text-sm text-slate-600 px-1">
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 px-1">
             <input
               type="checkbox"
               checked={form.is_required}
@@ -161,25 +158,25 @@ export default function CustomFieldsSettingsPage() {
             required
             value={form.options}
             onChange={(e) => setForm({ ...form, options: e.target.value })}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg px-3 py-2 text-sm"
           />
         )}
 
-        <button className="w-full bg-slate-800 text-white rounded-lg py-2 text-sm font-medium hover:bg-slate-700">
+        <button className="w-full bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-slate-300 transition-colors">
           Add Field
         </button>
       </form>
 
       <div className="max-w-2xl">
-        <h2 className="font-semibold text-slate-700 mb-3">Existing Fields</h2>
-        <div className="bg-white rounded-lg shadow-sm divide-y">
+        <h2 className="font-semibold text-slate-700 dark:text-slate-200 mb-3">Existing Fields</h2>
+        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm dark:border dark:border-slate-700 divide-y dark:divide-slate-700">
           {fields.map((f) => (
             <div key={f.id} className="p-3 flex justify-between items-center text-sm">
               <div>
-                <p className={f.is_active ? "text-slate-800 font-medium" : "text-slate-400 font-medium line-through"}>
+                <p className={f.is_active ? "text-slate-800 dark:text-slate-100 font-medium" : "text-slate-400 dark:text-slate-500 font-medium line-through"}>
                   {f.field_name}
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   {ENTITY_OPTIONS.find((o) => o.module === f.module && o.entity_type === f.entity_type)?.label || `${f.module} — ${f.entity_type}`}
                   {" · "}{f.field_type}
                   {f.is_required && " · required"}
@@ -189,13 +186,13 @@ export default function CustomFieldsSettingsPage() {
               <div className="flex gap-2">
                 <button
                   onClick={() => toggleActive(f)}
-                  className="text-xs text-slate-500 underline hover:text-slate-700"
+                  className="text-xs text-slate-500 dark:text-slate-400 underline hover:text-slate-700 dark:hover:text-slate-200"
                 >
                   {f.is_active ? "Deactivate" : "Activate"}
                 </button>
                 <button
                   onClick={() => setDeletingField(f)}
-                  className="text-xs text-red-500 underline hover:text-red-700"
+                  className="text-xs text-red-500 dark:text-red-400 underline hover:text-red-700 dark:hover:text-red-300"
                 >
                   Delete
                 </button>
