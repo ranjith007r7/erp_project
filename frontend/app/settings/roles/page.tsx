@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { PageHeader, Button, Input, Select, Card } from "@/components/ui";
 import { ConfirmModal } from "@/components/Modal";
+import { apiUpload } from "@/lib/api";
+import { useToast } from "@/components/Toast";
+import { ImageUp, Trash2 } from "lucide-react";
 
 type Role = { id: string; org_id: string; name: string };
 type Permission = { id: string; role_id: string; module: string; action: string };
@@ -27,6 +30,9 @@ const MODULES = [
 const ACTIONS = ["view", "create", "edit", "delete", "approve"] as const;
 
 export default function RolesSettingsPage() {
+  const { showToast } = useToast();
+  const [brandingFile, setBrandingFile] = useState<File | null>(null);
+  const [brandingUploading, setBrandingUploading] = useState(false);
   const [roles, setRoles] = useState<Role[]>([]);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<Permission[]>([]);
@@ -222,6 +228,31 @@ export default function RolesSettingsPage() {
     }
   }
 
+  async function handleUploadBranding() {
+    if (!brandingFile) return;
+    setBrandingUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", brandingFile);
+      await apiUpload("/api/organizations/branding", formData);
+      showToast("Branding updated - every member of your organization will see it.", "success");
+      setBrandingFile(null);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to update branding", "error");
+    } finally {
+      setBrandingUploading(false);
+    }
+  }
+
+  async function handleRemoveBranding() {
+    try {
+      await apiRequest("/api/organizations/branding", { method: "DELETE", auth: true });
+      showToast("Branding removed.", "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to remove branding", "error");
+    }
+  }
+
   const selectedRole = roles.find((r) => r.id === selectedRoleId);
 
   return (
@@ -236,6 +267,30 @@ export default function RolesSettingsPage() {
       />
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
+
+      <Card className="p-4 mb-6 max-w-2xl">
+        <h2 className="font-semibold text-slate-700 text-sm mb-1 flex items-center gap-1.5">
+          <ImageUp size={16} /> Organization Branding
+        </h2>
+        <p className="text-xs text-slate-500 mb-3">
+          Upload a logo or background image. It will be shown to every member of your organization —
+          not just you. Only Admins (or anyone with &quot;Manage Roles &amp; Permissions&quot;) can change this.
+        </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => setBrandingFile(e.target.files?.[0] ?? null)}
+            className="text-xs"
+          />
+          <Button size="sm" disabled={!brandingFile || brandingUploading} onClick={handleUploadBranding}>
+            {brandingUploading ? "Uploading…" : "Upload"}
+          </Button>
+          <Button variant="danger" size="sm" onClick={handleRemoveBranding} className="flex items-center gap-1">
+            <Trash2 size={14} /> Remove
+          </Button>
+        </div>
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Roles */}

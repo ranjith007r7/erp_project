@@ -8,6 +8,8 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { VerificationBanner } from "@/components/VerificationBanner";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { SkeletonStatTile, SkeletonCard } from "@/components/Skeleton";
+import { OrgBranding } from "@/components/OrgBranding";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   Settings2, Shield, ScrollText, LogOut,
   Users2, ShoppingCart, Wallet, Package, Truck, UserRound, FolderKanban, FileText, BarChart3,
@@ -92,42 +94,44 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="min-h-screen p-8">
-      <div className="flex justify-between items-center mb-8 gap-4 flex-wrap">
-        <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
-        <GlobalSearch />
-        <div className="flex items-center gap-2">
-          <NotificationBell />
-          <Link
-            href="/settings/custom-fields"
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors"
-          >
-            <Settings2 size={16} /> Custom Fields
-          </Link>
-          <Link
-            href="/settings/roles"
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors"
-          >
-            <Shield size={16} /> Roles & Permissions
-          </Link>
-          <Link
-            href="/settings/audit-log"
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors"
-          >
-            <ScrollText size={16} /> Audit Log
-          </Link>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors"
-          >
-            <LogOut size={16} /> Log out
-          </button>
+    <OrgBranding>
+      <main className="min-h-screen p-8">
+        <div className="flex justify-between items-center mb-8 gap-4 flex-wrap">
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Dashboard</h1>
+          <GlobalSearch />
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <NotificationBell />
+            <Link
+              href="/settings/custom-fields"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+            >
+              <Settings2 size={16} /> Custom Fields
+            </Link>
+            <Link
+              href="/settings/roles"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+            >
+              <Shield size={16} /> Roles & Permissions
+            </Link>
+            <Link
+              href="/settings/audit-log"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+            >
+              <ScrollText size={16} /> Audit Log
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+            >
+              <LogOut size={16} /> Log out
+            </button>
+          </div>
         </div>
-      </div>
 
-      {user && !user.email_verified && <VerificationBanner email={user.email} />}
+        {user && !user.email_verified && <VerificationBanner email={user.email} />}
 
-      <div className="bg-white rounded-xl shadow-sm p-6 max-w-md mb-8">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6 max-w-md mb-8">
         <p className="text-slate-500 text-sm mb-1">Logged in as</p>
         <p className="text-lg font-medium text-slate-800">{user.name}</p>
         <p className="text-slate-500">{user.email}</p>
@@ -174,7 +178,8 @@ export default function DashboardPage() {
           );
         })}
       </div>
-    </main>
+      </main>
+    </OrgBranding>
   );
 }
 
