@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import hash_password, generate_one_time_token
-from app.api.deps import get_current_user, get_org_id, require_permission, org_has_admin_equivalent_user, lock_org_for_admin_guard
+from app.api.deps import get_current_user, get_org_id, require_permission, org_has_admin_equivalent_user
 from app.models.organization import Organization
 from app.models.role import Role, Permission
 from app.models.user import User
@@ -101,7 +101,6 @@ def list_role_permissions(role_id: str, db: Session = Depends(get_db), org_id: s
 
 @router.delete("/roles/{role_id}/permissions/{permission_id}", status_code=204, dependencies=[Depends(require_permission("core", "manage_access"))])
 def revoke_permission(role_id: str, permission_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
-    lock_org_for_admin_guard(db, org_id)
     role = db.query(Role).filter(Role.id == role_id, Role.org_id == org_id).first()
     if not role:
         raise HTTPException(404, "Role not found")
@@ -179,7 +178,6 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db), org_id: str 
 
 @router.patch("/users/{user_id}/role", response_model=UserManagementOut, dependencies=[Depends(require_permission("core", "manage_access"))])
 def update_user_role(user_id: str, payload: UserRoleUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
-    lock_org_for_admin_guard(db, org_id)
     user = db.query(User).filter(User.id == user_id, User.org_id == org_id).first()
     if not user:
         raise HTTPException(404, "User not found")
@@ -313,11 +311,6 @@ def bulk_assign_role(payload: BulkRoleAssignRequest, db: Session = Depends(get_d
     skipped: list[dict] = []
 
     for user_id in payload.user_ids:
-        # Re-acquired every iteration, not once before the loop - each
-        # iteration has its OWN commit (ending that transaction and
-        # releasing an xact-scoped lock), so a single lock taken before
-        # the loop would only actually protect the first user processed.
-        lock_org_for_admin_guard(db, org_id)
         user = db.query(User).filter(User.id == user_id, User.org_id == org_id).first()
         if not user:
             skipped.append({"user_id": user_id, "reason": "not found"})

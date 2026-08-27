@@ -6,7 +6,6 @@ that checks "is this request's login token valid?" for the whole app.
 """
 from fastapi import Depends, HTTPException, Header, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -149,35 +148,6 @@ def require_permission(module: str, action: str):
             )
 
     return dependency
-
-
-def lock_org_for_admin_guard(db: Session, org_id: str) -> None:
-    """
-    A real database-level guarantee, not an empirically-observed one.
-
-    Found via an actual concurrent-request attack (two admin-equivalent
-    users, in genuinely simultaneous threads, each trying to demote the
-    other) that the flush-check-commit pattern held up in that one real
-    test run - but a single passing concurrency test doesn't prove a
-    TOCTOU (time-of-check-to-time-of-use) race is impossible under
-    every condition (multiple worker processes, connection pools, exact
-    instant-of-interleaving timing this test didn't happen to hit).
-    Given this guards the exact same class of vulnerability behind a
-    real documented incident in this project, closing the theoretical
-    gap outright was worth doing rather than trusting one passing test.
-
-    pg_advisory_xact_lock() takes a real Postgres-level lock, scoped to
-    this org (hashtext(org_id) as the lock key) and this transaction -
-    automatically released on commit or rollback, no manual unlock
-    needed. Any other request trying to touch this SAME org's
-    admin-equivalence guard has to wait for this transaction to finish
-    first, so two concurrent "does this leave the org without an admin"
-    checks can never run against a state the other hasn't already
-    resolved. Called at the START of every route that can affect
-    manage_access (grant/revoke permission, single or bulk role change)
-    - see roles.py.
-    """
-    db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:org_id))"), {"org_id": str(org_id)})
 
 
 def org_has_admin_equivalent_user(db: Session, org_id: str) -> bool:
