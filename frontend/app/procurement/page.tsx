@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { PageHeader } from "@/components/ui";
+import { SkeletonList } from "@/components/Skeleton";
 
 type Vendor = { id: string; name: string };
 type Product = { id: string; name: string; unit_price: string };
@@ -15,14 +16,17 @@ export default function ProcurementPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [vendorForm, setVendorForm] = useState({ name: "" });
   const [poForm, setPoForm] = useState({ vendor_id: "", product_id: "", qty: "1", unit_price: "" });
 
   function loadAll() {
-    apiRequest<Vendor[]>("/api/procurement/vendors", { auth: true }).then(setVendors).catch(() => {});
-    apiRequest<Product[]>("/api/sales/products", { auth: true }).then(setProducts).catch(() => {});
-    apiRequest<PurchaseOrder[]>("/api/procurement/purchase-orders", { auth: true }).then(setOrders).catch((e) => setError(e.message));
+    Promise.allSettled([
+      apiRequest<Vendor[]>("/api/procurement/vendors", { auth: true }).then(setVendors),
+      apiRequest<Product[]>("/api/sales/products", { auth: true }).then(setProducts),
+      apiRequest<PurchaseOrder[]>("/api/procurement/purchase-orders", { auth: true }).then(setOrders).catch((e) => setError(e.message)),
+    ]).finally(() => setLoading(false));
   }
 
   useEffect(loadAll, []);
@@ -71,6 +75,10 @@ export default function ProcurementPage() {
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
+      {loading ? (
+        <SkeletonList rows={3} />
+      ) : (
+      <>
       <div className="grid md:grid-cols-2 gap-6 mb-8">
         <form onSubmit={addVendor} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Add Vendor</h2>
@@ -156,6 +164,8 @@ export default function ProcurementPage() {
           {orders.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No purchase orders yet.</p>}
         </div>
       </section>
+      </>
+      )}
     </main>
   );
 }

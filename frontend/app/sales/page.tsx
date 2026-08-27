@@ -5,6 +5,7 @@ import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { PageHeader } from "@/components/ui";
 import { usePagination, PaginationControls } from "@/components/Pagination";
+import { SkeletonList } from "@/components/Skeleton";
 
 type Product = { id: string; name: string; unit_price: string };
 type Customer = { id: string; name: string };
@@ -21,17 +22,20 @@ export default function SalesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const { pageItems: pagedInvoices, page: invoicePage, totalPages: invoiceTotalPages, setPage: setInvoicePage } = usePagination(invoices, 10);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [productForm, setProductForm] = useState({ name: "", unit_price: "" });
   const [customerForm, setCustomerForm] = useState({ name: "" });
   const [quoteForm, setQuoteForm] = useState({ customer_id: "", product_id: "", qty: "1", unit_price: "" });
 
   function loadAll() {
-    apiRequest<Product[]>("/api/sales/products", { auth: true }).then(setProducts).catch(() => {});
-    apiRequest<Customer[]>("/api/sales/customers", { auth: true }).then(setCustomers).catch(() => {});
-    apiRequest<Quotation[]>("/api/sales/quotations", { auth: true }).then(setQuotations).catch((e) => setError(e.message));
-    apiRequest<SalesOrder[]>("/api/sales/orders", { auth: true }).then(setOrders).catch(() => {});
-    apiRequest<Invoice[]>("/api/sales/invoices", { auth: true }).then(setInvoices).catch(() => {});
+    Promise.allSettled([
+      apiRequest<Product[]>("/api/sales/products", { auth: true }).then(setProducts),
+      apiRequest<Customer[]>("/api/sales/customers", { auth: true }).then(setCustomers),
+      apiRequest<Quotation[]>("/api/sales/quotations", { auth: true }).then(setQuotations).catch((e) => setError(e.message)),
+      apiRequest<SalesOrder[]>("/api/sales/orders", { auth: true }).then(setOrders),
+      apiRequest<Invoice[]>("/api/sales/invoices", { auth: true }).then(setInvoices),
+    ]).finally(() => setLoading(false));
   }
 
   useEffect(loadAll, []);
@@ -110,6 +114,10 @@ export default function SalesPage() {
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
+      {loading && <SkeletonList rows={3} />}
+
+      {!loading && (
+      <>
       <div className="grid md:grid-cols-2 gap-6 mb-8">
         <form onSubmit={addProduct} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Add Product</h2>
@@ -254,6 +262,8 @@ export default function SalesPage() {
           <PaginationControls page={invoicePage} totalPages={invoiceTotalPages} onChange={setInvoicePage} />
         </section>
       </div>
+      </>
+      )}
     </main>
   );
 }

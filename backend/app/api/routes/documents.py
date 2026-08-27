@@ -25,6 +25,9 @@ from app.schemas.documents import (
     ApprovalRequestCreate, ApprovalRequestOut,
     ApprovalActionRequest,
 )
+# Reused as-is rather than duplicated - a generic {ids: [...]} shape,
+# originally defined for CRM's bulk-delete, applies identically here.
+from app.schemas.crm import BulkDeleteRequest
 
 router = APIRouter(prefix="/api/documents", tags=["documents"], dependencies=[Depends(get_current_user)])
 
@@ -43,6 +46,49 @@ def create_document(payload: DocumentCreate, db: Session = Depends(get_db), org_
 @router.get("", response_model=list[DocumentOut], dependencies=[Depends(require_permission("documents", "view"))])
 def list_documents(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Document).filter(Document.org_id == org_id).order_by(Document.created_at.desc()).all()
+
+
+@router.delete("/{document_id}", status_code=204, dependencies=[Depends(require_permission("documents", "delete"))])
+def delete_document(document_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    """
+    Confirmed safe before building this: grepped every model in the app
+    for a ForeignKey pointing at documents.id - none exists. Unlike
+    Leads (a real single-item delete already existed to compose bulk
+    from) or Customers/Employees/Vendors (deliberately left without
+    delete at all, since Invoices/Payroll/POs reference them), a
+    Document has zero downstream dependents, so hard-deleting one here
+    carries none of the "might orphan real financial data" risk that
+    shaped every other delete decision in this app.
+
+    Note: this only removes the DATABASE row, not the underlying R2
+    object if one exists (doc.storage_key) - the uploaded file itself
+    stays in the bucket. Acceptable for now (matches this project's
+    "prove the mechanism first" scoping elsewhere); a follow-up could
+    call storage.py to also delete the R2 object.
+    """
+    doc = db.query(Document).filter(Document.id == document_id, Document.org_id == org_id).first()
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    db.delete(doc)
+    log_audit_event(db, org_id, current_user.id, "delete_document", "Document", document_id)
+    db.commit()
+
+
+@router.post("/bulk-delete", dependencies=[Depends(require_permission("documents", "delete"))])
+def bulk_delete_documents(payload: BulkDeleteRequest, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    """Composes from the same per-item logic as delete_document above - same pattern as CRM's bulk-delete."""
+    deleted_ids: list[str] = []
+    not_found_ids: list[str] = []
+    for doc_id in payload.ids:
+        doc = db.query(Document).filter(Document.id == doc_id, Document.org_id == org_id).first()
+        if not doc:
+            not_found_ids.append(doc_id)
+            continue
+        db.delete(doc)
+        log_audit_event(db, org_id, current_user.id, "delete_document", "Document", doc_id)
+        deleted_ids.append(doc_id)
+    db.commit()
+    return {"deleted": deleted_ids, "not_found": not_found_ids}
 
 
 @router.post("/upload", response_model=DocumentOut, status_code=201, dependencies=[Depends(require_permission("documents", "create"))])

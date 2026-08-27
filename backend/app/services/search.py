@@ -50,7 +50,7 @@ def _has_view_permission(db: Session, role_id, module: str) -> bool:
     ).first() is not None
 
 
-def global_search(db: Session, org_id: str, role_id, query: str) -> list[dict]:
+def global_search(db: Session, org_id: str, role_id, query: str, limit_per_type: int = RESULTS_PER_TYPE) -> list[dict]:
     like = f"%{query}%"
     results: list[dict] = []
 
@@ -58,31 +58,31 @@ def global_search(db: Session, org_id: str, role_id, query: str) -> list[dict]:
         for lead in db.query(Lead).filter(
             Lead.org_id == org_id,
             (Lead.name.ilike(like)) | (Lead.company_name.ilike(like)) | (Lead.email.ilike(like)),
-        ).limit(RESULTS_PER_TYPE).all():
+        ).limit(limit_per_type).all():
             results.append({"type": "lead", "module": "crm", "id": str(lead.id), "title": lead.name, "subtitle": lead.company_name})
 
-        for account in db.query(Account).filter(Account.org_id == org_id, Account.name.ilike(like)).limit(RESULTS_PER_TYPE).all():
+        for account in db.query(Account).filter(Account.org_id == org_id, Account.name.ilike(like)).limit(limit_per_type).all():
             results.append({"type": "account", "module": "crm", "id": str(account.id), "title": account.name, "subtitle": account.industry})
 
     if _has_view_permission(db, role_id, "sales"):
-        for customer in db.query(Customer).filter(Customer.org_id == org_id, Customer.name.ilike(like)).limit(RESULTS_PER_TYPE).all():
+        for customer in db.query(Customer).filter(Customer.org_id == org_id, Customer.name.ilike(like)).limit(limit_per_type).all():
             results.append({"type": "customer", "module": "sales", "id": str(customer.id), "title": customer.name, "subtitle": customer.gst_number})
 
         for product in db.query(Product).filter(
             Product.org_id == org_id, (Product.name.ilike(like)) | (Product.sku.ilike(like)),
-        ).limit(RESULTS_PER_TYPE).all():
+        ).limit(limit_per_type).all():
             results.append({"type": "product", "module": "sales", "id": str(product.id), "title": product.name, "subtitle": product.sku})
 
     if _has_view_permission(db, role_id, "hr"):
-        for emp in db.query(Employee).filter(Employee.org_id == org_id, Employee.name.ilike(like)).limit(RESULTS_PER_TYPE).all():
+        for emp in db.query(Employee).filter(Employee.org_id == org_id, Employee.name.ilike(like)).limit(limit_per_type).all():
             results.append({"type": "employee", "module": "hr", "id": str(emp.id), "title": emp.name, "subtitle": emp.designation})
 
     if _has_view_permission(db, role_id, "procurement"):
-        for vendor in db.query(Vendor).filter(Vendor.org_id == org_id, Vendor.name.ilike(like)).limit(RESULTS_PER_TYPE).all():
+        for vendor in db.query(Vendor).filter(Vendor.org_id == org_id, Vendor.name.ilike(like)).limit(limit_per_type).all():
             results.append({"type": "vendor", "module": "procurement", "id": str(vendor.id), "title": vendor.name, "subtitle": vendor.contact})
 
     if _has_view_permission(db, role_id, "documents"):
-        for doc in db.query(Document).filter(Document.org_id == org_id, Document.title.ilike(like)).limit(RESULTS_PER_TYPE).all():
+        for doc in db.query(Document).filter(Document.org_id == org_id, Document.title.ilike(like)).limit(limit_per_type).all():
             results.append({"type": "document", "module": "documents", "id": str(doc.id), "title": doc.title, "subtitle": doc.related_type})
 
     return results

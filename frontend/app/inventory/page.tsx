@@ -6,6 +6,7 @@ import { apiRequest } from "@/lib/api";
 import { CustomFieldsSection } from "@/components/CustomFieldsSection";
 import { PageHeader } from "@/components/ui";
 import { usePagination, PaginationControls } from "@/components/Pagination";
+import { SkeletonList } from "@/components/Skeleton";
 
 type Category = { id: string; name: string };
 type Product = { id: string; name: string; sku: string | null; unit_price: string; reorder_level: number };
@@ -18,6 +19,7 @@ export default function InventoryPage() {
   const [stockLevels, setStockLevels] = useState<StockLevel[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [categoryForm, setCategoryForm] = useState({ name: "" });
   const [productForm, setProductForm] = useState({ name: "", sku: "", unit_price: "", reorder_level: "0", category_id: "" });
@@ -26,10 +28,12 @@ export default function InventoryPage() {
     usePagination(products, 10);
 
   function loadAll() {
-    apiRequest<Category[]>("/api/inventory/categories", { auth: true }).then(setCategories).catch(() => {});
-    apiRequest<Product[]>("/api/sales/products", { auth: true }).then(setProducts).catch((e) => setError(e.message));
-    apiRequest<StockLevel[]>("/api/inventory/stock-levels", { auth: true }).then(setStockLevels).catch(() => {});
-    apiRequest<Movement[]>("/api/inventory/movements", { auth: true }).then(setMovements).catch(() => {});
+    Promise.allSettled([
+      apiRequest<Category[]>("/api/inventory/categories", { auth: true }).then(setCategories),
+      apiRequest<Product[]>("/api/sales/products", { auth: true }).then(setProducts).catch((e) => setError(e.message)),
+      apiRequest<StockLevel[]>("/api/inventory/stock-levels", { auth: true }).then(setStockLevels),
+      apiRequest<Movement[]>("/api/inventory/movements", { auth: true }).then(setMovements),
+    ]).finally(() => setLoading(false));
   }
 
   useEffect(loadAll, []);
@@ -73,6 +77,10 @@ export default function InventoryPage() {
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
+      {loading ? (
+        <SkeletonList rows={3} />
+      ) : (
+      <>
       <div className="grid md:grid-cols-2 gap-6 mb-8">
         <form onSubmit={addCategory} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Add Category</h2>
@@ -189,6 +197,8 @@ export default function InventoryPage() {
           </div>
         </section>
       </div>
+      </>
+      )}
     </main>
   );
 }

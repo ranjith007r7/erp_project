@@ -8,6 +8,7 @@ import { PageHeader, Button } from "@/components/ui";
 import { usePagination, PaginationControls } from "@/components/Pagination";
 import { useToast } from "@/components/Toast";
 import { SkeletonList } from "@/components/Skeleton";
+import { SwipeToDelete } from "@/components/SwipeToDelete";
 
 type Lead = {
   id: string;
@@ -48,6 +49,21 @@ export default function CRMPage() {
       else next.add(id);
       return next;
     });
+  }
+
+  async function handleSwipeDelete(leadId: string, leadName: string) {
+    // Reuses the real single-item DELETE route (the same one bulk-delete
+    // is itself built on) - the gesture is just a different way to
+    // trigger the exact same, already-tested backend action.
+    try {
+      await apiRequest(`/api/crm/leads/${leadId}`, { method: "DELETE", auth: true });
+      showToast(`Deleted "${leadName}".`, "success");
+      loadAll();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Delete failed";
+      setError(message);
+      showToast(message, "error");
+    }
   }
 
   async function handleBulkDelete() {
@@ -226,7 +242,8 @@ export default function CRMPage() {
               {pagedLeads.map((lead) => {
                 const expanded = expandedLeadId === lead.id;
                 return (
-                  <div key={lead.id} className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-3">
+                  <SwipeToDelete key={lead.id} onDelete={() => handleSwipeDelete(lead.id, lead.name)}>
+                  <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-3">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-2">
                         <input
@@ -264,6 +281,7 @@ export default function CRMPage() {
                     </div>
                     {expanded && <CustomFieldsSection entityType="lead" entityId={lead.id} />}
                   </div>
+                  </SwipeToDelete>
                 );
               })}
               {leads.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No leads yet.</p>}

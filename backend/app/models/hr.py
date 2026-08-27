@@ -31,6 +31,7 @@ class Employee(Base):
     name = Column(String, nullable=False)
     designation = Column(String, nullable=True)
     department_id = Column(UUID(as_uuid=True), ForeignKey("departments.id"), nullable=True)
+    department = relationship("Department")
     joining_date = Column(Date, nullable=True)
     salary = Column(Numeric(12, 2), nullable=False, default=0)
     status = Column(String, default="active")  # active / inactive

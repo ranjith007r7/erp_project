@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest, apiDownload } from "@/lib/api";
 import { PromptModal } from "@/components/Modal";
+import { SkeletonCard } from "@/components/Skeleton";
 
 type ReportModule = "sales" | "finance" | "inventory" | "procurement" | "hr" | "crm" | "projects";
 
@@ -150,7 +151,15 @@ export default function ReportsPage() {
         </button>
       </div>
 
-      {loading && <p className="text-slate-400 dark:text-zinc-500 text-sm">Loading...</p>}
+      {loading && (
+        <div className="grid md:grid-cols-3 gap-6 mb-10">
+          <div className="md:col-span-2 space-y-3">
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+          <SkeletonCard />
+        </div>
+      )}
 
       {!loading && data && (
         <div className="grid md:grid-cols-3 gap-6 mb-10">

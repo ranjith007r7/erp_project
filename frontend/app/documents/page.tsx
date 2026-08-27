@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { apiRequest, apiUpload } from "@/lib/api";
 import { NotificationBell } from "@/components/NotificationBell";
 import { PageHeader, Button } from "@/components/ui";
+import { SkeletonList } from "@/components/Skeleton";
+import { useToast } from "@/components/Toast";
 
 type Doc = { id: string; title: string; file_url: string | null; storage_key: string | null; related_type: string | null };
 type Workflow = { id: string; name: string; module: string };
@@ -11,10 +13,37 @@ type Step = { step_order: number; role_required: string; status: string };
 type ApprovalRequest = { id: string; entity_type: string; status: string; steps: Step[] };
 
 export default function DocumentsPage() {
+  const { showToast } = useToast();
   const [documents, setDocuments] = useState<Doc[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
+
+  function toggleDocSelection(id: string) {
+    setSelectedDocIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleBulkDeleteDocs() {
+    if (selectedDocIds.size === 0) return;
+    if (!window.confirm(`Delete ${selectedDocIds.size} selected document(s)? This can't be undone.`)) return;
+    try {
+      await apiRequest("/api/documents/bulk-delete", { method: "POST", auth: true, body: { ids: Array.from(selectedDocIds) } });
+      showToast(`Deleted ${selectedDocIds.size} document(s).`, "success");
+      setSelectedDocIds(new Set());
+      loadAll();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Bulk delete failed";
+      setError(message);
+      showToast(message, "error");
+    }
+  }
 
   const [docForm, setDocForm] = useState({ title: "", file_url: "" });
   const [addDocMode, setAddDocMode] = useState<"upload" | "link">("upload");
@@ -25,9 +54,11 @@ export default function DocumentsPage() {
   const [entityForm, setEntityForm] = useState({ workflow_id: "", entity_type: "" });
 
   function loadAll() {
-    apiRequest<Doc[]>("/api/documents", { auth: true }).then(setDocuments).catch((e) => setError(e.message));
-    apiRequest<Workflow[]>("/api/documents/workflows", { auth: true }).then(setWorkflows).catch(() => {});
-    apiRequest<ApprovalRequest[]>("/api/documents/approval-requests", { auth: true }).then(setRequests).catch(() => {});
+    Promise.allSettled([
+      apiRequest<Doc[]>("/api/documents", { auth: true }).then(setDocuments).catch((e) => setError(e.message)),
+      apiRequest<Workflow[]>("/api/documents/workflows", { auth: true }).then(setWorkflows),
+      apiRequest<ApprovalRequest[]>("/api/documents/approval-requests", { auth: true }).then(setRequests),
+    ]).finally(() => setLoading(false));
   }
 
   useEffect(loadAll, []);
@@ -122,6 +153,10 @@ export default function DocumentsPage() {
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
+      {loading ? (
+        <SkeletonList rows={3} />
+      ) : (
+      <>
       <div className="grid md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
           <div className="flex justify-between items-center">
@@ -225,23 +260,39 @@ export default function DocumentsPage() {
 
         <section>
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-3">Documents</h2>
+          {selectedDocIds.size > 0 && (
+            <div className="flex items-center gap-2 mb-2">
+              <Button variant="danger" size="sm" onClick={handleBulkDeleteDocs}>
+                Delete {selectedDocIds.size} selected
+              </Button>
+            </div>
+          )}
           <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm divide-y">
             {documents.map((d) => (
-              <button
-                key={d.id}
-                onClick={() => handleDownload(d)}
-                className="p-3 text-sm block w-full text-left hover:bg-slate-50 dark:hover:bg-zinc-800"
-              >
-                <p className="text-slate-800 dark:text-white">
-                  {d.title} {d.storage_key && <span className="text-xs text-slate-400 dark:text-zinc-500">(uploaded)</span>}
-                </p>
-                <p className="text-xs text-slate-400 dark:text-zinc-500">{d.related_type || "general"}</p>
-              </button>
+              <div key={d.id} className="flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-zinc-800">
+                <input
+                  type="checkbox"
+                  checked={selectedDocIds.has(d.id)}
+                  onChange={() => toggleDocSelection(d.id)}
+                  className="ml-3"
+                />
+                <button
+                  onClick={() => handleDownload(d)}
+                  className="p-3 text-sm block flex-1 text-left"
+                >
+                  <p className="text-slate-800 dark:text-white">
+                    {d.title} {d.storage_key && <span className="text-xs text-slate-400 dark:text-zinc-500">(uploaded)</span>}
+                  </p>
+                  <p className="text-xs text-slate-400 dark:text-zinc-500">{d.related_type || "general"}</p>
+                </button>
+              </div>
             ))}
             {documents.length === 0 && <p className="p-3 text-sm text-slate-400 dark:text-zinc-500">No documents yet.</p>}
           </div>
         </section>
       </div>
+      </>
+      )}
     </main>
   );
 }

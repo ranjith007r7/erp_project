@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { PageHeader } from "@/components/ui";
+import { SkeletonList } from "@/components/Skeleton";
 
 type Project = { id: string; name: string; status: string };
 type Task = { id: string; project_id: string; title: string; status: string; priority: string };
@@ -14,15 +15,18 @@ export default function ProjectsPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [timeLogs, setTimeLogs] = useState<TimeLog[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [projectForm, setProjectForm] = useState({ name: "" });
   const [taskForm, setTaskForm] = useState({ project_id: "", title: "", priority: "medium" });
   const [logHours, setLogHours] = useState<Record<string, string>>({});
 
   function loadAll() {
-    apiRequest<Project[]>("/api/projects", { auth: true }).then(setProjects).catch((e) => setError(e.message));
-    apiRequest<Task[]>("/api/projects/tasks", { auth: true }).then(setTasks).catch(() => {});
-    apiRequest<TimeLog[]>("/api/projects/time-logs", { auth: true }).then(setTimeLogs).catch(() => {});
+    Promise.allSettled([
+      apiRequest<Project[]>("/api/projects", { auth: true }).then(setProjects).catch((e) => setError(e.message)),
+      apiRequest<Task[]>("/api/projects/tasks", { auth: true }).then(setTasks),
+      apiRequest<TimeLog[]>("/api/projects/time-logs", { auth: true }).then(setTimeLogs),
+    ]).finally(() => setLoading(false));
   }
 
   useEffect(loadAll, []);
@@ -73,6 +77,10 @@ export default function ProjectsPage() {
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
+      {loading ? (
+        <SkeletonList rows={3} />
+      ) : (
+      <>
       <div className="grid md:grid-cols-2 gap-6 mb-8">
         <form onSubmit={addProject} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">New Project</h2>
@@ -164,6 +172,8 @@ export default function ProjectsPage() {
         ))}
         {projects.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No projects yet.</p>}
       </div>
+      </>
+      )}
     </main>
   );
 }

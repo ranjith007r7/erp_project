@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, apiDownload, apiUpload } from "@/lib/api";
 import { NotificationBell } from "@/components/NotificationBell";
-import { PageHeader } from "@/components/ui";
+import { PageHeader, Button } from "@/components/ui";
 import { usePagination, PaginationControls } from "@/components/Pagination";
+import { SkeletonList } from "@/components/Skeleton";
+import { useToast } from "@/components/Toast";
 
 type Department = { id: string; name: string };
 type Employee = { id: string; name: string; designation: string | null; salary: string; department_id: string | null };
@@ -13,22 +15,57 @@ type Payslip = { employee_id: string; gross: string; deductions: string; net_pay
 type PayrollRun = { id: string; month: number; year: number; status: string; payslips: Payslip[] };
 
 export default function HRPage() {
+  const { showToast } = useToast();
   const [departments, setDepartments] = useState<Department[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const { pageItems: pagedEmployees, page: employeePage, totalPages: employeeTotalPages, setPage: setEmployeePage } = usePagination(employees, 10);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [deptForm, setDeptForm] = useState({ name: "" });
   const [empForm, setEmpForm] = useState({ name: "", designation: "", department_id: "", salary: "" });
   const [runForm, setRunForm] = useState({ month: String(new Date().getMonth() + 1), year: String(new Date().getFullYear()) });
+  const [empImportFile, setEmpImportFile] = useState<File | null>(null);
+  const [empImporting, setEmpImporting] = useState(false);
+  const [empImportResult, setEmpImportResult] = useState<{ imported: number; failed: number; errors: { row: number; reason: string }[] } | null>(null);
+
+  function handleExportEmployeesCsv() {
+    apiDownload("/api/hr/employees/export", "employees.csv").catch((err) => showToast(err instanceof Error ? err.message : "Export failed", "error"));
+  }
+
+  async function handleImportEmployeesCsv() {
+    if (!empImportFile) return;
+    setEmpImporting(true);
+    setEmpImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", empImportFile);
+      const result = await apiUpload<{ imported: number; failed: number; errors: { row: number; reason: string }[] }>(
+        "/api/hr/employees/import", formData
+      );
+      setEmpImportResult(result);
+      setEmpImportFile(null);
+      loadAll();
+      showToast(
+        result.failed > 0 ? `Imported ${result.imported}, ${result.failed} failed.` : `Imported ${result.imported} employee(s).`,
+        result.failed > 0 ? "info" : "success"
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Import failed", "error");
+    } finally {
+      setEmpImporting(false);
+    }
+  }
 
   function loadAll() {
-    apiRequest<Department[]>("/api/hr/departments", { auth: true }).then(setDepartments).catch(() => {});
-    apiRequest<Employee[]>("/api/hr/employees", { auth: true }).then(setEmployees).catch((e) => setError(e.message));
-    apiRequest<LeaveRequest[]>("/api/hr/leave-requests", { auth: true }).then(setLeaves).catch(() => {});
-    apiRequest<PayrollRun[]>("/api/hr/payroll-runs", { auth: true }).then(setPayrollRuns).catch(() => {});
+    Promise.allSettled([
+      apiRequest<Department[]>("/api/hr/departments", { auth: true }).then(setDepartments),
+      apiRequest<Employee[]>("/api/hr/employees", { auth: true }).then(setEmployees).catch((e) => setError(e.message)),
+      apiRequest<LeaveRequest[]>("/api/hr/leave-requests", { auth: true }).then(setLeaves),
+      apiRequest<PayrollRun[]>("/api/hr/payroll-runs", { auth: true }).then(setPayrollRuns),
+    ]).finally(() => setLoading(false));
   }
 
   useEffect(loadAll, []);
@@ -98,6 +135,10 @@ export default function HRPage() {
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
+      {loading ? (
+        <SkeletonList rows={3} />
+      ) : (
+      <>
       <div className="grid md:grid-cols-2 gap-6 mb-8">
         <form onSubmit={addDepartment} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Add Department</h2>
@@ -157,6 +198,28 @@ export default function HRPage() {
       <div className="grid md:grid-cols-3 gap-6">
         <section>
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-3">Employees</h2>
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <Button variant="secondary" size="sm" onClick={handleExportEmployeesCsv}>Export CSV</Button>
+            <input
+              type="file"
+              accept=".csv"
+              onChange={(e) => setEmpImportFile(e.target.files?.[0] ?? null)}
+              className="text-xs text-slate-600 dark:text-zinc-300"
+            />
+            <Button variant="secondary" size="sm" disabled={!empImportFile || empImporting} onClick={handleImportEmployeesCsv}>
+              {empImporting ? "Importing…" : "Import CSV"}
+            </Button>
+          </div>
+          {empImportResult && (
+            <div className="text-xs bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg p-2 mb-2">
+              <p className="text-slate-700 dark:text-zinc-200">
+                Imported {empImportResult.imported}, failed {empImportResult.failed}.
+              </p>
+              {empImportResult.errors.map((e) => (
+                <p key={e.row} className="text-red-600 dark:text-red-400">Row {e.row}: {e.reason}</p>
+              ))}
+            </div>
+          )}
           <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm divide-y">
             {pagedEmployees.map((e) => (
               <div key={e.id} className="p-3 text-sm">
@@ -254,6 +317,8 @@ export default function HRPage() {
           </div>
         </section>
       </div>
+      </>
+      )}
     </main>
   );
 }

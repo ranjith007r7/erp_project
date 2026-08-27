@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { PageHeader, Card } from "@/components/ui";
 import { usePagination, PaginationControls } from "@/components/Pagination";
+import { SkeletonList } from "@/components/Skeleton";
 
 type AuditEntry = {
   id: string;
@@ -53,7 +54,7 @@ export default function AuditLogPage() {
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
       <Card className="max-w-3xl">
-        {loading && <p className="p-4 text-sm text-slate-400 dark:text-zinc-500">Loading…</p>}
+        {loading && <SkeletonList rows={4} />}
         {!loading && (
           <div className="divide-y">
             {pageItems.map((entry) => (

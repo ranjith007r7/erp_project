@@ -77,6 +77,13 @@ export function GlobalSearch() {
     if (path) router.push(path);
   }
 
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" && query.trim().length >= 2) {
+      setOpen(false);
+      router.push(`/search?q=${encodeURIComponent(query.trim())}`);
+    }
+  }
+
   return (
     <div className="relative w-full max-w-md" ref={containerRef}>
       <input
@@ -85,6 +92,7 @@ export function GlobalSearch() {
         value={query}
         onChange={(e) => handleChange(e.target.value)}
         onFocus={() => query.trim().length >= 2 && setOpen(true)}
+        onKeyDown={handleKeyDown}
         className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-zinc-500 rounded-lg px-3 py-2 text-sm"
       />
 
@@ -107,6 +115,17 @@ export function GlobalSearch() {
                 </p>
               </button>
             ))}
+          {!loading && results.length > 0 && (
+            <button
+              onClick={() => {
+                setOpen(false);
+                router.push(`/search?q=${encodeURIComponent(query.trim())}`);
+              }}
+              className="w-full text-center px-3 py-2 text-xs text-slate-500 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800 font-medium"
+            >
+              See all results →
+            </button>
+          )}
         </div>
       )}
     </div>

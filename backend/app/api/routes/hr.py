@@ -5,10 +5,13 @@ multiple module effects, one transaction" pattern used by Sales' invoice
 generation and Procurement's goods receipt: it generates a Payslip per
 active Employee AND posts a single Journal Entry to Finance, together.
 """
+import csv
+import io
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
@@ -56,6 +59,106 @@ def create_employee(payload: EmployeeCreate, db: Session = Depends(get_db), org_
 @router.get("/employees", response_model=list[EmployeeOut], dependencies=[Depends(require_permission("hr", "view"))])
 def list_employees(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Employee).filter(Employee.org_id == org_id, Employee.status == "active").all()
+
+
+@router.get("/employees/export", dependencies=[Depends(require_permission("hr", "view"))])
+def export_employees_csv(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+    employees = db.query(Employee).options(joinedload(Employee.department)).filter(
+        Employee.org_id == org_id, Employee.status == "active"
+    ).all()
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["name", "designation", "department_name", "salary"])
+    for e in employees:
+        writer.writerow([e.name, e.designation or "", e.department.name if e.department else "", e.salary])
+
+    buffer.seek(0)
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=employees.csv"},
+    )
+
+
+MAX_EMPLOYEE_IMPORT_ROWS = 1000
+
+
+@router.post("/employees/import", dependencies=[Depends(require_permission("hr", "create"))])
+async def import_employees_csv(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    org_id: str = Depends(get_org_id),
+    current_user=Depends(get_current_user),
+):
+    """
+    Same partial-success design as CRM Leads' import - a bad row never
+    blocks the good ones, capped at MAX_EMPLOYEE_IMPORT_ROWS for the
+    same synchronous-endpoint-abuse reason.
+
+    One real difference from Leads: department_name is a human-readable
+    lookup, not a raw column, since a CSV author has no reason to know
+    a department's internal UUID. Deliberately forgiving on a miss - an
+    unrecognized department name does NOT fail the row, it just leaves
+    that employee unassigned to a department, matching this project's
+    general preference for a partially-correct result over a rejected
+    one when the ambiguity is minor and easily fixed later (reassign
+    the department from the UI, no re-import needed).
+    """
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(400, "Could not read this file as UTF-8 text - please export it as a plain CSV.")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if reader.fieldnames is None or "name" not in reader.fieldnames:
+        raise HTTPException(400, "CSV must have a 'name' column header. Optional columns: designation, department_name, salary.")
+
+    rows = list(reader)
+    if len(rows) > MAX_EMPLOYEE_IMPORT_ROWS:
+        raise HTTPException(400, f"This file has {len(rows)} rows - the limit is {MAX_EMPLOYEE_IMPORT_ROWS} per import.")
+
+    departments_by_name = {
+        d.name.strip().lower(): d.id
+        for d in db.query(Department).filter(Department.org_id == org_id).all()
+    }
+
+    imported = 0
+    errors: list[dict] = []
+    new_employees = []
+
+    for i, row in enumerate(rows, start=2):
+        name = (row.get("name") or "").strip()
+        if not name:
+            errors.append({"row": i, "reason": "'name' is required and was empty"})
+            continue
+
+        salary_raw = (row.get("salary") or "0").strip()
+        try:
+            salary = Decimal(salary_raw) if salary_raw else Decimal("0")
+        except Exception:
+            errors.append({"row": i, "reason": f"'{salary_raw}' is not a valid salary number"})
+            continue
+
+        dept_name = (row.get("department_name") or "").strip()
+        department_id = departments_by_name.get(dept_name.lower()) if dept_name else None
+
+        new_employees.append(Employee(
+            org_id=org_id,
+            name=name,
+            designation=(row.get("designation") or "").strip() or None,
+            department_id=department_id,
+            salary=salary,
+        ))
+        imported += 1
+
+    if new_employees:
+        db.add_all(new_employees)
+        log_audit_event(db, org_id, current_user.id, f"bulk_import ({imported} employees)", "Employee", None)
+        db.commit()
+
+    return {"imported": imported, "failed": len(errors), "errors": errors}
 
 
 # ---------------- Leave Requests ----------------

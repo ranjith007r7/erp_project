@@ -9,6 +9,7 @@ import { VerificationBanner } from "@/components/VerificationBanner";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { SkeletonStatTile, SkeletonCard } from "@/components/Skeleton";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { PullToRefresh } from "@/components/PullToRefresh";
 import {
   Settings2, Shield, ScrollText, LogOut, Palette,
   Users2, ShoppingCart, Wallet, Package, Truck, UserRound, FolderKanban, FileText, BarChart3,
@@ -57,6 +58,12 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  function loadSummary(): Promise<void> {
+    return apiRequest<Summary>("/api/dashboard/summary", { auth: true })
+      .then(setSummary)
+      .catch(() => {});
+  }
+
   useEffect(() => {
     if (!getToken()) {
       router.push("/login");
@@ -71,7 +78,7 @@ export default function DashboardPage() {
         router.push("/login");
       });
 
-    apiRequest<Summary>("/api/dashboard/summary", { auth: true }).then(setSummary).catch(() => {});
+    loadSummary();
   }, [router]);
 
   function handleLogout() {
@@ -133,6 +140,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        <PullToRefresh onRefresh={loadSummary}>
         {user && !user.email_verified && <VerificationBanner email={user.email} />}
 
         <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm dark:border dark:border-zinc-800 p-6 max-w-md mb-8">
@@ -182,6 +190,7 @@ export default function DashboardPage() {
           );
         })}
       </div>
+      </PullToRefresh>
       </main>
   );
 }

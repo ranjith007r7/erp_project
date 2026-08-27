@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { PageHeader } from "@/components/ui";
+import { SkeletonList } from "@/components/Skeleton";
 
 type Account = { id: string; code: string; name: string; account_type: string };
 type JournalLine = { account_id: string; debit: string; credit: string };
@@ -15,11 +16,14 @@ export default function FinancePage() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   function loadAll() {
-    apiRequest<Account[]>("/api/finance/accounts", { auth: true }).then(setAccounts).catch((e) => setError(e.message));
-    apiRequest<JournalEntry[]>("/api/finance/journal-entries", { auth: true }).then(setEntries).catch(() => {});
-    apiRequest<Invoice[]>("/api/sales/invoices", { auth: true }).then(setInvoices).catch(() => {});
+    Promise.allSettled([
+      apiRequest<Account[]>("/api/finance/accounts", { auth: true }).then(setAccounts).catch((e) => setError(e.message)),
+      apiRequest<JournalEntry[]>("/api/finance/journal-entries", { auth: true }).then(setEntries),
+      apiRequest<Invoice[]>("/api/sales/invoices", { auth: true }).then(setInvoices),
+    ]).finally(() => setLoading(false));
   }
 
   useEffect(loadAll, []);
@@ -49,6 +53,9 @@ export default function FinancePage() {
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
+      {loading ? (
+        <SkeletonList rows={3} />
+      ) : (
       <div className="grid md:grid-cols-3 gap-6">
         {/* Chart of Accounts */}
         <section>
@@ -109,6 +116,7 @@ export default function FinancePage() {
           </div>
         </section>
       </div>
+      )}
     </main>
   );
 }
