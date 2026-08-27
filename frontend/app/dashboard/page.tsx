@@ -95,38 +95,38 @@ export default function DashboardPage() {
   return (
     <main className="min-h-screen p-8">
       <div className="flex justify-between items-center mb-8 gap-4 flex-wrap">
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Dashboard</h1>
         <GlobalSearch />
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <NotificationBell />
             <Link
               href="/settings/custom-fields"
-              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-800 dark:hover:text-white transition-colors"
             >
               <Settings2 size={16} /> Custom Fields
             </Link>
             <Link
               href="/settings/roles"
-              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-800 dark:hover:text-white transition-colors"
             >
               <Shield size={16} /> Roles & Permissions
             </Link>
             <Link
               href="/settings/audit-log"
-              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-800 dark:hover:text-white transition-colors"
             >
               <ScrollText size={16} /> Audit Log
             </Link>
             <Link
               href="/settings/appearance"
-              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-800 dark:hover:text-white transition-colors"
             >
               <Palette size={16} /> Appearance
             </Link>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-800 dark:hover:text-white transition-colors"
             >
               <LogOut size={16} /> Log out
             </button>
@@ -135,13 +135,13 @@ export default function DashboardPage() {
 
         {user && !user.email_verified && <VerificationBanner email={user.email} />}
 
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm p-6 max-w-md mb-8">
-        <p className="text-slate-500 text-sm mb-1">Logged in as</p>
-        <p className="text-lg font-medium text-slate-800">{user.name}</p>
-        <p className="text-slate-500">{user.email}</p>
-        <hr className="my-4" />
-        <p className="text-xs text-slate-400">Organization ID: {user.org_id}</p>
-        <p className="text-xs text-slate-400">Status: {user.status}</p>
+        <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm dark:border dark:border-zinc-800 p-6 max-w-md mb-8">
+        <p className="text-slate-500 dark:text-zinc-500 text-sm mb-1">Logged in as</p>
+        <p className="text-lg font-medium text-slate-800 dark:text-white">{user.name}</p>
+        <p className="text-slate-500 dark:text-zinc-400">{user.email}</p>
+        <hr className="my-4 dark:border-zinc-800" />
+        <p className="text-xs text-slate-400 dark:text-zinc-600">Organization ID: {user.org_id}</p>
+        <p className="text-xs text-slate-400 dark:text-zinc-600">Status: {user.status}</p>
       </div>
 
       {summary && (
@@ -169,12 +169,12 @@ export default function DashboardPage() {
             <Link
               key={mod.name}
               href={mod.href}
-              className="bg-white rounded-lg shadow-sm p-4 text-center hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm transition-all duration-150"
+              className="bg-white dark:bg-zinc-900 dark:border dark:border-zinc-800 rounded-lg shadow-sm dark:shadow-none p-4 text-center hover:shadow-md dark:hover:border-zinc-700 hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm transition-all duration-150"
             >
-              <Icon size={20} className="mx-auto mb-1.5 text-slate-400" />
-              <span className="text-slate-800 font-medium">{mod.name}</span>
+              <Icon size={20} className="mx-auto mb-1.5 text-slate-400 dark:text-zinc-500" />
+              <span className="text-slate-800 dark:text-white font-medium">{mod.name}</span>
               {summary && mod.stat && (
-                <div className="text-xs mt-1 text-slate-500">
+                <div className="text-xs mt-1 text-slate-500 dark:text-zinc-500">
                   {summary[mod.stat]} {mod.label}
                 </div>
               )}
@@ -188,9 +188,9 @@ export default function DashboardPage() {
 
 function SummaryTile({ label, value }: { label: string; value: number }) {
   return (
-    <div className="bg-white rounded-lg shadow-sm p-4 text-center">
-      <div className="text-2xl font-bold text-slate-800">{value}</div>
-      <div className="text-xs text-slate-500 mt-1">{label}</div>
+    <div className="bg-white dark:bg-zinc-900 dark:border dark:border-zinc-800 rounded-lg shadow-sm dark:shadow-none p-4 text-center">
+      <div className="text-2xl font-bold text-slate-800 dark:text-white">{value}</div>
+      <div className="text-xs text-slate-500 dark:text-zinc-500 mt-1">{label}</div>
     </div>
   );
 }

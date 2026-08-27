@@ -85,24 +85,24 @@ export function GlobalSearch() {
         value={query}
         onChange={(e) => handleChange(e.target.value)}
         onFocus={() => query.trim().length >= 2 && setOpen(true)}
-        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+        className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-zinc-500 rounded-lg px-3 py-2 text-sm"
       />
 
       {open && (
-        <div className="absolute left-0 right-0 mt-1 bg-white rounded-lg shadow-lg border border-slate-100 z-50 max-h-96 overflow-y-auto">
-          {loading && <p className="p-3 text-xs text-slate-400">Searching…</p>}
+        <div className="absolute left-0 right-0 mt-1 bg-white dark:bg-zinc-900 rounded-lg shadow-lg dark:shadow-none border border-slate-100 dark:border-zinc-800 z-50 max-h-96 overflow-y-auto">
+          {loading && <p className="p-3 text-xs text-slate-400 dark:text-zinc-500">Searching…</p>}
           {!loading && results.length === 0 && (
-            <p className="p-3 text-xs text-slate-400">No matches for &quot;{query}&quot;.</p>
+            <p className="p-3 text-xs text-slate-400 dark:text-zinc-500">No matches for &quot;{query}&quot;.</p>
           )}
           {!loading &&
             results.map((r) => (
               <button
                 key={`${r.type}-${r.id}`}
                 onClick={() => handleResultClick(r)}
-                className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-50 last:border-0"
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-zinc-800 border-b border-slate-50 dark:border-zinc-800 last:border-0"
               >
-                <p className="text-sm text-slate-800">{r.title}</p>
-                <p className="text-xs text-slate-400">
+                <p className="text-sm text-slate-800 dark:text-white">{r.title}</p>
+                <p className="text-xs text-slate-400 dark:text-zinc-500">
                   {r.type} {r.subtitle && `· ${r.subtitle}`}
                 </p>
               </button>

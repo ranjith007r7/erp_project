@@ -233,10 +233,10 @@ export default function RolesSettingsPage() {
         title="Roles & Permissions"
         actions={
           <div className="flex items-center gap-4">
-            <Link href="/settings/appearance" className="text-sm text-slate-500 dark:text-slate-400 underline hover:text-slate-700 dark:hover:text-slate-200">
+            <Link href="/settings/appearance" className="text-sm text-slate-500 dark:text-zinc-500 underline hover:text-slate-700 dark:hover:text-zinc-100">
               Appearance
             </Link>
-            <Link href="/settings/custom-fields" className="text-sm text-slate-500 dark:text-slate-400 underline hover:text-slate-700 dark:hover:text-slate-200">
+            <Link href="/settings/custom-fields" className="text-sm text-slate-500 dark:text-zinc-500 underline hover:text-slate-700 dark:hover:text-zinc-100">
               Custom Fields
             </Link>
           </div>

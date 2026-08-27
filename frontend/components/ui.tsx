@@ -21,10 +21,10 @@ import type { ButtonHTMLAttributes, InputHTMLAttributes, SelectHTMLAttributes } 
 import Link from "next/link";
 
 const BUTTON_VARIANTS = {
-  primary: "bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 hover:bg-slate-700 dark:hover:bg-slate-300",
-  secondary: "bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-100 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600",
+  primary: "bg-slate-800 dark:bg-zinc-100 text-white dark:text-zinc-950 hover:bg-slate-700 dark:hover:bg-zinc-300",
+  secondary: "bg-white dark:bg-zinc-800 text-slate-700 dark:text-white border border-slate-300 dark:border-zinc-700 hover:bg-slate-50 dark:hover:bg-zinc-700",
   danger: "bg-red-600 text-white hover:bg-red-700",
-  ghost: "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 underline",
+  ghost: "text-slate-500 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-100 underline",
 } as const;
 
 const BUTTON_SIZES = {
@@ -54,13 +54,13 @@ export function Input({ label, className = "", id, ...props }: InputProps) {
   const input = (
     <input
       id={id}
-      className={`w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg px-3 py-2 text-sm ${className}`.trim()}
+      className={`w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-zinc-500 rounded-lg px-3 py-2 text-sm ${className}`.trim()}
       {...props}
     />
   );
   if (!label) return input;
   return (
-    <label htmlFor={id} className="block text-sm text-slate-600 dark:text-slate-300">
+    <label htmlFor={id} className="block text-sm text-slate-600 dark:text-zinc-300">
       {label}
       <div className="mt-1">{input}</div>
     </label>
@@ -73,7 +73,7 @@ export function Select({ label, className = "", id, children, ...props }: Select
   const select = (
     <select
       id={id}
-      className={`w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 text-sm ${className}`.trim()}
+      className={`w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm ${className}`.trim()}
       {...props}
     >
       {children}
@@ -81,7 +81,7 @@ export function Select({ label, className = "", id, children, ...props }: Select
   );
   if (!label) return select;
   return (
-    <label htmlFor={id} className="block text-sm text-slate-600 dark:text-slate-300">
+    <label htmlFor={id} className="block text-sm text-slate-600 dark:text-zinc-300">
       {label}
       <div className="mt-1">{select}</div>
     </label>
@@ -89,7 +89,7 @@ export function Select({ label, className = "", id, children, ...props }: Select
 }
 
 export function Card({ className = "", children }: { className?: string; children: React.ReactNode }) {
-  return <div className={`bg-white dark:bg-slate-800 rounded-xl shadow-sm dark:shadow-none dark:border dark:border-slate-700 ${className}`.trim()}>{children}</div>;
+  return <div className={`bg-white dark:bg-zinc-900 rounded-xl shadow-sm dark:shadow-none dark:border dark:border-zinc-800 ${className}`.trim()}>{children}</div>;
 }
 
 /**
@@ -114,14 +114,14 @@ export function PageHeader({
   return (
     <div className="flex justify-between items-start mb-6 flex-wrap gap-2">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{title}</h1>
-        {description && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-xl">{description}</p>}
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-white">{title}</h1>
+        {description && <p className="text-sm text-slate-500 dark:text-zinc-500 mt-1 max-w-xl">{description}</p>}
       </div>
       <div className="flex items-center gap-4">
         {actions}
         <Link
           href={backHref}
-          className="text-sm text-slate-500 dark:text-slate-400 underline hover:text-slate-700 dark:hover:text-slate-200"
+          className="text-sm text-slate-500 dark:text-zinc-500 underline hover:text-slate-700 dark:hover:text-zinc-100"
         >
           {backLabel}
         </Link>

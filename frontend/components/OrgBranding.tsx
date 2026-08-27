@@ -45,7 +45,7 @@ export function OrgBranding({ children }: { children: ReactNode }) {
         pages with no custom branding are completely unaffected.
       */}
       {backgroundUrl && (
-        <div className="absolute inset-0 bg-white/70 dark:bg-slate-900/80 pointer-events-none" />
+        <div className="absolute inset-0 bg-white/70 dark:bg-black/80 pointer-events-none" />
       )}
       <div className="relative">{children}</div>
     </div>

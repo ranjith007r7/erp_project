@@ -74,7 +74,7 @@ export function NotificationBell() {
     <div className="relative" ref={containerRef}>
       <button
         onClick={toggleOpen}
-        className="relative text-slate-500 hover:text-slate-700"
+        className="relative text-slate-500 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-300"
         aria-label="Notifications"
       >
         <span className="text-lg">🔔</span>
@@ -86,32 +86,32 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-lg border border-slate-100 z-50">
-          <div className="flex justify-between items-center px-4 py-3 border-b border-slate-100">
-            <p className="text-sm font-semibold text-slate-700">Notifications</p>
+        <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-900 rounded-xl shadow-lg dark:shadow-none border border-slate-100 dark:border-zinc-800 z-50">
+          <div className="flex justify-between items-center px-4 py-3 border-b border-slate-100 dark:border-zinc-800">
+            <p className="text-sm font-semibold text-slate-700 dark:text-zinc-100">Notifications</p>
             {unreadCount > 0 && (
-              <button onClick={markAllRead} className="text-xs text-slate-400 hover:text-slate-600 underline">
+              <button onClick={markAllRead} className="text-xs text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 underline">
                 Mark all read
               </button>
             )}
           </div>
 
           <div className="max-h-80 overflow-y-auto">
-            {loading && <p className="p-4 text-xs text-slate-400">Loading…</p>}
+            {loading && <p className="p-4 text-xs text-slate-400 dark:text-zinc-500">Loading…</p>}
             {!loading && notifications.length === 0 && (
-              <p className="p-4 text-xs text-slate-400">No notifications yet.</p>
+              <p className="p-4 text-xs text-slate-400 dark:text-zinc-500">No notifications yet.</p>
             )}
             {!loading &&
               notifications.map((n) => (
                 <button
                   key={n.id}
                   onClick={() => !n.is_read && markOneRead(n.id)}
-                  className={`w-full text-left px-4 py-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 ${
+                  className={`w-full text-left px-4 py-3 border-b border-slate-50 dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-800 ${
                     n.is_read ? "opacity-60" : ""
                   }`}
                 >
-                  <p className="text-sm text-slate-700">{n.message}</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
+                  <p className="text-sm text-slate-700 dark:text-zinc-100">{n.message}</p>
+                  <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">
                     {new Date(n.created_at).toLocaleString()}
                   </p>
                 </button>

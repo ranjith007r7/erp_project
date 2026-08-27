@@ -101,7 +101,7 @@ export default function CustomFieldsSettingsPage() {
         actions={
           <Link
             href="/settings/roles"
-            className="text-sm text-slate-500 dark:text-slate-400 underline hover:text-slate-700 dark:hover:text-slate-200"
+            className="text-sm text-slate-500 dark:text-zinc-500 underline hover:text-slate-700 dark:hover:text-zinc-100"
           >
             Roles & Permissions
           </Link>
@@ -110,13 +110,13 @@ export default function CustomFieldsSettingsPage() {
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
-      <form onSubmit={handleCreate} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm dark:border dark:border-slate-700 p-4 mb-8 max-w-2xl space-y-2">
-        <h2 className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Add a Field</h2>
+      <form onSubmit={handleCreate} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm dark:border dark:border-zinc-800 p-4 mb-8 max-w-2xl space-y-2">
+        <h2 className="font-semibold text-slate-700 dark:text-zinc-100 text-sm">Add a Field</h2>
 
         <select
           value={ENTITY_OPTIONS.find((o) => o.module === form.module && o.entity_type === form.entity_type)?.label}
           onChange={(e) => handleEntityChange(e.target.value)}
-          className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 text-sm"
+          className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
         >
           {ENTITY_OPTIONS.map((o) => (
             <option key={o.label} value={o.label}>{o.label}</option>
@@ -128,21 +128,21 @@ export default function CustomFieldsSettingsPage() {
           required
           value={form.field_name}
           onChange={(e) => setForm({ ...form, field_name: e.target.value })}
-          className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg px-3 py-2 text-sm"
+          className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-zinc-500 rounded-lg px-3 py-2 text-sm"
         />
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <select
             value={form.field_type}
             onChange={(e) => setForm({ ...form, field_type: e.target.value })}
-            className="border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 text-sm"
+            className="border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           >
             {FIELD_TYPES.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
 
-          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 px-1">
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-zinc-300 px-1">
             <input
               type="checkbox"
               checked={form.is_required}
@@ -158,25 +158,25 @@ export default function CustomFieldsSettingsPage() {
             required
             value={form.options}
             onChange={(e) => setForm({ ...form, options: e.target.value })}
-            className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-zinc-500 rounded-lg px-3 py-2 text-sm"
           />
         )}
 
-        <button className="w-full bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-slate-300 transition-colors">
+        <button className="w-full bg-slate-800 dark:bg-zinc-100 text-white dark:text-zinc-950 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300 transition-colors">
           Add Field
         </button>
       </form>
 
       <div className="max-w-2xl">
-        <h2 className="font-semibold text-slate-700 dark:text-slate-200 mb-3">Existing Fields</h2>
-        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm dark:border dark:border-slate-700 divide-y dark:divide-slate-700">
+        <h2 className="font-semibold text-slate-700 dark:text-zinc-100 mb-3">Existing Fields</h2>
+        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm dark:border dark:border-zinc-800 divide-y dark:divide-zinc-800">
           {fields.map((f) => (
             <div key={f.id} className="p-3 flex justify-between items-center text-sm">
               <div>
-                <p className={f.is_active ? "text-slate-800 dark:text-slate-100 font-medium" : "text-slate-400 dark:text-slate-500 font-medium line-through"}>
+                <p className={f.is_active ? "text-slate-800 dark:text-white font-medium" : "text-slate-400 dark:text-zinc-500 font-medium line-through"}>
                   {f.field_name}
                 </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="text-xs text-slate-500 dark:text-zinc-500">
                   {ENTITY_OPTIONS.find((o) => o.module === f.module && o.entity_type === f.entity_type)?.label || `${f.module} — ${f.entity_type}`}
                   {" · "}{f.field_type}
                   {f.is_required && " · required"}
@@ -186,7 +186,7 @@ export default function CustomFieldsSettingsPage() {
               <div className="flex gap-2">
                 <button
                   onClick={() => toggleActive(f)}
-                  className="text-xs text-slate-500 dark:text-slate-400 underline hover:text-slate-700 dark:hover:text-slate-200"
+                  className="text-xs text-slate-500 dark:text-zinc-500 underline hover:text-slate-700 dark:hover:text-zinc-100"
                 >
                   {f.is_active ? "Deactivate" : "Activate"}
                 </button>
