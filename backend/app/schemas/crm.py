@@ -93,3 +93,7 @@ class ConvertLeadRequest(BaseModel):
     """What the frontend sends when turning a qualified Lead into a real Account + Opportunity."""
     opportunity_name: str = Field(..., min_length=1)
     opportunity_value: Decimal = Decimal("0")
+
+
+class BulkDeleteRequest(BaseModel):
+    ids: list[str] = Field(..., min_length=1, max_length=200)

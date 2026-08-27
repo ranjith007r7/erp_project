@@ -3,9 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, setToken } from "@/lib/api";
+import { useToast } from "@/components/Toast";
+import { CheckCircle2 } from "lucide-react";
 
 export default function SignupPage() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [form, setForm] = useState({
     org_name: "",
     subdomain: "",
@@ -15,6 +18,7 @@ export default function SignupPage() {
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -30,12 +34,34 @@ export default function SignupPage() {
         body: form,
       });
       setToken(data.access_token);
-      router.push("/dashboard");
+      showToast(`Welcome, ${form.admin_name}! Your organization is ready.`, "success");
+      // A real gap this fixes, found through actual use: signup used to
+      // redirect INSTANTLY with zero visible confirmation, which is
+      // exactly why a genuinely successful signup got mistaken for "it
+      // didn't work" and retried - producing a confusing "already
+      // registered" error on the second attempt. This brief success
+      // state, before the redirect, is the fix - not just the toast
+      // alone, since a toast can still be missed if it fires the same
+      // instant the page navigates away.
+      setSuccess(true);
+      setTimeout(() => router.push("/dashboard"), 1200);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
+  }
+
+  if (success) {
+    return (
+      <main className="min-h-screen flex items-center justify-center px-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-sm text-center space-y-3">
+          <CheckCircle2 className="mx-auto text-emerald-500" size={40} />
+          <h1 className="text-xl font-bold text-slate-800">Organization created</h1>
+          <p className="text-sm text-slate-500">Taking you to your dashboard…</p>
+        </div>
+      </main>
+    );
   }
 
   return (

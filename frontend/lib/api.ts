@@ -10,6 +10,36 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+/**
+ * FastAPI's own HTTPException(detail="...") always gives a plain string,
+ * which every route in this app uses for its own handled errors. But
+ * Pydantic's AUTOMATIC validation errors (a bad regex match, a too-short
+ * field) come back as an ARRAY of error objects instead - e.g. a bad
+ * subdomain returns detail: [{"type":"string_pattern_mismatch","loc":
+ * ["body","subdomain"],"msg":"String should match pattern...", ...}].
+ * Before this fix, that array got shown to the user as raw JSON text -
+ * a real bug found through actual use (see MANUAL.md). This turns each
+ * error object into "<field>: <message>" instead, and joins multiple
+ * validation errors with a semicolon - readable regardless of which
+ * field or how many fields failed, not just a fix for this one field.
+ */
+function formatErrorDetail(detail: unknown): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((e) => {
+        if (e && typeof e === "object" && "msg" in e) {
+          const loc = Array.isArray((e as { loc?: unknown[] }).loc) ? (e as { loc: unknown[] }).loc : [];
+          const field = loc.filter((part) => part !== "body").join(".") || "field";
+          return `${field}: ${(e as { msg: string }).msg}`;
+        }
+        return typeof e === "string" ? e : JSON.stringify(e);
+      })
+      .join("; ");
+  }
+  return typeof detail === "string" ? detail : "Something went wrong. Please try again.";
+}
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("erp_token");
@@ -49,11 +79,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   if (!res.ok) {
     const errorBody = await res.json().catch(() => ({ detail: "Unknown error" }));
-    const message =
-      typeof errorBody.detail === "string"
-        ? errorBody.detail
-        : JSON.stringify(errorBody.detail);
-    throw new Error(message);
+    throw new Error(formatErrorDetail(errorBody.detail));
   }
 
   // A 204 (or any response with genuinely no body, e.g. our DELETE routes)

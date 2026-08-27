@@ -6,6 +6,12 @@ import Link from "next/link";
 import { apiRequest, clearToken, getToken } from "@/lib/api";
 import { NotificationBell } from "@/components/NotificationBell";
 import { VerificationBanner } from "@/components/VerificationBanner";
+import { GlobalSearch } from "@/components/GlobalSearch";
+import { SkeletonStatTile, SkeletonCard } from "@/components/Skeleton";
+import {
+  Settings2, Shield, ScrollText, LogOut,
+  Users2, ShoppingCart, Wallet, Package, Truck, UserRound, FolderKanban, FileText, BarChart3,
+} from "lucide-react";
 
 type CurrentUser = {
   id: string;
@@ -32,19 +38,17 @@ type Summary = {
   saved_reports: number;
 };
 
-const LIVE_MODULES: { name: string; href: string; stat?: keyof Summary; label?: string }[] = [
-  { name: "CRM", href: "/crm", stat: "leads", label: "leads" },
-  { name: "Sales", href: "/sales", stat: "sales_orders", label: "orders" },
-  { name: "Finance", href: "/finance", stat: "unpaid_invoices", label: "unpaid" },
-  { name: "Inventory", href: "/inventory", stat: "low_stock_products", label: "low stock" },
-  { name: "Procurement", href: "/procurement", stat: "pending_purchase_orders", label: "pending" },
-  { name: "HR", href: "/hr", stat: "pending_leave_requests", label: "leave reqs" },
-  { name: "Projects", href: "/projects", stat: "open_tasks", label: "open tasks" },
-  { name: "Documents", href: "/documents", stat: "pending_approvals", label: "approvals" },
-  { name: "Reports", href: "/reports", stat: "saved_reports", label: "saved" },
+const LIVE_MODULES: { name: string; href: string; stat?: keyof Summary; label?: string; icon: typeof Users2 }[] = [
+  { name: "CRM", href: "/crm", stat: "leads", label: "leads", icon: Users2 },
+  { name: "Sales", href: "/sales", stat: "sales_orders", label: "orders", icon: ShoppingCart },
+  { name: "Finance", href: "/finance", stat: "unpaid_invoices", label: "unpaid", icon: Wallet },
+  { name: "Inventory", href: "/inventory", stat: "low_stock_products", label: "low stock", icon: Package },
+  { name: "Procurement", href: "/procurement", stat: "pending_purchase_orders", label: "pending", icon: Truck },
+  { name: "HR", href: "/hr", stat: "pending_leave_requests", label: "leave reqs", icon: UserRound },
+  { name: "Projects", href: "/projects", stat: "open_tasks", label: "open tasks", icon: FolderKanban },
+  { name: "Documents", href: "/documents", stat: "pending_approvals", label: "approvals", icon: FileText },
+  { name: "Reports", href: "/reports", stat: "saved_reports", label: "saved", icon: BarChart3 },
 ];
-
-const PLACEHOLDER_MODULES: string[] = [];
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -75,28 +79,48 @@ export default function DashboardPage() {
   }
 
   if (error) return <p className="p-8 text-red-600">{error}</p>;
-  if (!user) return <p className="p-8 text-slate-500">Loading...</p>;
+  if (!user) {
+    return (
+      <main className="min-h-screen p-8">
+        <div className="h-8 w-40 bg-slate-200 rounded animate-pulse mb-8" />
+        <SkeletonCard />
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-4 mt-8 max-w-5xl">
+          {Array.from({ length: 7 }).map((_, i) => <SkeletonStatTile key={i} />)}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen p-8">
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex justify-between items-center mb-8 gap-4 flex-wrap">
         <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
-        <div className="flex items-center gap-4">
+        <GlobalSearch />
+        <div className="flex items-center gap-2">
           <NotificationBell />
-          <Link href="/settings/custom-fields" className="text-sm text-slate-500 underline hover:text-slate-700">
-            Custom Fields
+          <Link
+            href="/settings/custom-fields"
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+          >
+            <Settings2 size={16} /> Custom Fields
           </Link>
-          <Link href="/settings/roles" className="text-sm text-slate-500 underline hover:text-slate-700">
-            Roles & Permissions
+          <Link
+            href="/settings/roles"
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+          >
+            <Shield size={16} /> Roles & Permissions
           </Link>
-          <Link href="/settings/audit-log" className="text-sm text-slate-500 underline hover:text-slate-700">
-            Audit Log
+          <Link
+            href="/settings/audit-log"
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+          >
+            <ScrollText size={16} /> Audit Log
           </Link>
           <button
             onClick={handleLogout}
-            className="text-sm text-slate-500 underline hover:text-slate-700"
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors"
           >
-            Log out
+            <LogOut size={16} /> Log out
           </button>
         </div>
       </div>
@@ -131,29 +155,24 @@ export default function DashboardPage() {
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 max-w-3xl">
-        {LIVE_MODULES.map((mod) => (
-          <Link
-            key={mod.name}
-            href={mod.href}
-            className="bg-white rounded-lg shadow-sm p-4 text-center hover:shadow-md transition-shadow"
-          >
-            <span className="text-slate-800 font-medium">{mod.name}</span>
-            {summary && mod.stat && (
-              <div className="text-xs mt-1 text-slate-500">
-                {summary[mod.stat]} {mod.label}
-              </div>
-            )}
-          </Link>
-        ))}
-        {PLACEHOLDER_MODULES.map((module) => (
-          <div
-            key={module}
-            className="bg-white rounded-lg shadow-sm p-4 text-center text-slate-400 text-sm"
-          >
-            {module}
-            <div className="text-xs mt-1">(coming next)</div>
-          </div>
-        ))}
+        {LIVE_MODULES.map((mod) => {
+          const Icon = mod.icon;
+          return (
+            <Link
+              key={mod.name}
+              href={mod.href}
+              className="bg-white rounded-lg shadow-sm p-4 text-center hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm transition-all duration-150"
+            >
+              <Icon size={20} className="mx-auto mb-1.5 text-slate-400" />
+              <span className="text-slate-800 font-medium">{mod.name}</span>
+              {summary && mod.stat && (
+                <div className="text-xs mt-1 text-slate-500">
+                  {summary[mod.stat]} {mod.label}
+                </div>
+              )}
+            </Link>
+          );
+        })}
       </div>
     </main>
   );

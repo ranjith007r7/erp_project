@@ -63,6 +63,11 @@ class UserRoleUpdate(BaseModel):
     role_id: UUID | None = None
 
 
+class BulkRoleAssignRequest(BaseModel):
+    user_ids: list[UUID] = Field(..., min_length=1, max_length=200)
+    role_id: UUID | None = None
+
+
 class UserManagementOut(BaseModel):
     id: UUID
     name: str

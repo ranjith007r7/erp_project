@@ -40,7 +40,7 @@ from app.models.role import Role, Permission
 from app.models.user import User
 from app.schemas.roles import (
     RoleCreate, RoleOut, PermissionCreate, PermissionOut,
-    UserCreate, UserRoleUpdate, UserManagementOut, InviteCreate,
+    UserCreate, UserRoleUpdate, UserManagementOut, InviteCreate, BulkRoleAssignRequest,
 )
 from app.services.email import send_invite_email
 from app.services.audit import log_audit_event
@@ -281,3 +281,57 @@ def resend_invite(user_id: str, db: Session = Depends(get_db), org_id: str = Dep
     db.commit()
 
     return {"message": f"Invite resent to {user.email}."}
+
+
+# ---------------- Bulk role assignment ----------------
+@router.post("/users/bulk-role-assign", dependencies=[Depends(require_permission("core", "manage_access"))])
+def bulk_assign_role(payload: BulkRoleAssignRequest, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    """
+    The RBAC-sensitive one, built deliberately carefully - this is
+    exactly the class of operation that caused the real privilege-
+    escalation/lockout incident earlier in this project when a single-
+    item version of this same guard didn't exist yet.
+
+    Each user's role change is its own independent flush -> check ->
+    commit-or-skip cycle, using the SAME org_has_admin_equivalent_user()
+    guard as the single-user PATCH route above - never one batched
+    transaction that flushes everything then checks once at the end.
+    That distinction matters: checking once at the end against a
+    pre-batch snapshot could let a batch complete that leaves zero
+    admins, if enough individual changes each look safe in isolation
+    but aren't in combination. Processing sequentially against REAL,
+    already-updated state after each prior item closes that gap -
+    exactly the same reasoning the single-user route's guard depends on.
+
+    Returns a per-item report, not all-or-nothing - a batch job masking
+    a partial, confusing outcome is worse than an explicit list of
+    exactly which users changed and which didn't, and why.
+    """
+    updated: list[str] = []
+    skipped: list[dict] = []
+
+    for user_id in payload.user_ids:
+        user = db.query(User).filter(User.id == user_id, User.org_id == org_id).first()
+        if not user:
+            skipped.append({"user_id": user_id, "reason": "not found"})
+            continue
+
+        if payload.role_id:
+            role = db.query(Role).filter(Role.id == payload.role_id, Role.org_id == org_id).first()
+            if not role:
+                skipped.append({"user_id": user_id, "reason": "role not found in this organization"})
+                continue
+
+        user.role_id = payload.role_id
+        db.flush()
+
+        if not org_has_admin_equivalent_user(db, org_id):
+            db.rollback()
+            skipped.append({"user_id": user_id, "reason": "would leave the organization with no admin-equivalent user"})
+            continue
+
+        log_audit_event(db, org_id, current_user.id, "change_user_role", "User", user.id)
+        db.commit()
+        updated.append(user_id)
+
+    return {"updated": updated, "skipped": skipped}

@@ -1566,3 +1566,168 @@ No Alembic migration needed — confirmed zero schema drift (the `PurchaseOrder.
 
 **Still open from the original six, deferred deliberately, not silently:** global search, bulk actions, and CSV import — each flagged with a specific reason at the start of this phase (new architecture decisions, direct interaction with the RBAC last-admin-guard, and untrusted-data validation risk respectively), not bundled in to avoid rushing their testing.
 
+---
+
+## PART 43 — Global Search, Bulk Actions, CSV Import/Export — All Three Deferred Items, Completed
+
+The three items deliberately deferred in Part 42 are now built, tested, and shipped.
+
+### Global Search
+
+`GET /api/search?q=...` searches across Leads, Accounts, Customers, Products, Employees, Vendors, and Documents in one call. The real design decision, not a shortcut: **results are filtered by the caller's actual RBAC permissions per module**, checked inline against the same `Permission` table every other check in this app reads from. A role holding only `sales.view` gets zero CRM or HR results back, even though it's the same search box — verified directly: created a lead, an employee, and a product all sharing one search term, confirmed Admin sees all three and a Sales-only role sees exactly one.
+
+**A real gap caught and fixed before shipping:** Admin's self-heal (the mechanism that lets an Admin whose org predates a module still get full access) only fires through `require_permission()`'s dependency-injection path. Search bypasses that path entirely, being a raw read-only query — so an Admin whose org had never happened to visit a Documents-gated route first would have silently seen zero documents in search results, despite being Admin. Fixed by checking the role name directly for search purposes specifically, since a read-only operation shouldn't have the side effect of writing self-heal permission rows just to answer "can this Admin see this." Verified with a real test simulating exactly that scenario.
+
+### Bulk Actions
+
+**A real, load-bearing finding before any of this was built:** searched the whole codebase for existing delete routes first, and found almost none exist anywhere — every business module in this entire app has only ever supported create and status-update, never deletion. Given that, bulk delete was deliberately scoped to **Leads only** — a real single-item `DELETE` route was built first (since bulk should compose from a real single-item operation, not bypass it), and Customers/other financially-referenced entities were explicitly left alone, since deleting one could orphan real Invoices or Payments.
+
+**Bulk role assignment** — the one flagged as RBAC-sensitive going in — reuses the *exact* per-item guard from the single-user role-change route, applied to each user independently rather than as one batched transaction. This distinction is the entire point: checking the last-admin invariant once against a pre-batch snapshot could let a batch complete that leaves zero admins if individual changes only look safe in isolation. Processing sequentially against real, already-updated state after each prior change closes that gap. Verified for real: a safe reassignment (another admin-equivalent still covers) succeeds; the sole remaining admin's own attempted self-demotion in a batch is correctly **skipped**, not silently applied — confirmed by querying the database directly afterward, not just trusting the response.
+
+### CSV Export / Import
+
+Scoped to Leads only, proving the mechanism rather than rushing all ten modules — matching exactly how Custom Fields proved itself on two modules back in Phase 9. Partial-success by design: a CSV with 999 good rows and 1 bad one imports the 999 and reports exactly which row failed and why, never all-or-nothing. Capped at 1000 rows per import, a deliberate limit on a synchronous endpoint, not an oversight. One audit entry for the whole import (with a count), not one per row — unlike bulk-delete/bulk-role-assign, which log per item because those are typically small, deliberate batches; an import can legitimately be hundreds of rows.
+
+Verified for real: exported real lead data and confirmed it round-trips into valid CSV; imported a file with 2 valid rows and 1 invalid (blank name), got back exactly `{imported: 2, failed: 1}` with the correct row number; confirmed the final lead count was genuinely 2, not 3, proving the bad row was never persisted, not just reported as failed. Also tested and confirmed: missing `name` column header rejected cleanly, a 1001-row file rejected at the cap, and the RBAC gate blocking a view-only role from importing.
+
+### An honest note on how this session's testing actually went
+
+Backend correctness for all three features was proven twice, through two different methods, because live-server testing became unreliable partway through this session — background processes intermittently failed to stay up between tool calls, a known environment characteristic that had worked reliably earlier in the same session. Real `curl`-based testing against a live server caught and confirmed everything above (including the two real bugs) before that instability set in. Once it did, rather than keep fighting an unreliable live boot, the same behaviors were locked in as **12 new automated pytest tests** using FastAPI's in-process `TestClient` — which doesn't depend on a background server surviving between calls at all, and is arguably the more durable form of proof regardless. Both methods agree. Frontend/backend response-shape contracts were additionally verified by direct code comparison (backend `return` statements against frontend destructuring) for the same reason — still a real, honest check, just via reading rather than a live round-trip, and stated here plainly rather than glossed over.
+
+### Verified end-to-end
+
+```
+Search: Admin sees lead+employee+product for a shared term; a Sales-only role sees ONLY the product
+Search: Admin sees a document with ZERO real Permission rows for "documents" (self-heal-bypass fix)
+Search: Org B gets empty results for a term that only exists in Org A
+
+Bulk delete: mixed batch (2 real ids, 1 bogus, 1 already-deleted) -> correctly split into deleted/not_found
+Bulk delete: requires crm.delete permission, confirmed 403 without it
+
+Bulk role assign: safe reassignment (coverage remains) -> succeeds
+Bulk role assign: sole remaining admin's self-demotion -> skipped, DB-verified genuinely unchanged
+
+CSV export: real lead data appears correctly in the raw CSV output
+CSV import: 2 valid + 1 invalid row -> {imported: 2, failed: 1}, exact correct row number reported
+CSV import: final lead count confirmed as 2, not 3 - the bad row was never persisted
+CSV import: missing 'name' column -> 400 | over 1000 rows -> 400 | missing crm.create -> 403
+
+Full pytest suite -> 69 passed (12 new), zero regressions
+Frontend: real npm run build, clean, still 23 routes, all touched pages grew exactly as expected
+  (/crm, /dashboard, /settings/roles) and nowhere else
+```
+
+### How to verify this yourself, step by step
+
+**Global Search**
+1. Log in as your Admin account, go to the Dashboard.
+2. Type at least 2 characters of something you know exists (a lead's name, a product's name) into the search box next to "Dashboard."
+3. Results should appear in a dropdown within about a third of a second after you stop typing. Click one — it should take you to that item's module page.
+4. To confirm the RBAC scoping specifically: create a second user with a role that only has `sales.view` (Settings → Roles & Permissions → create a role, grant only Sales/view, invite or create a user with it). Log in as that user and search for something that exists in both Sales and, say, HR. You should only ever see the Sales result.
+
+**Bulk Delete (Leads)**
+1. Go to CRM. Create 2–3 test leads if you don't have any disposable ones.
+2. Tick the checkbox next to two of them.
+3. A "Delete N selected" button should appear. Click it, confirm the browser prompt.
+4. Both leads should disappear from the list immediately. Check Settings → Audit Log — you should see two `delete_lead` entries.
+
+**Bulk Role Assignment**
+1. Go to Settings → Roles & Permissions.
+2. Create at least two extra users if you don't have any, with some role assigned.
+3. Tick two of their checkboxes in the Users list.
+4. A role-picker and "Assign Role to Selected" button should appear. Pick a role, click it.
+5. You should see a summary like "Updated 2, skipped 0." Both users' role dropdowns should now show the new role.
+6. **To see the safety guard work**: try selecting every single Admin-equivalent user in your org and assigning them all to a role with no `manage_access` permission. You should see "Updated 0, skipped 1" (or however many), with a message that it would leave the org with no admin-equivalent user — and nobody's role should actually change.
+
+**CSV Export/Import (Leads)**
+1. Go to CRM, click "Export CSV" — a file should download with your real lead data in it.
+2. Open that file (or make your own) with columns `name,company_name,email,source` — `name` is the only required one.
+3. Add a row with a blank `name` on purpose, to test the error handling.
+4. Pick that file with the file input next to "Import CSV," click Import.
+5. You should see a summary showing some rows imported and the one blank-name row reported as failed, with its exact row number.
+6. Refresh the leads list — the valid rows should be there; the invalid one should not.
+
+### Deploying this update
+
+```bash
+git add . && git commit -m "Global search, bulk delete/role-assignment, CSV import/export for Leads" && git push
+```
+```
+No Alembic migration needed — confirmed zero schema drift, this phase only adds routes, schemas, and frontend components.
+
+---
+
+## PART 44 — UI/UX Pass: Two Real Bug Fixes, Toasts, Skeletons, Icons, Motion
+
+Pure frontend work, no backend touched. Two of the seven items were real, standing bugs (fixed everywhere); the other five are a genuine design-system foundation applied thoroughly to four representative pages, not silently claimed across all 23.
+
+### 1. Raw JSON validation error — fixed globally, not per-page
+
+The actual fix lives in `lib/api.ts`, the single place every API call in the app already goes through — not a patch on the signup page specifically. FastAPI's automatic Pydantic validation errors return `detail` as an *array* of error objects (unlike every handled `HTTPException`, which returns a plain string); the old code just `JSON.stringify()`'d whatever wasn't a string, producing exactly the raw JSON the user saw on an uppercase subdomain. `formatErrorDetail()` now turns any such array into `"field: message"`, joined by semicolons for multiple errors — a general fix for validation errors anywhere in the app, not a one-off. Verified with a Node script against the *exact* real error from the original screenshot, confirming both the fix and that normal string errors are untouched.
+
+### 2. Signup's silent success — fixed, the real root cause of the original confusion
+
+Signup used to store the token and redirect instantly, with zero visible confirmation — indistinguishable from nothing happening at all, which is exactly what caused a real successful signup to be mistaken for a failure and retried, producing the "email already registered" confusion this whole thread started from. Now: a real success screen (checkmark, "Organization created," a beat before navigating) plus a toast, both visible before the redirect happens.
+
+### 3. Toast notifications — a real system, not a stub
+
+`components/Toast.tsx`: a `ToastProvider` mounted once in the root layout so every page can call `useToast().showToast(...)` without prop-drilling. Auto-dismisses after 4s, individually dismissible, three types (success/error/info) with distinct icons and colors. Applied to Signup and CRM's key actions (add, bulk delete, CSV import/export) as the representative proof — inline error text was kept alongside, not removed, since a toast can be missed but persistent inline text can't.
+
+### 4. Loading skeletons — real shimmer, not blank states
+
+`components/Skeleton.tsx`: `SkeletonLine`, `SkeletonCard`, `SkeletonList`, `SkeletonStatTile` — real placeholder shapes using Tailwind's built-in `animate-pulse`, sized to roughly match the real content to reduce layout shift when data arrives. Applied to Dashboard (stat tiles + user card) and CRM (the leads list) while their real data loads.
+
+### 5. Icon library
+
+Added `lucide-react` (a genuine new dependency, the one addition in this whole session that wasn't already installed). Applied throughout Dashboard — the exact page flagged as looking plain — replacing every underlined-text-only header link with a real icon-and-hover-state element, and giving each of the 9 module tiles its own representative icon.
+
+### 6. Consistent design polish — applied to four pages, not all 23, stated plainly
+
+Dashboard's header was fully reworked: real `Link` elements with icons, hover backgrounds, and transitions, replacing plain underlined text. **Honest scope note:** this pass covered Dashboard, CRM, Signup, and Login. The other ~19 pages (Sales, Finance, HR, Inventory, Procurement, Documents, Reports, and the remaining Settings pages) still look as they did before this phase — a full pass across every page would be a much larger, separate piece of work, and claiming otherwise here would be exactly the kind of overclaim this manual has tried never to make.
+
+### 7. Motion — real, but scoped to what doesn't need a new dependency
+
+Hover-lift and press-down transitions on Dashboard's module tiles (`hover:-translate-y-0.5 active:translate-y-0`), a press effect on the login button, and a real custom CSS keyframe animation for toasts entering the screen — added directly to `tailwind.config.js`, not via the common `tailwindcss-animate` plugin, which isn't installed in this project and would have been an unnecessary new dependency for one animation.
+
+**Not built, with the reason stated rather than glossed over:** true swipe/drag/pull-to-refresh gestures. These are native-mobile-app interaction patterns; on the web they need either a real animation library (Framer Motion — a genuine new dependency, worth a deliberate yes/no rather than sneaking in) or, for a truly native feel, a different project entirely (a real mobile app, e.g. via React Native). Nothing in this phase pretends otherwise.
+
+### A real bug caught and fixed during this session's own work
+
+First draft of the Dashboard header wrapped `<Button>` components inside `<Link>` elements — which renders a `<button>` nested inside an `<a>`, invalid HTML that browsers tolerate but shouldn't be shipped. Caught by checking the rest of the codebase for this exact pattern first (found none — it was a mistake I'd just introduced, not an existing convention), then fixed by styling the `Link` elements directly instead of wrapping a button component around them.
+
+### Verified
+
+```
+formatErrorDetail() tested against the EXACT real error from the original screenshot:
+  before: raw JSON array dumped as text
+  after:  "subdomain: String should match pattern '^[a-z0-9-]+$'"
+  normal string-detail errors (the already-working case): confirmed unchanged
+
+Full npm run build, clean, 23 routes throughout every incremental change
+Every touched page's bundle size grew exactly where expected, nowhere else
+
+Full-stack: booted both servers, hit /dashboard /login /signup /crm -> all 200
+Confirmed "Organization created" (signup success screen) genuinely compiled into
+  the real signup bundle, not just present in source
+Confirmed the real toast-in CSS keyframe animation is genuinely compiled into
+  the production CSS output, not just declared in Tailwind config
+```
+
+No backend files were touched this phase, so the existing 69-test suite is unaffected and wasn't re-run - nothing to regress.
+
+### How to verify this yourself
+
+1. **Raw JSON fix**: try signing up with an uppercase subdomain (e.g. "MyCompany") — you should see a clean sentence, not JSON.
+2. **Signup success**: complete a real signup — you should see a checkmark screen for about a second before landing on the Dashboard, plus a green toast in the bottom-right corner.
+3. **Toasts**: on the CRM page, add a lead, delete a lead, or import a CSV — a toast should appear bottom-right and fade out after ~4 seconds.
+4. **Skeletons**: reload the Dashboard or CRM page on a throttled connection (Chrome DevTools → Network → Slow 3G) — you should see pulsing gray placeholder shapes briefly, not a blank page or plain "Loading..." text.
+5. **Icons + design polish**: look at the Dashboard header — "Custom Fields," "Roles & Permissions," "Audit Log," and "Log out" should each have an icon and a hover background, and the 9 module tiles below should each show a relevant icon.
+6. **Motion**: hover over a Dashboard module tile — it should lift slightly with a shadow; click it — it should settle back down. Click the Login button — it should compress very slightly on press.
+
+### Deploying this update
+
+```bash
+git add . && git commit -m "UI/UX: fix raw JSON errors and silent signup, add toasts, skeletons, icons, motion polish" && git push
+```
+No Alembic migration needed — pure frontend, one new npm dependency (`lucide-react`), which Vercel will install automatically on deploy.
+

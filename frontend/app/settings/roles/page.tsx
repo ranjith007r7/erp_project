@@ -31,6 +31,9 @@ export default function RolesSettingsPage() {
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [bulkRoleId, setBulkRoleId] = useState("");
+  const [bulkResult, setBulkResult] = useState<{ updated: string[]; skipped: { user_id: string; reason: string }[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
   const [showManageAccessConfirm, setShowManageAccessConfirm] = useState(false);
@@ -190,6 +193,32 @@ export default function RolesSettingsPage() {
       loadUsers();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to change user's role");
+    }
+  }
+
+  function toggleUserSelection(id: string) {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleBulkRoleAssign() {
+    if (selectedUserIds.size === 0) return;
+    setError(null);
+    setBulkResult(null);
+    try {
+      const result = await apiRequest<{ updated: string[]; skipped: { user_id: string; reason: string }[] }>(
+        "/api/core/users/bulk-role-assign",
+        { method: "POST", auth: true, body: { user_ids: Array.from(selectedUserIds), role_id: bulkRoleId || null } }
+      );
+      setBulkResult(result);
+      setSelectedUserIds(new Set());
+      loadUsers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Bulk role assignment failed");
     }
   }
 
@@ -397,19 +426,48 @@ export default function RolesSettingsPage() {
           </form>
         )}
 
+        {selectedUserIds.size > 0 && (
+          <div className="flex items-center gap-2 mb-3 bg-slate-50 border border-slate-200 rounded-lg p-2 flex-wrap">
+            <span className="text-xs text-slate-600">{selectedUserIds.size} selected</span>
+            <Select value={bulkRoleId} onChange={(e) => setBulkRoleId(e.target.value)} className="w-48">
+              <option value="">No role assigned</option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </Select>
+            <Button size="sm" onClick={handleBulkRoleAssign}>Assign Role to Selected</Button>
+          </div>
+        )}
+
+        {bulkResult && (
+          <div className="text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 mb-3">
+            <p className="text-slate-700">Updated {bulkResult.updated.length}, skipped {bulkResult.skipped.length}.</p>
+            {bulkResult.skipped.map((s) => (
+              <p key={s.user_id} className="text-red-600">{s.reason}</p>
+            ))}
+          </div>
+        )}
+
         <div className="divide-y">
           {users.map((u) => (
             <div key={u.id} className="py-2 flex justify-between items-center text-sm">
-              <div>
-                <p className="text-slate-800 font-medium">
-                  {u.name}
-                  {u.status === "invited" && (
-                    <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full align-middle">
-                      Invite pending
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-slate-500">{u.email}</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={selectedUserIds.has(u.id)}
+                  onChange={() => toggleUserSelection(u.id)}
+                />
+                <div>
+                  <p className="text-slate-800 font-medium">
+                    {u.name}
+                    {u.status === "invited" && (
+                      <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full align-middle">
+                        Invite pending
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-slate-500">{u.email}</p>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 {u.status === "invited" && (
