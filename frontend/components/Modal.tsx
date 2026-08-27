@@ -32,12 +32,12 @@ export function Modal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md"
+        className="bg-white dark:bg-zinc-900 rounded-xl shadow-lg p-6 w-full max-w-md"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-white">{title}</h2>
+          <button onClick={onClose} className="text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 text-xl leading-none">
             ×
           </button>
         </div>
@@ -77,7 +77,7 @@ export function PromptModal({
         }}
         className="space-y-3"
       >
-        <label className="block text-sm text-slate-600">
+        <label className="block text-sm text-slate-600 dark:text-zinc-300">
           {label}
           <input
             name="value"
@@ -85,20 +85,20 @@ export function PromptModal({
             required
             defaultValue={defaultValue}
             placeholder={placeholder}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-1"
+            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm mt-1"
           />
         </label>
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="text-sm text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100"
+            className="text-sm text-slate-500 dark:text-zinc-500 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="text-sm bg-slate-800 text-white px-4 py-1.5 rounded-lg hover:bg-slate-700"
+            className="text-sm bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 px-4 py-1.5 rounded-lg hover:bg-slate-700 dark:hover:bg-zinc-300"
           >
             Confirm
           </button>
@@ -126,9 +126,9 @@ export function ConfirmModal({
 }) {
   return (
     <Modal title={title} onClose={onClose}>
-      <p className="text-sm text-slate-600 mb-4">{message}</p>
+      <p className="text-sm text-slate-600 dark:text-zinc-300 mb-4">{message}</p>
       <div className="flex justify-end gap-2">
-        <button onClick={onClose} className="text-sm text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100">
+        <button onClick={onClose} className="text-sm text-slate-500 dark:text-zinc-500 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800">
           Cancel
         </button>
         <button
@@ -136,8 +136,8 @@ export function ConfirmModal({
             onConfirm();
             onClose();
           }}
-          className={`text-sm text-white px-4 py-1.5 rounded-lg ${
-            danger ? "bg-red-600 hover:bg-red-700" : "bg-slate-800 hover:bg-slate-700"
+          className={`text-sm text-white dark:text-zinc-900 px-4 py-1.5 rounded-lg ${
+            danger ? "bg-red-600 hover:bg-red-700" : "bg-slate-800 dark:bg-zinc-200 hover:bg-slate-700 dark:hover:bg-zinc-300"
           }`}
         >
           {confirmLabel}

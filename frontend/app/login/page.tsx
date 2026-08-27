@@ -71,25 +71,25 @@ export default function LoginPage() {
     <main className="min-h-screen flex items-center justify-center px-4">
       <form
         onSubmit={handleSubmit}
-        className="max-w-sm w-full bg-white p-8 rounded-xl shadow-sm space-y-4"
+        className="max-w-sm w-full bg-white dark:bg-zinc-900 p-8 rounded-xl shadow-sm space-y-4"
       >
-        <h1 className="text-2xl font-bold text-slate-800">Log in</h1>
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Log in</h1>
 
         <div>
-          <label className="block text-sm font-medium text-slate-600 mb-1">Email</label>
+          <label className="block text-sm font-medium text-slate-600 dark:text-zinc-300 mb-1">Email</label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="w-full border border-slate-300 rounded-lg px-3 py-2"
+            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2"
           />
         </div>
 
         <div>
           <div className="flex justify-between items-center mb-1">
-            <label className="block text-sm font-medium text-slate-600">Password</label>
-            <Link href="/forgot-password" className="text-xs text-slate-500 underline hover:text-slate-700">
+            <label className="block text-sm font-medium text-slate-600 dark:text-zinc-300">Password</label>
+            <Link href="/forgot-password" className="text-xs text-slate-500 dark:text-zinc-500 underline hover:text-slate-700 dark:hover:text-white dark:text-zinc-900">
               Forgot password?
             </Link>
           </div>
@@ -98,7 +98,7 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            className="w-full border border-slate-300 rounded-lg px-3 py-2"
+            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2"
           />
         </div>
 
@@ -110,7 +110,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={handleResend}
                 disabled={resendStatus !== "idle"}
-                className="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-200 disabled:opacity-50"
+                className="text-xs bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 px-3 py-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-zinc-700 disabled:opacity-50"
               >
                 {resendStatus === "sending"
                   ? "Sending..."
@@ -125,14 +125,14 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-slate-800 text-white rounded-lg py-2 font-medium hover:bg-slate-700 active:scale-[0.98] transition-all disabled:opacity-50"
+          className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 font-medium hover:bg-slate-700 dark:hover:bg-zinc-300 active:scale-[0.98] transition-all disabled:opacity-50"
         >
           {loading ? "Logging in..." : "Log In"}
         </button>
 
-        <p className="text-sm text-slate-500 text-center">
+        <p className="text-sm text-slate-500 dark:text-zinc-500 text-center">
           No organization yet?{" "}
-          <Link href="/signup" className="text-slate-800 underline">
+          <Link href="/signup" className="text-slate-800 dark:text-white underline">
             Create one
           </Link>
         </p>

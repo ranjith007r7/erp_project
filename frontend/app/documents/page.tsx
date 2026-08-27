@@ -123,21 +123,21 @@ export default function DocumentsPage() {
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
       <div className="grid md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-white rounded-xl shadow-sm p-4 space-y-2">
+        <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
           <div className="flex justify-between items-center">
-            <h2 className="font-semibold text-slate-700 text-sm">Add Document</h2>
-            <div className="flex text-xs rounded-lg overflow-hidden border border-slate-300">
+            <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Add Document</h2>
+            <div className="flex text-xs rounded-lg overflow-hidden border border-slate-300 dark:border-zinc-700">
               <button
                 type="button"
                 onClick={() => setAddDocMode("upload")}
-                className={`px-2 py-1 ${addDocMode === "upload" ? "bg-slate-800 text-white" : "bg-white text-slate-600"}`}
+                className={`px-2 py-1 ${addDocMode === "upload" ? "bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900" : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300"}`}
               >
                 Upload File
               </button>
               <button
                 type="button"
                 onClick={() => setAddDocMode("link")}
-                className={`px-2 py-1 ${addDocMode === "link" ? "bg-slate-800 text-white" : "bg-white text-slate-600"}`}
+                className={`px-2 py-1 ${addDocMode === "link" ? "bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900" : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300"}`}
               >
                 Paste a Link
               </button>
@@ -151,7 +151,7 @@ export default function DocumentsPage() {
                 required
                 value={uploadTitle}
                 onChange={(e) => setUploadTitle(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
               />
               <input
                 type="file"
@@ -159,59 +159,59 @@ export default function DocumentsPage() {
                 onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
                 className="w-full text-sm"
               />
-              <p className="text-xs text-slate-400">PDF, Office docs, or images, up to 10MB.</p>
+              <p className="text-xs text-slate-400 dark:text-zinc-500">PDF, Office docs, or images, up to 10MB.</p>
               <Button type="submit" disabled={uploading} className="w-full">
                 {uploading ? "Uploading..." : "Upload"}
               </Button>
             </form>
           ) : (
             <form onSubmit={addDocument} className="space-y-2">
-              <input placeholder="Title" required value={docForm.title} onChange={(e) => setDocForm({ ...docForm, title: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-              <input placeholder="File URL" required value={docForm.file_url} onChange={(e) => setDocForm({ ...docForm, file_url: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
+              <input placeholder="Title" required value={docForm.title} onChange={(e) => setDocForm({ ...docForm, title: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+              <input placeholder="File URL" required value={docForm.file_url} onChange={(e) => setDocForm({ ...docForm, file_url: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
               <Button type="submit" className="w-full">Add Document</Button>
             </form>
           )}
         </div>
 
-        <form onSubmit={addWorkflow} className="bg-white rounded-xl shadow-sm p-4 space-y-2">
-          <h2 className="font-semibold text-slate-700 text-sm">Define Approval Workflow</h2>
-          <input placeholder="Workflow name" required value={workflowForm.name} onChange={(e) => setWorkflowForm({ ...workflowForm, name: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-          <input placeholder="Module (e.g. finance)" required value={workflowForm.module} onChange={(e) => setWorkflowForm({ ...workflowForm, module: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-          <input placeholder="Step 1 role (e.g. Manager)" required value={workflowForm.step1} onChange={(e) => setWorkflowForm({ ...workflowForm, step1: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-          <input placeholder="Step 2 role (optional)" value={workflowForm.step2} onChange={(e) => setWorkflowForm({ ...workflowForm, step2: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-          <button className="w-full bg-slate-800 text-white rounded-lg py-2 text-sm font-medium hover:bg-slate-700">Create Workflow</button>
+        <form onSubmit={addWorkflow} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Define Approval Workflow</h2>
+          <input placeholder="Workflow name" required value={workflowForm.name} onChange={(e) => setWorkflowForm({ ...workflowForm, name: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+          <input placeholder="Module (e.g. finance)" required value={workflowForm.module} onChange={(e) => setWorkflowForm({ ...workflowForm, module: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+          <input placeholder="Step 1 role (e.g. Manager)" required value={workflowForm.step1} onChange={(e) => setWorkflowForm({ ...workflowForm, step1: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+          <input placeholder="Step 2 role (optional)" value={workflowForm.step2} onChange={(e) => setWorkflowForm({ ...workflowForm, step2: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+          <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">Create Workflow</button>
         </form>
 
-        <form onSubmit={createRequest} className="bg-white rounded-xl shadow-sm p-4 space-y-2">
-          <h2 className="font-semibold text-slate-700 text-sm">Start Approval Request</h2>
-          <select required value={entityForm.workflow_id} onChange={(e) => setEntityForm({ ...entityForm, workflow_id: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+        <form onSubmit={createRequest} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Start Approval Request</h2>
+          <select required value={entityForm.workflow_id} onChange={(e) => setEntityForm({ ...entityForm, workflow_id: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm">
             <option value="">Select workflow...</option>
             {workflows.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
-          <input placeholder="What is this for? (e.g. Expense #123)" required value={entityForm.entity_type} onChange={(e) => setEntityForm({ ...entityForm, entity_type: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" />
-          <button className="w-full bg-slate-800 text-white rounded-lg py-2 text-sm font-medium hover:bg-slate-700">Submit for Approval</button>
+          <input placeholder="What is this for? (e.g. Expense #123)" required value={entityForm.entity_type} onChange={(e) => setEntityForm({ ...entityForm, entity_type: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+          <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">Submit for Approval</button>
         </form>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
         <section>
-          <h2 className="font-semibold text-slate-700 mb-3">Approval Requests</h2>
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-3">Approval Requests</h2>
           <div className="space-y-2">
             {requests.map((r) => {
               const pendingStep = r.steps.find((s) => s.status === "pending");
               return (
-                <div key={r.id} className="bg-white rounded-lg shadow-sm p-3 text-sm">
-                  <p className="text-slate-800 font-medium">{r.entity_type}</p>
-                  <p className="text-xs text-slate-500 mb-2">
+                <div key={r.id} className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-3 text-sm">
+                  <p className="text-slate-800 dark:text-white font-medium">{r.entity_type}</p>
+                  <p className="text-xs text-slate-500 dark:text-zinc-500 mb-2">
                     Status: {r.status} ·{" "}
                     {r.steps.map((s) => `${s.role_required}(${s.status})`).join(" → ")}
                   </p>
                   {r.status === "pending" && pendingStep && (
                     <div className="flex gap-2">
-                      <button onClick={() => actionRequest(r.id, "approve")} className="text-xs bg-slate-800 text-white px-3 py-1 rounded-lg hover:bg-slate-700">
+                      <button onClick={() => actionRequest(r.id, "approve")} className="text-xs bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 px-3 py-1 rounded-lg hover:bg-slate-700 dark:hover:bg-zinc-300">
                         Approve ({pendingStep.role_required} step)
                       </button>
-                      <button onClick={() => actionRequest(r.id, "reject")} className="text-xs border border-slate-300 text-slate-600 px-3 py-1 rounded-lg hover:bg-slate-100">
+                      <button onClick={() => actionRequest(r.id, "reject")} className="text-xs border border-slate-300 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 px-3 py-1 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800">
                         Reject
                       </button>
                     </div>
@@ -219,26 +219,26 @@ export default function DocumentsPage() {
                 </div>
               );
             })}
-            {requests.length === 0 && <p className="text-sm text-slate-400">No approval requests yet.</p>}
+            {requests.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No approval requests yet.</p>}
           </div>
         </section>
 
         <section>
-          <h2 className="font-semibold text-slate-700 mb-3">Documents</h2>
-          <div className="bg-white rounded-lg shadow-sm divide-y">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-3">Documents</h2>
+          <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm divide-y">
             {documents.map((d) => (
               <button
                 key={d.id}
                 onClick={() => handleDownload(d)}
-                className="p-3 text-sm block w-full text-left hover:bg-slate-50"
+                className="p-3 text-sm block w-full text-left hover:bg-slate-50 dark:hover:bg-zinc-800"
               >
-                <p className="text-slate-800">
-                  {d.title} {d.storage_key && <span className="text-xs text-slate-400">(uploaded)</span>}
+                <p className="text-slate-800 dark:text-white">
+                  {d.title} {d.storage_key && <span className="text-xs text-slate-400 dark:text-zinc-500">(uploaded)</span>}
                 </p>
-                <p className="text-xs text-slate-400">{d.related_type || "general"}</p>
+                <p className="text-xs text-slate-400 dark:text-zinc-500">{d.related_type || "general"}</p>
               </button>
             ))}
-            {documents.length === 0 && <p className="p-3 text-sm text-slate-400">No documents yet.</p>}
+            {documents.length === 0 && <p className="p-3 text-sm text-slate-400 dark:text-zinc-500">No documents yet.</p>}
           </div>
         </section>
       </div>

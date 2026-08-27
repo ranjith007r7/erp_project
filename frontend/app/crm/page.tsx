@@ -159,33 +159,33 @@ export default function CRMPage() {
       <div className="grid md:grid-cols-2 gap-8">
         {/* Leads */}
         <section>
-          <h2 className="text-lg font-semibold text-slate-700 mb-3">Leads</h2>
+          <h2 className="text-lg font-semibold text-slate-700 dark:text-zinc-200 mb-3">Leads</h2>
 
-          <form onSubmit={handleAddLead} className="bg-white rounded-xl shadow-sm p-4 mb-4 space-y-2">
+          <form onSubmit={handleAddLead} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 mb-4 space-y-2">
             <input
               placeholder="Name"
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="Company"
               value={form.company_name}
               onChange={(e) => setForm({ ...form, company_name: e.target.value })}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="Email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="Source (e.g. Website)"
               value={form.source}
               onChange={(e) => setForm({ ...form, source: e.target.value })}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
             />
             <Button type="submit" className="w-full">Add Lead</Button>
           </form>
@@ -209,8 +209,8 @@ export default function CRMPage() {
           </div>
 
           {importResult && (
-            <div className="text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 mb-2">
-              <p className="text-slate-700">
+            <div className="text-xs bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-800 rounded-lg p-2 mb-2">
+              <p className="text-slate-700 dark:text-zinc-200">
                 Imported {importResult.imported}, failed {importResult.failed}.
               </p>
               {importResult.errors.map((e) => (
@@ -226,7 +226,7 @@ export default function CRMPage() {
               {pagedLeads.map((lead) => {
                 const expanded = expandedLeadId === lead.id;
                 return (
-                  <div key={lead.id} className="bg-white rounded-lg shadow-sm p-3">
+                  <div key={lead.id} className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-3">
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-2">
                         <input
@@ -235,12 +235,12 @@ export default function CRMPage() {
                           onChange={() => toggleLeadSelection(lead.id)}
                         />
                         <div>
-                          <p className="font-medium text-slate-800">{lead.name}</p>
-                          <p className="text-xs text-slate-500">
+                          <p className="font-medium text-slate-800 dark:text-white">{lead.name}</p>
+                          <p className="text-xs text-slate-500 dark:text-zinc-500">
                             {lead.company_name} · {lead.source} ·{" "}
                             <span
                               className={
-                                lead.status === "converted" ? "text-green-600 font-medium" : "text-slate-400"
+                                lead.status === "converted" ? "text-green-600 font-medium" : "text-slate-400 dark:text-zinc-500"
                               }
                             >
                               {lead.status}
@@ -266,7 +266,7 @@ export default function CRMPage() {
                   </div>
                 );
               })}
-              {leads.length === 0 && <p className="text-sm text-slate-400">No leads yet.</p>}
+              {leads.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No leads yet.</p>}
             </div>
           )}
           <PaginationControls page={leadPage} totalPages={leadTotalPages} onChange={setLeadPage} />
@@ -274,18 +274,18 @@ export default function CRMPage() {
 
         {/* Opportunities */}
         <section>
-          <h2 className="text-lg font-semibold text-slate-700 mb-3">Opportunities</h2>
+          <h2 className="text-lg font-semibold text-slate-700 dark:text-zinc-200 mb-3">Opportunities</h2>
           <div className="space-y-2">
             {opportunities.map((opp) => (
-              <div key={opp.id} className="bg-white rounded-lg shadow-sm p-3">
-                <p className="font-medium text-slate-800">{opp.name}</p>
-                <p className="text-xs text-slate-500">
+              <div key={opp.id} className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-3">
+                <p className="font-medium text-slate-800 dark:text-white">{opp.name}</p>
+                <p className="text-xs text-slate-500 dark:text-zinc-500">
                   Stage: {opp.stage} · Value: ₹{Number(opp.value).toLocaleString("en-IN")}
                 </p>
               </div>
             ))}
             {opportunities.length === 0 && (
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-slate-400 dark:text-zinc-500">
                 No opportunities yet — convert a lead to create one.
               </p>
             )}
@@ -296,7 +296,7 @@ export default function CRMPage() {
       {convertingLead && (
         <Modal title={`Convert "${convertingLead.name}" to an Opportunity`} onClose={() => setConvertingLead(null)}>
           <form onSubmit={handleConvert} className="space-y-3">
-            <label className="block text-sm text-slate-600">
+            <label className="block text-sm text-slate-600 dark:text-zinc-300">
               Opportunity name
               <input
                 autoFocus
@@ -304,28 +304,28 @@ export default function CRMPage() {
                 value={convertForm.opportunity_name}
                 onChange={(e) => setConvertForm({ ...convertForm, opportunity_name: e.target.value })}
                 placeholder="e.g. Acme Corp — Website Revamp"
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-1"
+                className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm mt-1"
               />
             </label>
-            <label className="block text-sm text-slate-600">
+            <label className="block text-sm text-slate-600 dark:text-zinc-300">
               Estimated deal value (₹)
               <input
                 type="number"
                 min="0"
                 value={convertForm.value}
                 onChange={(e) => setConvertForm({ ...convertForm, value: e.target.value })}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-1"
+                className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm mt-1"
               />
             </label>
             <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setConvertingLead(null)}
-                className="text-sm text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-100"
+                className="text-sm text-slate-500 dark:text-zinc-500 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800"
               >
                 Cancel
               </button>
-              <button type="submit" className="text-sm bg-slate-800 text-white px-4 py-1.5 rounded-lg hover:bg-slate-700">
+              <button type="submit" className="text-sm bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 px-4 py-1.5 rounded-lg hover:bg-slate-700 dark:hover:bg-zinc-300">
                 Convert
               </button>
             </div>

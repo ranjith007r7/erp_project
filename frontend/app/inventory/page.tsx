@@ -74,35 +74,35 @@ export default function InventoryPage() {
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
       <div className="grid md:grid-cols-2 gap-6 mb-8">
-        <form onSubmit={addCategory} className="bg-white rounded-xl shadow-sm p-4 space-y-2">
-          <h2 className="font-semibold text-slate-700 text-sm">Add Category</h2>
+        <form onSubmit={addCategory} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Add Category</h2>
           <input
             placeholder="Category name"
             required
             value={categoryForm.name}
             onChange={(e) => setCategoryForm({ name: e.target.value })}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
           />
-          <button className="w-full bg-slate-800 text-white rounded-lg py-2 text-sm font-medium hover:bg-slate-700">
+          <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">
             Add Category
           </button>
         </form>
 
-        <form onSubmit={addProduct} className="bg-white rounded-xl shadow-sm p-4 space-y-2">
-          <h2 className="font-semibold text-slate-700 text-sm">Add Product</h2>
+        <form onSubmit={addProduct} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Add Product</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input
               placeholder="Name"
               required
               value={productForm.name}
               onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="SKU"
               value={productForm.sku}
               onChange={(e) => setProductForm({ ...productForm, sku: e.target.value })}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="Unit price"
@@ -110,27 +110,27 @@ export default function InventoryPage() {
               required
               value={productForm.unit_price}
               onChange={(e) => setProductForm({ ...productForm, unit_price: e.target.value })}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="Reorder level"
               type="number"
               value={productForm.reorder_level}
               onChange={(e) => setProductForm({ ...productForm, reorder_level: e.target.value })}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
             />
           </div>
           <select
             value={productForm.category_id}
             onChange={(e) => setProductForm({ ...productForm, category_id: e.target.value })}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
           >
             <option value="">No category</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
-          <button className="w-full bg-slate-800 text-white rounded-lg py-2 text-sm font-medium hover:bg-slate-700">
+          <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">
             Add Product
           </button>
         </form>
@@ -138,8 +138,8 @@ export default function InventoryPage() {
 
       <div className="grid md:grid-cols-2 gap-6">
         <section>
-          <h2 className="font-semibold text-slate-700 mb-3">Products & Stock</h2>
-          <div className="bg-white rounded-lg shadow-sm divide-y">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-3">Products & Stock</h2>
+          <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm divide-y">
             {pagedProducts.map((p) => {
               const qty = stockFor(p.id);
               const low = qty <= p.reorder_level;
@@ -148,16 +148,16 @@ export default function InventoryPage() {
                 <div key={p.id} className="p-3 text-sm">
                   <div className="flex justify-between items-center">
                     <div>
-                      <p className="text-slate-800 font-medium">{p.name}</p>
-                      <p className="text-xs text-slate-500">{p.sku || "no SKU"} · ₹{p.unit_price}</p>
+                      <p className="text-slate-800 dark:text-white font-medium">{p.name}</p>
+                      <p className="text-xs text-slate-500 dark:text-zinc-500">{p.sku || "no SKU"} · ₹{p.unit_price}</p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className={low ? "text-red-600 font-semibold text-xs" : "text-slate-500 text-xs"}>
+                      <span className={low ? "text-red-600 font-semibold text-xs" : "text-slate-500 dark:text-zinc-500 text-xs"}>
                         {qty} in stock {low && "· LOW"}
                       </span>
                       <button
                         onClick={() => setExpandedProductId(expanded ? null : p.id)}
-                        className="text-xs text-slate-400 underline hover:text-slate-600"
+                        className="text-xs text-slate-400 dark:text-zinc-500 underline hover:text-slate-600 dark:hover:text-zinc-300"
                       >
                         {expanded ? "Hide fields" : "Fields"}
                       </button>
@@ -167,17 +167,17 @@ export default function InventoryPage() {
                 </div>
               );
             })}
-            {products.length === 0 && <p className="p-3 text-sm text-slate-400">No products yet.</p>}
+            {products.length === 0 && <p className="p-3 text-sm text-slate-400 dark:text-zinc-500">No products yet.</p>}
           </div>
           <PaginationControls page={productPage} totalPages={productTotalPages} onChange={setProductPage} />
         </section>
 
         <section>
-          <h2 className="font-semibold text-slate-700 mb-3">Stock Movements</h2>
-          <div className="bg-white rounded-lg shadow-sm divide-y">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-3">Stock Movements</h2>
+          <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm divide-y">
             {movements.map((m) => (
               <div key={m.id} className="p-3 flex justify-between items-center text-sm">
-                <span className="text-slate-700">
+                <span className="text-slate-700 dark:text-zinc-200">
                   {products.find((p) => p.id === m.product_id)?.name || "Unknown product"}
                 </span>
                 <span className={m.movement_type === "in" ? "text-green-600" : "text-orange-600"}>
@@ -185,7 +185,7 @@ export default function InventoryPage() {
                 </span>
               </div>
             ))}
-            {movements.length === 0 && <p className="p-3 text-sm text-slate-400">No stock movements yet.</p>}
+            {movements.length === 0 && <p className="p-3 text-sm text-slate-400 dark:text-zinc-500">No stock movements yet.</p>}
           </div>
         </section>
       </div>

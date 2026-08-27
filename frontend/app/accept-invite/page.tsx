@@ -56,7 +56,7 @@ function AcceptInviteForm() {
           This link is missing an invite token. Please use the link from your invitation email
           directly.
         </p>
-        <Link href="/login" className="block text-center text-sm text-slate-800 underline">
+        <Link href="/login" className="block text-center text-sm text-slate-800 dark:text-white underline">
           Back to login
         </Link>
       </div>
@@ -65,27 +65,27 @@ function AcceptInviteForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <p className="text-sm text-slate-500">Set a password to activate your account.</p>
+      <p className="text-sm text-slate-500 dark:text-zinc-500">Set a password to activate your account.</p>
       <div>
-        <label className="block text-sm font-medium text-slate-600 mb-1">Password</label>
+        <label className="block text-sm font-medium text-slate-600 dark:text-zinc-300 mb-1">Password</label>
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
           minLength={8}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2"
+          className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2"
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-600 mb-1">Confirm password</label>
+        <label className="block text-sm font-medium text-slate-600 dark:text-zinc-300 mb-1">Confirm password</label>
         <input
           type="password"
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
           required
           minLength={8}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2"
+          className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2"
         />
       </div>
 
@@ -94,7 +94,7 @@ function AcceptInviteForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-slate-800 text-white rounded-lg py-2 font-medium hover:bg-slate-700 disabled:opacity-50"
+        className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 font-medium hover:bg-slate-700 dark:hover:bg-zinc-300 disabled:opacity-50"
       >
         {loading ? "Setting up..." : "Activate Account"}
       </button>
@@ -105,9 +105,9 @@ function AcceptInviteForm() {
 export default function AcceptInvitePage() {
   return (
     <main className="min-h-screen flex items-center justify-center px-4">
-      <div className="max-w-sm w-full bg-white p-8 rounded-xl shadow-sm space-y-4">
-        <h1 className="text-2xl font-bold text-slate-800">Welcome</h1>
-        <Suspense fallback={<p className="text-sm text-slate-400">Loading…</p>}>
+      <div className="max-w-sm w-full bg-white dark:bg-zinc-900 p-8 rounded-xl shadow-sm space-y-4">
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Welcome</h1>
+        <Suspense fallback={<p className="text-sm text-slate-400 dark:text-zinc-500">Loading…</p>}>
           <AcceptInviteForm />
         </Suspense>
       </div>

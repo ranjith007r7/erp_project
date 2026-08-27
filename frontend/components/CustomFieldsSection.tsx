@@ -96,12 +96,12 @@ export function CustomFieldsSection({ entityType, entityId }: { entityType: stri
     }
   }
 
-  if (loading) return <p className="text-xs text-slate-400 py-2">Loading custom fields…</p>;
+  if (loading) return <p className="text-xs text-slate-400 dark:text-zinc-500 py-2">Loading custom fields…</p>;
   if (values.length === 0) return null; // no fields defined for this entity_type — render nothing, not an empty box
 
   return (
-    <div className="border-t border-slate-100 mt-3 pt-3 space-y-2">
-      <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Custom Fields</p>
+    <div className="border-t border-slate-100 dark:border-zinc-800 mt-3 pt-3 space-y-2">
+      <p className="text-xs font-medium text-slate-500 dark:text-zinc-500 uppercase tracking-wide">Custom Fields</p>
 
       {error && <p className="text-xs text-red-600">{error}</p>}
 
@@ -111,7 +111,7 @@ export function CustomFieldsSection({ entityType, entityId }: { entityType: stri
           const current = draft[v.custom_field_id] ?? "";
 
           return (
-            <label key={v.custom_field_id} className="text-xs text-slate-600 block">
+            <label key={v.custom_field_id} className="text-xs text-slate-600 dark:text-zinc-300 block">
               {v.field_name}
               {def?.is_required && <span className="text-red-500"> *</span>}
 
@@ -119,7 +119,7 @@ export function CustomFieldsSection({ entityType, entityId }: { entityType: stri
                 <select
                   value={current}
                   onChange={(e) => setDraft({ ...draft, [v.custom_field_id]: e.target.value })}
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm mt-1"
+                  className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 text-sm mt-1"
                 >
                   <option value="">—</option>
                   {(def?.options ?? "").split(",").filter(Boolean).map((opt) => (
@@ -131,7 +131,7 @@ export function CustomFieldsSection({ entityType, entityId }: { entityType: stri
                   type={v.field_type === "number" ? "number" : v.field_type === "date" ? "date" : "text"}
                   value={current}
                   onChange={(e) => setDraft({ ...draft, [v.custom_field_id]: e.target.value })}
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm mt-1"
+                  className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 text-sm mt-1"
                 />
               )}
             </label>
@@ -142,7 +142,7 @@ export function CustomFieldsSection({ entityType, entityId }: { entityType: stri
       <button
         onClick={handleSave}
         disabled={saving}
-        className="text-xs bg-slate-700 text-white px-3 py-1.5 rounded-lg hover:bg-slate-600 disabled:opacity-50"
+        className="text-xs bg-slate-700 dark:bg-zinc-300 text-white dark:text-zinc-900 px-3 py-1.5 rounded-lg hover:bg-slate-600 dark:hover:bg-zinc-700 disabled:opacity-50"
       >
         {saving ? "Saving…" : saved ? "Saved ✓" : "Save Custom Fields"}
       </button>

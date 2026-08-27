@@ -65,7 +65,7 @@ export function VerificationBanner({ email }: { email: string }) {
         <button
           onClick={handleResend}
           disabled={status !== "idle"}
-          className="text-xs bg-amber-800 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 disabled:opacity-50 whitespace-nowrap"
+          className="text-xs bg-amber-800 text-white dark:text-zinc-900 px-3 py-1.5 rounded-lg hover:bg-amber-700 disabled:opacity-50 whitespace-nowrap"
         >
           {buttonLabel}
         </button>

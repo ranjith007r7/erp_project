@@ -52,12 +52,12 @@ export default function FinancePage() {
       <div className="grid md:grid-cols-3 gap-6">
         {/* Chart of Accounts */}
         <section>
-          <h2 className="font-semibold text-slate-700 mb-3">Chart of Accounts</h2>
-          <div className="bg-white rounded-lg shadow-sm divide-y">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-3">Chart of Accounts</h2>
+          <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm divide-y">
             {accounts.map((a) => (
               <div key={a.id} className="p-3 flex justify-between text-sm">
-                <span className="text-slate-800">{a.code} · {a.name}</span>
-                <span className="text-slate-400 text-xs">{a.account_type}</span>
+                <span className="text-slate-800 dark:text-white">{a.code} · {a.name}</span>
+                <span className="text-slate-400 dark:text-zinc-500 text-xs">{a.account_type}</span>
               </div>
             ))}
           </div>
@@ -65,36 +65,36 @@ export default function FinancePage() {
 
         {/* Unpaid Invoices -> Record Payment */}
         <section>
-          <h2 className="font-semibold text-slate-700 mb-3">Unpaid Invoices</h2>
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-3">Unpaid Invoices</h2>
           <div className="space-y-2">
             {unpaidInvoices.map((inv) => (
-              <div key={inv.id} className="bg-white rounded-lg shadow-sm p-3 flex justify-between items-center">
+              <div key={inv.id} className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-3 flex justify-between items-center">
                 <div>
-                  <p className="text-sm font-medium text-slate-800">₹{Number(inv.amount).toLocaleString("en-IN")}</p>
-                  <p className="text-xs text-slate-500">{inv.status}</p>
+                  <p className="text-sm font-medium text-slate-800 dark:text-white">₹{Number(inv.amount).toLocaleString("en-IN")}</p>
+                  <p className="text-xs text-slate-500 dark:text-zinc-500">{inv.status}</p>
                 </div>
                 <button
                   onClick={() => recordPayment(inv.id, inv.amount)}
-                  className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700"
+                  className="text-xs bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 px-3 py-1.5 rounded-lg hover:bg-slate-700 dark:hover:bg-zinc-300"
                 >
                   Record Payment
                 </button>
               </div>
             ))}
-            {unpaidInvoices.length === 0 && <p className="text-sm text-slate-400">No unpaid invoices.</p>}
+            {unpaidInvoices.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No unpaid invoices.</p>}
           </div>
         </section>
 
         {/* Journal Entries */}
         <section>
-          <h2 className="font-semibold text-slate-700 mb-3">Journal Entries</h2>
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-3">Journal Entries</h2>
           <div className="space-y-2">
             {entries.map((entry) => (
-              <div key={entry.id} className="bg-white rounded-lg shadow-sm p-3">
-                <p className="text-xs text-slate-400 mb-1">{entry.date} · {entry.reference}</p>
-                <p className="text-sm text-slate-700 mb-2">{entry.description}</p>
+              <div key={entry.id} className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-3">
+                <p className="text-xs text-slate-400 dark:text-zinc-500 mb-1">{entry.date} · {entry.reference}</p>
+                <p className="text-sm text-slate-700 dark:text-zinc-200 mb-2">{entry.description}</p>
                 {entry.lines.map((line, i) => (
-                  <p key={i} className="text-xs text-slate-500 flex justify-between">
+                  <p key={i} className="text-xs text-slate-500 dark:text-zinc-500 flex justify-between">
                     <span>{accountName(line.account_id)}</span>
                     <span>
                       {Number(line.debit) > 0
@@ -105,7 +105,7 @@ export default function FinancePage() {
                 ))}
               </div>
             ))}
-            {entries.length === 0 && <p className="text-sm text-slate-400">No journal entries yet.</p>}
+            {entries.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No journal entries yet.</p>}
           </div>
         </section>
       </div>

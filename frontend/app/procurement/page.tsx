@@ -72,27 +72,27 @@ export default function ProcurementPage() {
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
       <div className="grid md:grid-cols-2 gap-6 mb-8">
-        <form onSubmit={addVendor} className="bg-white rounded-xl shadow-sm p-4 space-y-2">
-          <h2 className="font-semibold text-slate-700 text-sm">Add Vendor</h2>
+        <form onSubmit={addVendor} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Add Vendor</h2>
           <input
             placeholder="Vendor name"
             required
             value={vendorForm.name}
             onChange={(e) => setVendorForm({ name: e.target.value })}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
           />
-          <button className="w-full bg-slate-800 text-white rounded-lg py-2 text-sm font-medium hover:bg-slate-700">
+          <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">
             Add Vendor
           </button>
         </form>
 
-        <form onSubmit={createPO} className="bg-white rounded-xl shadow-sm p-4 space-y-2">
-          <h2 className="font-semibold text-slate-700 text-sm">Create Purchase Order</h2>
+        <form onSubmit={createPO} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Create Purchase Order</h2>
           <select
             required
             value={poForm.vendor_id}
             onChange={(e) => setPoForm({ ...poForm, vendor_id: e.target.value })}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
           >
             <option value="">Select vendor...</option>
             {vendors.map((v) => (
@@ -103,7 +103,7 @@ export default function ProcurementPage() {
             required
             value={poForm.product_id}
             onChange={(e) => setPoForm({ ...poForm, product_id: e.target.value })}
-            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
           >
             <option value="">Select product...</option>
             {products.map((p) => (
@@ -117,7 +117,7 @@ export default function ProcurementPage() {
               min={1}
               value={poForm.qty}
               onChange={(e) => setPoForm({ ...poForm, qty: e.target.value })}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="Unit cost"
@@ -125,35 +125,35 @@ export default function ProcurementPage() {
               required
               value={poForm.unit_price}
               onChange={(e) => setPoForm({ ...poForm, unit_price: e.target.value })}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
             />
           </div>
-          <button className="w-full bg-slate-800 text-white rounded-lg py-2 text-sm font-medium hover:bg-slate-700">
+          <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">
             Create Purchase Order
           </button>
         </form>
       </div>
 
       <section>
-        <h2 className="font-semibold text-slate-700 mb-3">Purchase Orders</h2>
+        <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-3">Purchase Orders</h2>
         <div className="space-y-2">
           {orders.map((po) => (
-            <div key={po.id} className="bg-white rounded-lg shadow-sm p-3 flex justify-between items-center">
+            <div key={po.id} className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-3 flex justify-between items-center">
               <div>
-                <p className="text-sm font-medium text-slate-800">{vendorName(po.vendor_id)}</p>
-                <p className="text-xs text-slate-500">₹{Number(po.total).toLocaleString("en-IN")} · {po.status}</p>
+                <p className="text-sm font-medium text-slate-800 dark:text-white">{vendorName(po.vendor_id)}</p>
+                <p className="text-xs text-slate-500 dark:text-zinc-500">₹{Number(po.total).toLocaleString("en-IN")} · {po.status}</p>
               </div>
               {po.status !== "received" && (
                 <button
                   onClick={() => receivePO(po.id)}
-                  className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700"
+                  className="text-xs bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 px-3 py-1.5 rounded-lg hover:bg-slate-700 dark:hover:bg-zinc-300"
                 >
                   Receive Goods
                 </button>
               )}
             </div>
           ))}
-          {orders.length === 0 && <p className="text-sm text-slate-400">No purchase orders yet.</p>}
+          {orders.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No purchase orders yet.</p>}
         </div>
       </section>
     </main>

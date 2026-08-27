@@ -37,17 +37,17 @@ export function PaginationControls({
       <button
         onClick={() => onChange(page - 1)}
         disabled={page <= 1}
-        className="text-slate-500 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+        className="text-slate-500 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-white dark:text-zinc-900 disabled:opacity-30 disabled:cursor-not-allowed"
       >
         ← Prev
       </button>
-      <span className="text-slate-400 text-xs">
+      <span className="text-slate-400 dark:text-zinc-500 text-xs">
         Page {page} of {totalPages}
       </span>
       <button
         onClick={() => onChange(page + 1)}
         disabled={page >= totalPages}
-        className="text-slate-500 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+        className="text-slate-500 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-white dark:text-zinc-900 disabled:opacity-30 disabled:cursor-not-allowed"
       >
         Next →
       </button>

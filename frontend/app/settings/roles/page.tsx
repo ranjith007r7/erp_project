@@ -248,7 +248,7 @@ export default function RolesSettingsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Roles */}
         <Card className="p-4">
-          <h2 className="font-semibold text-slate-700 text-sm mb-3">Roles</h2>
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm mb-3">Roles</h2>
           <form onSubmit={handleCreateRole} className="flex gap-2 mb-4">
             <Input
               placeholder="e.g. Sales Executive"
@@ -265,39 +265,39 @@ export default function RolesSettingsPage() {
                 key={role.id}
                 onClick={() => setSelectedRoleId(role.id)}
                 className={`w-full text-left py-2 px-2 text-sm rounded-lg ${
-                  selectedRoleId === role.id ? "bg-slate-100 font-medium text-slate-800" : "text-slate-600 hover:bg-slate-50"
+                  selectedRoleId === role.id ? "bg-slate-100 dark:bg-zinc-800 font-medium text-slate-800 dark:text-white" : "text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800"
                 }`}
               >
                 {role.name}
               </button>
             ))}
-            {roles.length === 0 && <p className="text-sm text-slate-400 py-2">No roles yet.</p>}
+            {roles.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500 py-2">No roles yet.</p>}
           </div>
         </Card>
 
         {/* Permission matrix for the selected role */}
         <Card className="p-4">
-          <h2 className="font-semibold text-slate-700 text-sm mb-3">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm mb-3">
             {selectedRole ? `Permissions — ${selectedRole.name}` : "Select a role to manage its permissions"}
           </h2>
 
           {!selectedRole && (
-            <p className="text-sm text-slate-400">Pick a role on the left, then toggle what it can do below.</p>
+            <p className="text-sm text-slate-400 dark:text-zinc-500">Pick a role on the left, then toggle what it can do below.</p>
           )}
 
-          {selectedRole && permissionsLoading && <p className="text-sm text-slate-400">Loading…</p>}
+          {selectedRole && permissionsLoading && <p className="text-sm text-slate-400 dark:text-zinc-500">Loading…</p>}
 
           {selectedRole && !permissionsLoading && (
             <div
               className={`mb-4 p-3 rounded-lg border-2 flex justify-between items-center ${
-                hasManageAccess() ? "bg-amber-50 border-amber-300" : "bg-slate-50 border-slate-200"
+                hasManageAccess() ? "bg-amber-50 border-amber-300" : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-800"
               }`}
             >
               <div>
-                <p className="text-sm font-semibold text-slate-800">
+                <p className="text-sm font-semibold text-slate-800 dark:text-white">
                   {hasManageAccess() ? "⚠️ " : ""}Manage Roles &amp; Permissions
                 </p>
-                <p className="text-xs text-slate-600 mt-0.5 max-w-md">
+                <p className="text-xs text-slate-600 dark:text-zinc-300 mt-0.5 max-w-md">
                   Full control over every role and user in this organization — create/change roles,
                   grant or revoke ANY permission, and assign any user (including this one) as Admin.
                   This is separate from the checkboxes below on purpose: it is not the same kind of
@@ -318,7 +318,7 @@ export default function RolesSettingsPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs text-slate-400 uppercase">
+                  <tr className="text-left text-xs text-slate-400 dark:text-zinc-500 uppercase">
                     <th className="py-1 pr-2">Module</th>
                     {ACTIONS.map((action) => (
                       <th key={action} className="py-1 px-1 text-center">{action}</th>
@@ -327,8 +327,8 @@ export default function RolesSettingsPage() {
                 </thead>
                 <tbody>
                   {MODULES.map((module) => (
-                    <tr key={module} className="border-t border-slate-100">
-                      <td className="py-1.5 pr-2 text-slate-700">{module}</td>
+                    <tr key={module} className="border-t border-slate-100 dark:border-zinc-800">
+                      <td className="py-1.5 pr-2 text-slate-700 dark:text-zinc-200">{module}</td>
                       {ACTIONS.map((action) => (
                         <td key={action} className="py-1.5 px-1 text-center">
                           <input
@@ -350,17 +350,17 @@ export default function RolesSettingsPage() {
       {/* Users */}
       <Card className="p-4 max-w-3xl">
         <div className="flex justify-between items-center mb-3">
-          <h2 className="font-semibold text-slate-700 text-sm">Users</h2>
-          <div className="flex text-xs rounded-lg overflow-hidden border border-slate-300">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Users</h2>
+          <div className="flex text-xs rounded-lg overflow-hidden border border-slate-300 dark:border-zinc-700">
             <button
               onClick={() => setAddUserMode("invite")}
-              className={`px-3 py-1.5 ${addUserMode === "invite" ? "bg-slate-800 text-white" : "bg-white text-slate-600"}`}
+              className={`px-3 py-1.5 ${addUserMode === "invite" ? "bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900" : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300"}`}
             >
               Send Invite
             </button>
             <button
               onClick={() => setAddUserMode("password")}
-              className={`px-3 py-1.5 ${addUserMode === "password" ? "bg-slate-800 text-white" : "bg-white text-slate-600"}`}
+              className={`px-3 py-1.5 ${addUserMode === "password" ? "bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900" : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300"}`}
             >
               Set Password Directly
             </button>
@@ -369,7 +369,7 @@ export default function RolesSettingsPage() {
 
         {addUserMode === "invite" ? (
           <form onSubmit={handleSendInvite} className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-            <p className="text-xs text-slate-500 sm:col-span-2">
+            <p className="text-xs text-slate-500 dark:text-zinc-500 sm:col-span-2">
               Sends a real email with a link — they'll set their own password. Nothing to type in
               for them here.
             </p>
@@ -435,8 +435,8 @@ export default function RolesSettingsPage() {
         )}
 
         {selectedUserIds.size > 0 && (
-          <div className="flex items-center gap-2 mb-3 bg-slate-50 border border-slate-200 rounded-lg p-2 flex-wrap">
-            <span className="text-xs text-slate-600">{selectedUserIds.size} selected</span>
+          <div className="flex items-center gap-2 mb-3 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-800 rounded-lg p-2 flex-wrap">
+            <span className="text-xs text-slate-600 dark:text-zinc-300">{selectedUserIds.size} selected</span>
             <Select value={bulkRoleId} onChange={(e) => setBulkRoleId(e.target.value)} className="w-48">
               <option value="">No role assigned</option>
               {roles.map((r) => (
@@ -448,8 +448,8 @@ export default function RolesSettingsPage() {
         )}
 
         {bulkResult && (
-          <div className="text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 mb-3">
-            <p className="text-slate-700">Updated {bulkResult.updated.length}, skipped {bulkResult.skipped.length}.</p>
+          <div className="text-xs bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-800 rounded-lg p-2 mb-3">
+            <p className="text-slate-700 dark:text-zinc-200">Updated {bulkResult.updated.length}, skipped {bulkResult.skipped.length}.</p>
             {bulkResult.skipped.map((s) => (
               <p key={s.user_id} className="text-red-600">{s.reason}</p>
             ))}
@@ -466,7 +466,7 @@ export default function RolesSettingsPage() {
                   onChange={() => toggleUserSelection(u.id)}
                 />
                 <div>
-                  <p className="text-slate-800 font-medium">
+                  <p className="text-slate-800 dark:text-white font-medium">
                     {u.name}
                     {u.status === "invited" && (
                       <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full align-middle">
@@ -474,7 +474,7 @@ export default function RolesSettingsPage() {
                       </span>
                     )}
                   </p>
-                  <p className="text-xs text-slate-500">{u.email}</p>
+                  <p className="text-xs text-slate-500 dark:text-zinc-500">{u.email}</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -482,7 +482,7 @@ export default function RolesSettingsPage() {
                   <button
                     onClick={() => handleResendInvite(u.id)}
                     disabled={resendStatus[u.id] === "sending"}
-                    className="text-xs text-slate-500 underline hover:text-slate-700 disabled:opacity-50 whitespace-nowrap"
+                    className="text-xs text-slate-500 dark:text-zinc-500 underline hover:text-slate-700 dark:hover:text-white dark:text-zinc-900 disabled:opacity-50 whitespace-nowrap"
                   >
                     {resendStatus[u.id] === "sending"
                       ? "Sending..."
@@ -504,7 +504,7 @@ export default function RolesSettingsPage() {
               </div>
             </div>
           ))}
-          {users.length === 0 && <p className="text-sm text-slate-400 py-2">No users yet.</p>}
+          {users.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500 py-2">No users yet.</p>}
         </div>
       </Card>
 

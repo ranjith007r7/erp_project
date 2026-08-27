@@ -56,7 +56,7 @@ function ResetPasswordForm() {
           This link is missing a reset token. Please use the link from your password reset email
           directly, or request a new one.
         </p>
-        <Link href="/forgot-password" className="block text-center text-sm text-slate-800 underline">
+        <Link href="/forgot-password" className="block text-center text-sm text-slate-800 dark:text-white underline">
           Request a new reset link
         </Link>
       </div>
@@ -65,7 +65,7 @@ function ResetPasswordForm() {
 
   if (success) {
     return (
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-slate-600 dark:text-zinc-300">
         Password updated. Redirecting you to login…
       </p>
     );
@@ -74,25 +74,25 @@ function ResetPasswordForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-slate-600 mb-1">New password</label>
+        <label className="block text-sm font-medium text-slate-600 dark:text-zinc-300 mb-1">New password</label>
         <input
           type="password"
           value={newPassword}
           onChange={(e) => setNewPassword(e.target.value)}
           required
           minLength={8}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2"
+          className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2"
         />
       </div>
       <div>
-        <label className="block text-sm font-medium text-slate-600 mb-1">Confirm new password</label>
+        <label className="block text-sm font-medium text-slate-600 dark:text-zinc-300 mb-1">Confirm new password</label>
         <input
           type="password"
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
           required
           minLength={8}
-          className="w-full border border-slate-300 rounded-lg px-3 py-2"
+          className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2"
         />
       </div>
 
@@ -101,7 +101,7 @@ function ResetPasswordForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-slate-800 text-white rounded-lg py-2 font-medium hover:bg-slate-700 disabled:opacity-50"
+        className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 font-medium hover:bg-slate-700 dark:hover:bg-zinc-300 disabled:opacity-50"
       >
         {loading ? "Resetting..." : "Reset Password"}
       </button>
@@ -112,9 +112,9 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     <main className="min-h-screen flex items-center justify-center px-4">
-      <div className="max-w-sm w-full bg-white p-8 rounded-xl shadow-sm space-y-4">
-        <h1 className="text-2xl font-bold text-slate-800">Reset password</h1>
-        <Suspense fallback={<p className="text-sm text-slate-400">Loading…</p>}>
+      <div className="max-w-sm w-full bg-white dark:bg-zinc-900 p-8 rounded-xl shadow-sm space-y-4">
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Reset password</h1>
+        <Suspense fallback={<p className="text-sm text-slate-400 dark:text-zinc-500">Loading…</p>}>
           <ResetPasswordForm />
         </Suspense>
       </div>

@@ -45,7 +45,7 @@ export default function AuditLogPage() {
     <main className="min-h-screen p-8">
       <PageHeader title="Audit Log" />
 
-      <p className="text-sm text-slate-500 mb-4 max-w-2xl">
+      <p className="text-sm text-slate-500 dark:text-zinc-500 mb-4 max-w-2xl">
         A permanent, read-only record of sensitive actions — role and permission changes, payments,
         approvals, payroll, and invoices. Showing the {entries.length >= 500 ? "500 most recent (older entries exist beyond this)" : `${entries.length} most recent`} entries.
       </p>
@@ -53,22 +53,22 @@ export default function AuditLogPage() {
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
       <Card className="max-w-3xl">
-        {loading && <p className="p-4 text-sm text-slate-400">Loading…</p>}
+        {loading && <p className="p-4 text-sm text-slate-400 dark:text-zinc-500">Loading…</p>}
         {!loading && (
           <div className="divide-y">
             {pageItems.map((entry) => (
               <div key={entry.id} className="p-3 text-sm">
-                <p className="text-slate-800">
+                <p className="text-slate-800 dark:text-white">
                   <span className="font-medium">{entry.user_name || "Someone"}</span>{" "}
                   {ACTION_LABELS[entry.action] || entry.action}
-                  {entry.entity && <span className="text-slate-500"> ({entry.entity})</span>}
+                  {entry.entity && <span className="text-slate-500 dark:text-zinc-500"> ({entry.entity})</span>}
                 </p>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">
                   {new Date(entry.created_at).toLocaleString()}
                 </p>
               </div>
             ))}
-            {entries.length === 0 && <p className="p-4 text-sm text-slate-400">No audit entries yet.</p>}
+            {entries.length === 0 && <p className="p-4 text-sm text-slate-400 dark:text-zinc-500">No audit entries yet.</p>}
           </div>
         )}
         <PaginationControls page={page} totalPages={totalPages} onChange={setPage} />
