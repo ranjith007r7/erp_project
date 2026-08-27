@@ -81,7 +81,7 @@ export default function SignupPage() {
             value={form.org_name}
             onChange={handleChange}
             required
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2"
             placeholder="Acme Corp"
           />
         </div>
@@ -96,7 +96,7 @@ export default function SignupPage() {
             onChange={handleChange}
             required
             pattern="[a-z0-9-]+"
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2"
             placeholder="acme (lowercase letters, numbers, hyphens only)"
           />
         </div>
@@ -110,7 +110,7 @@ export default function SignupPage() {
             value={form.admin_name}
             onChange={handleChange}
             required
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2"
           />
         </div>
 
@@ -124,7 +124,7 @@ export default function SignupPage() {
             value={form.admin_email}
             onChange={handleChange}
             required
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2"
           />
         </div>
 
@@ -139,7 +139,7 @@ export default function SignupPage() {
             onChange={handleChange}
             required
             minLength={8}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2"
           />
         </div>
 

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { ConfirmModal } from "@/components/Modal";
 import { PageHeader } from "@/components/ui";
+import { NavLink } from "@/components/NavLink";
+import { Shield } from "lucide-react";
 
 type CustomField = {
   id: string;
@@ -99,12 +100,9 @@ export default function CustomFieldsSettingsPage() {
         title="Custom Fields"
         description="Define extra fields for your organization — they'll appear on the matching record's form automatically."
         actions={
-          <Link
-            href="/settings/roles"
-            className="text-sm text-slate-500 dark:text-zinc-500 underline hover:text-slate-700 dark:hover:text-zinc-100"
-          >
+          <NavLink href="/settings/roles" icon={Shield}>
             Roles & Permissions
-          </Link>
+          </NavLink>
         }
       />
 

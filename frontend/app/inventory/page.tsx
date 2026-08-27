@@ -81,7 +81,7 @@ export default function InventoryPage() {
             required
             value={categoryForm.name}
             onChange={(e) => setCategoryForm({ name: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           />
           <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">
             Add Category
@@ -96,13 +96,13 @@ export default function InventoryPage() {
               required
               value={productForm.name}
               onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="SKU"
               value={productForm.sku}
               onChange={(e) => setProductForm({ ...productForm, sku: e.target.value })}
-              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="Unit price"
@@ -110,20 +110,20 @@ export default function InventoryPage() {
               required
               value={productForm.unit_price}
               onChange={(e) => setProductForm({ ...productForm, unit_price: e.target.value })}
-              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="Reorder level"
               type="number"
               value={productForm.reorder_level}
               onChange={(e) => setProductForm({ ...productForm, reorder_level: e.target.value })}
-              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
           </div>
           <select
             value={productForm.category_id}
             onChange={(e) => setProductForm({ ...productForm, category_id: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           >
             <option value="">No category</option>
             {categories.map((c) => (

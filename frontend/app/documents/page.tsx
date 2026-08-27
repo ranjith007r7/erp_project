@@ -126,7 +126,7 @@ export default function DocumentsPage() {
         <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
           <div className="flex justify-between items-center">
             <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Add Document</h2>
-            <div className="flex text-xs rounded-lg overflow-hidden border border-slate-300 dark:border-zinc-700">
+            <div className="flex text-xs rounded-lg overflow-hidden border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white">
               <button
                 type="button"
                 onClick={() => setAddDocMode("upload")}
@@ -151,7 +151,7 @@ export default function DocumentsPage() {
                 required
                 value={uploadTitle}
                 onChange={(e) => setUploadTitle(e.target.value)}
-                className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
               />
               <input
                 type="file"
@@ -166,8 +166,8 @@ export default function DocumentsPage() {
             </form>
           ) : (
             <form onSubmit={addDocument} className="space-y-2">
-              <input placeholder="Title" required value={docForm.title} onChange={(e) => setDocForm({ ...docForm, title: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
-              <input placeholder="File URL" required value={docForm.file_url} onChange={(e) => setDocForm({ ...docForm, file_url: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+              <input placeholder="Title" required value={docForm.title} onChange={(e) => setDocForm({ ...docForm, title: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+              <input placeholder="File URL" required value={docForm.file_url} onChange={(e) => setDocForm({ ...docForm, file_url: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
               <Button type="submit" className="w-full">Add Document</Button>
             </form>
           )}
@@ -175,20 +175,20 @@ export default function DocumentsPage() {
 
         <form onSubmit={addWorkflow} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Define Approval Workflow</h2>
-          <input placeholder="Workflow name" required value={workflowForm.name} onChange={(e) => setWorkflowForm({ ...workflowForm, name: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
-          <input placeholder="Module (e.g. finance)" required value={workflowForm.module} onChange={(e) => setWorkflowForm({ ...workflowForm, module: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
-          <input placeholder="Step 1 role (e.g. Manager)" required value={workflowForm.step1} onChange={(e) => setWorkflowForm({ ...workflowForm, step1: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
-          <input placeholder="Step 2 role (optional)" value={workflowForm.step2} onChange={(e) => setWorkflowForm({ ...workflowForm, step2: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+          <input placeholder="Workflow name" required value={workflowForm.name} onChange={(e) => setWorkflowForm({ ...workflowForm, name: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+          <input placeholder="Module (e.g. finance)" required value={workflowForm.module} onChange={(e) => setWorkflowForm({ ...workflowForm, module: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+          <input placeholder="Step 1 role (e.g. Manager)" required value={workflowForm.step1} onChange={(e) => setWorkflowForm({ ...workflowForm, step1: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+          <input placeholder="Step 2 role (optional)" value={workflowForm.step2} onChange={(e) => setWorkflowForm({ ...workflowForm, step2: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
           <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">Create Workflow</button>
         </form>
 
         <form onSubmit={createRequest} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 space-y-2">
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Start Approval Request</h2>
-          <select required value={entityForm.workflow_id} onChange={(e) => setEntityForm({ ...entityForm, workflow_id: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm">
+          <select required value={entityForm.workflow_id} onChange={(e) => setEntityForm({ ...entityForm, workflow_id: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm">
             <option value="">Select workflow...</option>
             {workflows.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
-          <input placeholder="What is this for? (e.g. Expense #123)" required value={entityForm.entity_type} onChange={(e) => setEntityForm({ ...entityForm, entity_type: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm" />
+          <input placeholder="What is this for? (e.g. Expense #123)" required value={entityForm.entity_type} onChange={(e) => setEntityForm({ ...entityForm, entity_type: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
           <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">Submit for Approval</button>
         </form>
       </div>

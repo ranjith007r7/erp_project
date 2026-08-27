@@ -79,7 +79,7 @@ export default function ProcurementPage() {
             required
             value={vendorForm.name}
             onChange={(e) => setVendorForm({ name: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           />
           <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">
             Add Vendor
@@ -92,7 +92,7 @@ export default function ProcurementPage() {
             required
             value={poForm.vendor_id}
             onChange={(e) => setPoForm({ ...poForm, vendor_id: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           >
             <option value="">Select vendor...</option>
             {vendors.map((v) => (
@@ -103,7 +103,7 @@ export default function ProcurementPage() {
             required
             value={poForm.product_id}
             onChange={(e) => setPoForm({ ...poForm, product_id: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           >
             <option value="">Select product...</option>
             {products.map((p) => (
@@ -117,7 +117,7 @@ export default function ProcurementPage() {
               min={1}
               value={poForm.qty}
               onChange={(e) => setPoForm({ ...poForm, qty: e.target.value })}
-              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="Unit cost"
@@ -125,7 +125,7 @@ export default function ProcurementPage() {
               required
               value={poForm.unit_price}
               onChange={(e) => setPoForm({ ...poForm, unit_price: e.target.value })}
-              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
           </div>
           <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">

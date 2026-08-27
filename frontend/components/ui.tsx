@@ -18,6 +18,7 @@
  * hooks, so they work in both server and client components.
  */
 import type { ButtonHTMLAttributes, InputHTMLAttributes, SelectHTMLAttributes } from "react";
+import { LayoutDashboard } from "lucide-react";
 import Link from "next/link";
 
 const BUTTON_VARIANTS = {
@@ -117,13 +118,13 @@ export function PageHeader({
         <h1 className="text-2xl font-bold text-slate-800 dark:text-white">{title}</h1>
         {description && <p className="text-sm text-slate-500 dark:text-zinc-500 mt-1 max-w-xl">{description}</p>}
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2">
         {actions}
         <Link
           href={backHref}
-          className="text-sm text-slate-500 dark:text-zinc-500 underline hover:text-slate-700 dark:hover:text-zinc-100"
+          className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-800 dark:hover:text-white transition-colors"
         >
-          {backLabel}
+          <LayoutDashboard size={16} /> {backLabel === "← Dashboard" ? "Dashboard" : backLabel}
         </Link>
       </div>
     </div>

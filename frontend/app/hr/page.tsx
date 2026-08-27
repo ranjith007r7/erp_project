@@ -106,7 +106,7 @@ export default function HRPage() {
             required
             value={deptForm.name}
             onChange={(e) => setDeptForm({ name: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           />
           <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">
             Add Department
@@ -120,14 +120,14 @@ export default function HRPage() {
             required
             value={empForm.name}
             onChange={(e) => setEmpForm({ ...empForm, name: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input
               placeholder="Designation"
               value={empForm.designation}
               onChange={(e) => setEmpForm({ ...empForm, designation: e.target.value })}
-              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="Monthly salary"
@@ -135,13 +135,13 @@ export default function HRPage() {
               required
               value={empForm.salary}
               onChange={(e) => setEmpForm({ ...empForm, salary: e.target.value })}
-              className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+              className="border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
           </div>
           <select
             value={empForm.department_id}
             onChange={(e) => setEmpForm({ ...empForm, department_id: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           >
             <option value="">No department</option>
             {departments.map((d) => (
@@ -209,14 +209,14 @@ export default function HRPage() {
                 max={12}
                 value={runForm.month}
                 onChange={(e) => setRunForm({ ...runForm, month: e.target.value })}
-                className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+                className="border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
               />
               <input
                 placeholder="Year"
                 type="number"
                 value={runForm.year}
                 onChange={(e) => setRunForm({ ...runForm, year: e.target.value })}
-                className="border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+                className="border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
               />
             </div>
             <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">

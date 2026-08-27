@@ -81,7 +81,7 @@ export default function ProjectsPage() {
             required
             value={projectForm.name}
             onChange={(e) => setProjectForm({ name: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           />
           <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">
             Create Project
@@ -94,7 +94,7 @@ export default function ProjectsPage() {
             required
             value={taskForm.project_id}
             onChange={(e) => setTaskForm({ ...taskForm, project_id: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           >
             <option value="">Select project...</option>
             {projects.map((p) => (
@@ -106,12 +106,12 @@ export default function ProjectsPage() {
             required
             value={taskForm.title}
             onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           />
           <select
             value={taskForm.priority}
             onChange={(e) => setTaskForm({ ...taskForm, priority: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           >
             <option value="low">Low</option>
             <option value="medium">Medium</option>
@@ -145,7 +145,7 @@ export default function ProjectsPage() {
                       placeholder="Hours"
                       value={logHours[task.id] || ""}
                       onChange={(e) => setLogHours({ ...logHours, [task.id]: e.target.value })}
-                      className="w-20 border border-slate-300 dark:border-zinc-700 rounded px-2 py-1 text-xs"
+                      className="w-20 border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded px-2 py-1 text-xs"
                     />
                     <button
                       onClick={() => logTime(task.id)}

@@ -167,25 +167,25 @@ export default function CRMPage() {
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="Company"
               value={form.company_name}
               onChange={(e) => setForm({ ...form, company_name: e.target.value })}
-              className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="Email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
             <input
               placeholder="Source (e.g. Website)"
               value={form.source}
               onChange={(e) => setForm({ ...form, source: e.target.value })}
-              className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
             <Button type="submit" className="w-full">Add Lead</Button>
           </form>
@@ -304,7 +304,7 @@ export default function CRMPage() {
                 value={convertForm.opportunity_name}
                 onChange={(e) => setConvertForm({ ...convertForm, opportunity_name: e.target.value })}
                 placeholder="e.g. Acme Corp — Website Revamp"
-                className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm mt-1"
+                className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm mt-1"
               />
             </label>
             <label className="block text-sm text-slate-600 dark:text-zinc-300">
@@ -314,7 +314,7 @@ export default function CRMPage() {
                 min="0"
                 value={convertForm.value}
                 onChange={(e) => setConvertForm({ ...convertForm, value: e.target.value })}
-                className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm mt-1"
+                className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm mt-1"
               />
             </label>
             <div className="flex justify-end gap-2">

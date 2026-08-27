@@ -118,7 +118,7 @@ export default function SalesPage() {
             required
             value={productForm.name}
             onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           />
           <input
             placeholder="Unit price"
@@ -126,7 +126,7 @@ export default function SalesPage() {
             type="number"
             value={productForm.unit_price}
             onChange={(e) => setProductForm({ ...productForm, unit_price: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           />
           <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">
             Add Product
@@ -140,7 +140,7 @@ export default function SalesPage() {
             required
             value={customerForm.name}
             onChange={(e) => setCustomerForm({ name: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           />
           <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">
             Add Customer
@@ -155,7 +155,7 @@ export default function SalesPage() {
             required
             value={quoteForm.customer_id}
             onChange={(e) => setQuoteForm({ ...quoteForm, customer_id: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           >
             <option value="">Select...</option>
             {customers.map((c) => (
@@ -172,7 +172,7 @@ export default function SalesPage() {
               const p = products.find((p) => p.id === e.target.value);
               setQuoteForm({ ...quoteForm, product_id: e.target.value, unit_price: p?.unit_price || "" });
             }}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           >
             <option value="">Select...</option>
             {products.map((p) => (
@@ -187,7 +187,7 @@ export default function SalesPage() {
             min={1}
             value={quoteForm.qty}
             onChange={(e) => setQuoteForm({ ...quoteForm, qty: e.target.value })}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           />
         </div>
         <button className="bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">

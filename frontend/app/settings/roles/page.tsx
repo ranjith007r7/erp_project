@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { PageHeader, Button, Input, Select, Card } from "@/components/ui";
 import { ConfirmModal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
+import { NavLink } from "@/components/NavLink";
+import { Palette, Settings2 } from "lucide-react";
 
 type Role = { id: string; org_id: string; name: string };
 type Permission = { id: string; role_id: string; module: string; action: string };
@@ -232,13 +233,9 @@ export default function RolesSettingsPage() {
       <PageHeader
         title="Roles & Permissions"
         actions={
-          <div className="flex items-center gap-4">
-            <Link href="/settings/appearance" className="text-sm text-slate-500 dark:text-zinc-500 underline hover:text-slate-700 dark:hover:text-zinc-100">
-              Appearance
-            </Link>
-            <Link href="/settings/custom-fields" className="text-sm text-slate-500 dark:text-zinc-500 underline hover:text-slate-700 dark:hover:text-zinc-100">
-              Custom Fields
-            </Link>
+          <div className="flex items-center gap-2">
+            <NavLink href="/settings/appearance" icon={Palette}>Appearance</NavLink>
+            <NavLink href="/settings/custom-fields" icon={Settings2}>Custom Fields</NavLink>
           </div>
         }
       />
@@ -351,7 +348,7 @@ export default function RolesSettingsPage() {
       <Card className="p-4 max-w-3xl">
         <div className="flex justify-between items-center mb-3">
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Users</h2>
-          <div className="flex text-xs rounded-lg overflow-hidden border border-slate-300 dark:border-zinc-700">
+          <div className="flex text-xs rounded-lg overflow-hidden border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white">
             <button
               onClick={() => setAddUserMode("invite")}
               className={`px-3 py-1.5 ${addUserMode === "invite" ? "bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900" : "bg-white dark:bg-zinc-900 text-slate-600 dark:text-zinc-300"}`}
