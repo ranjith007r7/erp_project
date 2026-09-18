@@ -1,0 +1,45 @@
+version: "3.9"
+
+# Local development only. This is NOT what runs in production —
+# in production, Postgres is a managed service (Supabase) and the
+# backend is deployed directly to Render. See DEPLOYMENT.md.
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: erp_user
+      POSTGRES_PASSWORD: erp_password
+      POSTGRES_DB: erp_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U erp_user -d erp_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://erp_user:erp_password@db:5432/erp_db
+      JWT_SECRET_KEY: local-dev-secret-change-in-production
+      ALLOWED_ORIGINS: http://localhost:3000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    # Runs any pending Alembic migrations, THEN starts the server. This
+    # is how the database schema gets created/updated now - never
+    # automatically inside the app anymore (see MANUAL.md Part 10).
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  pgdata:

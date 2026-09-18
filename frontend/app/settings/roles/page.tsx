@@ -367,7 +367,7 @@ export default function RolesSettingsPage() {
         {addUserMode === "invite" ? (
           <form onSubmit={handleSendInvite} className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
             <p className="text-xs text-slate-500 dark:text-zinc-500 sm:col-span-2">
-              Sends a real email with a link — they'll set their own password. Nothing to type in
+              Sends a real email with a link — they&apos;ll set their own password. Nothing to type in
               for them here.
             </p>
             <Input
