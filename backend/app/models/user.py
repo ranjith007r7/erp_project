@@ -31,13 +31,13 @@ class User(Base):
     # enforced in Phase 13, when this comment used to explain why.
     email_verified = Column(Boolean, nullable=False, default=False)
     verification_token_hash = Column(String, nullable=True)
-    verification_token_expires = Column(DateTime, nullable=True)
+    verification_token_expires = Column(DateTime(timezone=True), nullable=True)
     # Cooldown for the resend-verification endpoint - prevents a user
     # (or anyone spamming an arbitrary email into that endpoint) from
     # triggering unlimited real sends and burning through Resend's
     # 100/day free-tier quota. See the resend_verification route in
     # app/api/routes/auth.py.
-    last_verification_email_sent_at = Column(DateTime, nullable=True)
+    last_verification_email_sent_at = Column(DateTime(timezone=True), nullable=True)
 
     # --- Password reset (Phase 13) ---
     # Stores a HASH of the reset token, never the raw token — same
@@ -45,11 +45,11 @@ class User(Base):
     # tokens would be directly usable to take over any account; hashed
     # tokens are not.
     reset_token_hash = Column(String, nullable=True)
-    reset_token_expires = Column(DateTime, nullable=True)
+    reset_token_expires = Column(DateTime(timezone=True), nullable=True)
 
     # --- Login rate limiting (Phase 13) ---
     failed_login_attempts = Column(Integer, nullable=False, default=0)
-    locked_until = Column(DateTime, nullable=True)
+    locked_until = Column(DateTime(timezone=True), nullable=True)
 
     # --- Invite-by-email ---
     # An invited user's password_hash is set to a hash of a random,
@@ -61,13 +61,20 @@ class User(Base):
     # is "invited" until accept-invite flips it to "active" - a real
     # invited row is otherwise a normal User row in every other respect.
     invite_token_hash = Column(String, nullable=True)
-    invite_token_expires = Column(DateTime, nullable=True)
+    invite_token_expires = Column(DateTime(timezone=True), nullable=True)
     # Separate from last_verification_email_sent_at on purpose - an
     # invited user never goes through the separate email-verification
     # flow at all (accepting the invite IS the verification, since
     # clicking a real emailed link already proves inbox ownership), so
     # conflating the two cooldowns would be tracking unrelated things
     # under one column.
-    last_invite_email_sent_at = Column(DateTime, nullable=True)
+    last_invite_email_sent_at = Column(DateTime(timezone=True), nullable=True)
 
     role = relationship("Role")
+
+'''
+these 6 lines each need (timezone=True) added to their Column(DateTime, ...):
+This tells PostgreSQL to store these as TIMESTAMP WITH TIME ZONE,
+which always normalizes to true UTC internally,
+regardless of what timezone the server or your machine happens to be set to.
+'''
