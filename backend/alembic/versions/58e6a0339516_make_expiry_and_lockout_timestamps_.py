@@ -51,7 +51,6 @@ def upgrade() -> None:
                existing_nullable=True,
                postgresql_using="last_invite_email_sent_at AT TIME ZONE 'UTC'")
     # ### end Alembic commands ###
-    # ### end Alembic commands ###
 
 
 def downgrade() -> None:

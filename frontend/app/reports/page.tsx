@@ -5,6 +5,9 @@ import Link from "next/link";
 import { apiRequest, apiDownload } from "@/lib/api";
 import { PromptModal } from "@/components/Modal";
 import { SkeletonCard } from "@/components/Skeleton";
+import { TrendLineChart } from "@/components/charts/TrendLineChart";
+import { ComparisonBarChart } from "@/components/charts/ComparisonBarChart";
+import { BreakdownPieChart } from "@/components/charts/BreakdownPieChart";
 
 type ReportModule = "sales" | "finance" | "inventory" | "procurement" | "hr" | "crm" | "projects";
 
@@ -221,29 +224,6 @@ function Card({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function BarList({ items }: { items: { label: string; value: number }[] }) {
-  const max = Math.max(1, ...items.map((i) => i.value));
-  return (
-    <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4 space-y-2">
-      {items.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No data yet.</p>}
-      {items.map((item) => (
-        <div key={item.label}>
-          <div className="flex justify-between text-xs text-slate-600 dark:text-zinc-300 mb-1">
-            <span>{item.label}</span>
-            <span>{item.value.toLocaleString("en-IN")}</span>
-          </div>
-          <div className="w-full bg-slate-100 dark:bg-zinc-800 rounded h-2">
-            <div
-              className="bg-slate-800 dark:bg-zinc-200 h-2 rounded"
-              style={{ width: `${(item.value / max) * 100}%` }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function SalesReport({ data }: { data: ReportData }) {
   const funnel = data.funnel ?? {};
   return (
@@ -255,11 +235,23 @@ function SalesReport({ data }: { data: ReportData }) {
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 dark:text-zinc-200 mb-2 text-sm">Monthly Revenue</h3>
-        <BarList items={(data.monthly_revenue ?? []).map((r: ReportData) => ({ label: r.month, value: r.total }))} />
+        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4">
+          <TrendLineChart
+            data={data.monthly_revenue ?? []}
+            xKey="month"
+            valuePrefix="₹"
+            series={[{ key: "total", label: "Revenue", color: { light: "#1e293b", dark: "#e4e4e7" } }]}
+          />
+        </div>
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 dark:text-zinc-200 mb-2 text-sm">Top Products</h3>
-        <BarList items={(data.top_products ?? []).map((p: ReportData) => ({ label: p.name, value: p.revenue }))} />
+        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4">
+          <ComparisonBarChart
+            items={(data.top_products ?? []).map((p: ReportData) => ({ label: p.name, value: p.revenue }))}
+            valuePrefix="₹"
+          />
+        </div>
       </div>
     </>
   );
@@ -280,41 +272,33 @@ function FinanceReport({ data }: { data: ReportData }) {
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 dark:text-zinc-200 mb-2 text-sm">Monthly Revenue vs Expense</h3>
-        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4 space-y-3">
-          {monthly.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No data yet.</p>}
-          {monthly.map((m: ReportData) => (
-            <div key={m.month} className="text-xs">
-              <p className="text-slate-600 dark:text-zinc-300 mb-1">{m.month}</p>
-              <div className="flex gap-1 items-center mb-0.5">
-                <span className="w-14 text-slate-500 dark:text-zinc-500">Revenue</span>
-                <div className="flex-1 bg-slate-100 dark:bg-zinc-800 rounded h-2">
-                  <div className="bg-emerald-600 h-2 rounded" style={{ width: `${Math.min(100, (m.revenue / (Math.max(m.revenue, m.expense, 1))) * 100)}%` }} />
-                </div>
-                <span className="w-20 text-right">₹{m.revenue.toLocaleString("en-IN")}</span>
-              </div>
-              <div className="flex gap-1 items-center">
-                <span className="w-14 text-slate-500 dark:text-zinc-500">Expense</span>
-                <div className="flex-1 bg-slate-100 dark:bg-zinc-800 rounded h-2">
-                  <div className="bg-rose-500 h-2 rounded" style={{ width: `${Math.min(100, (m.expense / (Math.max(m.revenue, m.expense, 1))) * 100)}%` }} />
-                </div>
-                <span className="w-20 text-right">₹{m.expense.toLocaleString("en-IN")}</span>
-              </div>
-            </div>
-          ))}
+        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4">
+          <TrendLineChart
+            data={monthly}
+            xKey="month"
+            valuePrefix="₹"
+            series={[
+              { key: "revenue", label: "Revenue", color: { light: "#059669", dark: "#34d399" } },
+              { key: "expense", label: "Expense", color: { light: "#e11d48", dark: "#fb7185" } },
+            ]}
+          />
         </div>
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 dark:text-zinc-200 mb-2 text-sm">
           Accounts Receivable Aging ({data.unpaid_invoice_count ?? 0} unpaid)
         </h3>
-        <BarList
-          items={[
-            { label: "0–30 days", value: aging["0_30"] ?? 0 },
-            { label: "31–60 days", value: aging["31_60"] ?? 0 },
-            { label: "61–90 days", value: aging["61_90"] ?? 0 },
-            { label: "90+ days", value: aging["90_plus"] ?? 0 },
-          ]}
-        />
+        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4">
+          <ComparisonBarChart
+            items={[
+              { label: "0–30 days", value: aging["0_30"] ?? 0 },
+              { label: "31–60 days", value: aging["31_60"] ?? 0 },
+              { label: "61–90 days", value: aging["61_90"] ?? 0 },
+              { label: "90+ days", value: aging["90_plus"] ?? 0 },
+            ]}
+            valuePrefix="₹"
+          />
+        </div>
       </div>
     </>
   );
@@ -355,16 +339,23 @@ function ProcurementReport({ data }: { data: ReportData }) {
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 dark:text-zinc-200 mb-2 text-sm">Spend by Vendor</h3>
-        <BarList items={spendByVendor.map((v: ReportData) => ({ label: v.vendor, value: v.spend }))} />
+        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4">
+          <ComparisonBarChart
+            items={spendByVendor.map((v: ReportData) => ({ label: v.vendor, value: v.spend }))}
+            valuePrefix="₹"
+          />
+        </div>
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 dark:text-zinc-200 mb-2 text-sm">PO Status Breakdown</h3>
-        <BarList
-          items={Object.entries(data.status_breakdown ?? {}).map(([label, value]) => ({
-            label,
-            value: value as number,
-          }))}
-        />
+        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4">
+          <BreakdownPieChart
+            items={Object.entries(data.status_breakdown ?? {}).map(([label, value]) => ({
+              label,
+              value: value as number,
+            }))}
+          />
+        </div>
       </div>
     </>
   );
@@ -379,11 +370,22 @@ function HrReport({ data }: { data: ReportData }) {
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 dark:text-zinc-200 mb-2 text-sm">Headcount by Department</h3>
-        <BarList items={(data.headcount_by_department ?? []).map((d: ReportData) => ({ label: d.department, value: d.count }))} />
+        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4">
+          <ComparisonBarChart
+            items={(data.headcount_by_department ?? []).map((d: ReportData) => ({ label: d.department, value: d.count }))}
+          />
+        </div>
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 dark:text-zinc-200 mb-2 text-sm">Payroll Cost by Month</h3>
-        <BarList items={(data.payroll_cost_by_month ?? []).map((p: ReportData) => ({ label: p.month, value: p.total }))} />
+        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4">
+          <TrendLineChart
+            data={data.payroll_cost_by_month ?? []}
+            xKey="month"
+            valuePrefix="₹"
+            series={[{ key: "total", label: "Payroll Cost", color: { light: "#1e293b", dark: "#e4e4e7" } }]}
+          />
+        </div>
       </div>
     </>
   );
@@ -398,18 +400,23 @@ function CrmReport({ data }: { data: ReportData }) {
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 dark:text-zinc-200 mb-2 text-sm">Leads by Status</h3>
-        <BarList
-          items={Object.entries(data.leads_by_status ?? {}).map(([label, value]) => ({ label, value: value as number }))}
-        />
+        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4">
+          <BreakdownPieChart
+            items={Object.entries(data.leads_by_status ?? {}).map(([label, value]) => ({ label, value: value as number }))}
+          />
+        </div>
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 dark:text-zinc-200 mb-2 text-sm">Pipeline Value by Stage</h3>
-        <BarList
-          items={Object.entries(data.pipeline_value_by_stage ?? {}).map(([label, value]) => ({
-            label,
-            value: value as number,
-          }))}
-        />
+        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4">
+          <ComparisonBarChart
+            items={Object.entries(data.pipeline_value_by_stage ?? {}).map(([label, value]) => ({
+              label,
+              value: value as number,
+            }))}
+            valuePrefix="₹"
+          />
+        </div>
       </div>
     </>
   );
@@ -424,12 +431,14 @@ function ProjectsReport({ data }: { data: ReportData }) {
       </div>
       <div>
         <h3 className="font-semibold text-slate-700 dark:text-zinc-200 mb-2 text-sm">Projects by Status</h3>
-        <BarList
-          items={Object.entries(data.projects_by_status ?? {}).map(([label, value]) => ({
-            label,
-            value: value as number,
-          }))}
-        />
+        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4">
+          <BreakdownPieChart
+            items={Object.entries(data.projects_by_status ?? {}).map(([label, value]) => ({
+              label,
+              value: value as number,
+            }))}
+          />
+        </div>
       </div>
     </>
   );

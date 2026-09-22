@@ -71,10 +71,3 @@ class User(Base):
     last_invite_email_sent_at = Column(DateTime(timezone=True), nullable=True)
 
     role = relationship("Role")
-
-'''
-these 6 lines each need (timezone=True) added to their Column(DateTime, ...):
-This tells PostgreSQL to store these as TIMESTAMP WITH TIME ZONE,
-which always normalizes to true UTC internally,
-regardless of what timezone the server or your machine happens to be set to.
-'''

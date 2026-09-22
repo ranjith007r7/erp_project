@@ -2264,3 +2264,66 @@ No Alembic migration needed — pure frontend/tooling, no backend files touched.
 
 **Two real, flagged-not-fixed items for a deliberate follow-up session:** the backend's `starlette`/`ecdsa`/`python-jose`/`python-multipart` CVEs (needs careful compatibility testing, not a rushed patch), and the frontend's remaining `postcss` CVE (only fixable via a Next.js 14→16 major jump).
 
+---
+
+## PART 54 — Real Charts in Reports & Analytics
+
+The first item from the "Reporting & Analytics" roadmap category. Real line/bar/pie charts, replacing every hand-rolled CSS-width bar in the Reports module.
+
+### A real, honest gap closed first: this session's starting zip predated your local fixes
+
+Before touching Reports at all, confirmed the uploaded working copy was missing two real fixes you'd applied locally on your own machine during the previous debugging session: the timezone-aware `DateTime` columns on `User`, and the pinned `eslint`/`eslint-config-next` versions in `package.json`. Reapplied both precisely — the migration file recreated byte-for-byte matching what was actually run against production — then verified against your own real, uploaded `user.py` and `package.json` with a direct comparison, not assumed. Confirmed identical on every relevant line before building anything new on top.
+
+### The actual work
+
+Backend needed **zero changes** — `app/services/reports.py` already computed genuinely rich, chart-shaped data (monthly trends, category breakdowns, status distributions) that was simply being thrown away by a hand-rolled CSS-bar renderer on the frontend. Added `recharts` (the one new dependency this needed — confirmed via `npm audit` that it introduces zero new vulnerabilities of its own; the only flagged issues remain the same pre-existing, already-documented `postcss`/Next.js chain).
+
+Built three reusable, theme-aware chart components (`TrendLineChart`, `ComparisonBarChart`, `BreakdownPieChart`) — theme-aware because Recharts renders inline-styled SVG that never picks up Tailwind's `dark:` classes automatically, unlike everything else in this app; each component reads the existing `useTheme()` hook directly and passes explicit colors matching the app's established zinc/black dark palette.
+
+Applied across every report tab, matching visualization type to what the data actually is, not just picking one chart type for everything:
+- **Trend data** (monthly revenue, revenue vs. expense, payroll cost) → real line charts, including Finance's revenue/expense as two genuinely overlaid lines with a legend — replacing what used to be a manual dual-bar-per-month hack.
+- **Category comparisons** (top products, spend by vendor, headcount by department, AR aging) → real horizontal bar charts with actual axes and tooltips.
+- **Status/stage distributions** (leads by status, PO status, projects by status) → real pie/donut charts.
+
+The old `BarList` component was fully removed once nothing referenced it anymore, not left as dead code.
+
+### Verified
+
+```
+Confirmed the uploaded working copy was missing local fixes BEFORE building
+  anything new - reapplied precisely, then diffed against your own real
+  user.py and package.json to confirm an exact match, not assumed
+
+npm audit run specifically to confirm recharts contributes zero NEW
+  vulnerabilities - only the same pre-existing, already-documented chain
+
+Full pytest suite -> 83 passed (one run showed 4 failures from stale test
+  data across repeated local runs this session - confirmed by wiping the
+  test database and rerunning clean, exactly the same pattern already
+  diagnosed once before, not a new issue)
+
+Full production build, clean, 25 routes, /reports grew to 111 kB reflecting
+  the real chart library now bundled in
+ESLint clean - "No ESLint warnings or errors"
+
+Real end-to-end data test, not assumed: created a product with NO stock,
+  confirmed invoice generation correctly refuses (400, a real business
+  rule, not a bug) - then redid the flow with a real procurement receipt
+  first, confirmed a real successful invoice, and confirmed the report's
+  monthly_revenue and top_products data came back in exactly the shape
+  the new chart components expect
+
+Confirmed via the actual compiled build output (not source) that recharts
+  is genuinely bundled - found in its own separate code-split chunk and
+  in the server-rendered output, not just declared in package.json
+```
+
+### Deploying this update
+
+```bash
+git add . && git commit -m "Real charts in Reports (line/bar/pie via recharts); reapply timezone fix and ESLint pins to keep zip in sync with local state" && git push
+```
+No Alembic migration needed this phase — the timezone migration was already applied to production during the earlier debugging session; this phase's zip just brings the packaged code back in sync with that already-correct database state.
+
+**Still open from Reporting & Analytics**: custom report builder, per-user scheduled report email subscriptions, and dedicated trend/forecast views (distinct from the real trend lines just added, which show history — forecasting would project forward) — each its own future pass.
+
