@@ -49,6 +49,8 @@ export default function ReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
   const [showSaveModal, setShowSaveModal] = useState(false);
+  const [subscribed, setSubscribed] = useState<boolean | null>(null); // null = not loaded yet
+  const [subscribing, setSubscribing] = useState(false);
 
   function loadReport(tab: ReportModule) {
     setLoading(true);
@@ -81,6 +83,29 @@ export default function ReportsPage() {
   }, [activeTab]);
 
   useEffect(loadSavedReports, []);
+
+  useEffect(() => {
+    apiRequest<{ subscribed: boolean }>("/api/reports/subscription", { auth: true })
+      .then((r) => setSubscribed(r.subscribed))
+      .catch(() => setSubscribed(false)); // fail closed - don't claim a subscription state we couldn't confirm
+  }, []);
+
+  async function handleToggleSubscription() {
+    setSubscribing(true);
+    try {
+      if (subscribed) {
+        await apiRequest("/api/reports/subscription", { method: "DELETE", auth: true });
+        setSubscribed(false);
+      } else {
+        await apiRequest("/api/reports/subscription", { method: "POST", auth: true });
+        setSubscribed(true);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update subscription");
+    } finally {
+      setSubscribing(false);
+    }
+  }
 
   async function handleExport() {
     try {
@@ -117,9 +142,25 @@ export default function ReportsPage() {
     <main className="min-h-screen p-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Reports & Analytics</h1>
-        <Link href="/dashboard" className="text-sm text-slate-500 dark:text-zinc-500 underline">
-          ← Dashboard
-        </Link>
+        <div className="flex items-center gap-4">
+          {subscribed !== null && (
+            <button
+              onClick={handleToggleSubscription}
+              disabled={subscribing}
+              className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                subscribed
+                  ? "bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200 dark:hover:bg-zinc-700"
+                  : "bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 hover:bg-slate-700 dark:hover:bg-zinc-300"
+              }`}
+              title={subscribed ? "You receive the weekly summary email — click to stop" : "Get a weekly summary emailed to you"}
+            >
+              {subscribing ? "…" : subscribed ? "✓ Weekly digest on" : "Get weekly digest email"}
+            </button>
+          )}
+          <Link href="/dashboard" className="text-sm text-slate-500 dark:text-zinc-500 underline">
+            ← Dashboard
+          </Link>
+        </div>
       </div>
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}

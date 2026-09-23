@@ -24,11 +24,42 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.api.deps import get_current_user, get_org_id, require_permission
-from app.models.reports import SavedReport
+from app.models.reports import SavedReport, ReportSubscription
 from app.schemas.reports import SavedReportCreate, SavedReportOut
 from app.services import reports as report_service
 
 router = APIRouter(prefix="/api/reports", tags=["reports"], dependencies=[Depends(get_current_user)])
+
+
+# ---------------- Weekly digest subscription ----------------
+# Deliberately NOT gated by require_permission - see ReportSubscription's
+# own docstring for why this is a personal preference, not an access
+# control decision. Every logged-in user can manage their own row,
+# regardless of role.
+@router.get("/subscription")
+def get_subscription(db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    sub = db.query(ReportSubscription).filter(ReportSubscription.user_id == current_user.id).first()
+    return {"subscribed": sub is not None}
+
+
+@router.post("/subscription", status_code=201)
+def subscribe(db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    existing = db.query(ReportSubscription).filter(ReportSubscription.user_id == current_user.id).first()
+    if existing:
+        return {"subscribed": True}  # already subscribed - idempotent, not an error
+    db.add(ReportSubscription(org_id=org_id, user_id=current_user.id))
+    db.commit()
+    return {"subscribed": True}
+
+
+@router.delete("/subscription", status_code=204)
+def unsubscribe(db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    sub = db.query(ReportSubscription).filter(ReportSubscription.user_id == current_user.id).first()
+    if sub:
+        db.delete(sub)
+        db.commit()
+    # Deleting something that was never there isn't an error - unsubscribing
+    # twice in a row should behave identically to unsubscribing once.
 
 
 @router.get("/sales-summary", dependencies=[Depends(require_permission("reports", "view"))])

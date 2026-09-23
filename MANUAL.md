@@ -2327,3 +2327,81 @@ No Alembic migration needed this phase — the timezone migration was already ap
 
 **Still open from Reporting & Analytics**: custom report builder, per-user scheduled report email subscriptions, and dedicated trend/forecast views (distinct from the real trend lines just added, which show history — forecasting would project forward) — each its own future pass.
 
+---
+
+## PART 55 — Per-User Report Subscriptions (Weekly Digest)
+
+The second item from the "Reporting & Analytics" roadmap category. The weekly digest previously had two real gaps: hardcoded to every user with the "Admin" role, with no way for an Admin to opt out, and no way for a non-Admin who genuinely wants visibility to opt in. Both fixed with a real subscription model, not a flag.
+
+### Design
+
+New `ReportSubscription` table — one row per subscribed user (`user_id` unique), deleting the row unsubscribes. Deliberately **not** gated by any permission — choosing to receive a summary email about your own org is a personal preference, the same category as a notification setting, not an access-control decision, so any logged-in user can manage their own subscription regardless of role.
+
+**Backward compatibility, matching this project's established precedent**: a brand-new org's creating Admin gets auto-subscribed at signup (preserving today's exact behavior going forward). For orgs that already existed before this feature — same real gap `grandfather_existing_users.py` solved for email verification — a new script, `scripts/grandfather_report_subscriptions.py`, backfills a subscription row for every existing org's active Admin, so nobody silently stops receiving an email they're already used to getting.
+
+The weekly digest job itself now queries real subscribers via a join to `report_subscriptions`, replacing the old hardcoded `Role.name == "Admin"` filter entirely.
+
+### Verified
+
+```
+Real signup -> confirmed the creating Admin is auto-subscribed
+  (GET /api/reports/subscription -> {"subscribed": true})
+
+Unsubscribe -> re-subscribe -> both confirmed via real GET checks
+  in between, not assumed from the POST/DELETE response alone
+
+Both subscribe and unsubscribe confirmed genuinely idempotent -
+  calling either twice in a row does not error or duplicate
+
+The CORE design point, proven with real data, not just described:
+  - An Admin unsubscribed -> confirmed via the real email log
+    fallback that they received ZERO weekly digest emails
+  - A newly-created NON-admin (restricted role, sales.view only)
+    subscribed -> confirmed via the same real log that they DID
+    receive the digest
+  This is the exact scenario the old hardcoded logic could never
+  support in either direction.
+
+6 new backend regression tests, including one that measures the
+  digest count as a DELTA across calls within its own test (a first
+  draft wrongly asserted an absolute "== 0", which would have been
+  fragile and wrong the moment more than one org exists in the test
+  database - caught and fixed before shipping)
+
+Full pytest suite -> 89 passed (83 previous + 6 new), zero regressions
+
+Zero migration drift confirmed after generating and applying the
+  new report_subscriptions table's migration
+
+Full production build, clean, all routes; ESLint clean; confirmed via
+  the actual compiled server output (not source) that the new
+  subscription toggle UI is genuinely present, not just written
+```
+
+### How to verify this yourself
+
+1. On the Reports page, look for a small button near the top-right, next to "← Dashboard" — it should read either "Get weekly digest email" or "✓ Weekly digest on" depending on your current subscription state.
+2. Click it — it should toggle immediately, and the label should update to match.
+3. Any user, not just an Admin, should be able to do this for themselves.
+
+### Deploying this update
+
+```bash
+git add . && git commit -m "Per-user report subscriptions: real opt-in/opt-out for the weekly digest, replacing the hardcoded Admin-only behavior" && git push
+```
+
+**Before this reaches production, run the grandfather script once** — same process as `grandfather_existing_users.py`:
+```bash
+cd backend
+$env:DATABASE_URL = "<your real production connection string>"
+python scripts/grandfather_report_subscriptions.py
+```
+This must run against the **real** production database, not the local test one — same discipline flagged repeatedly this project: double-check `DATABASE_URL` before running anything against a real database.
+
+Then apply the migration as usual:
+```bash
+alembic upgrade head
+```
+
+**Still open from Reporting & Analytics**: custom report builder (a genuinely large, separate architecture decision) and dedicated trend/forecast views (needs its own design choices around forecasting method and honest disclaimers about accuracy) — each its own future pass.
+
