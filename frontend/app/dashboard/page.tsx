@@ -10,10 +10,7 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { SkeletonStatTile, SkeletonCard } from "@/components/Skeleton";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import {
-  Settings2, Shield, ScrollText, LogOut, Palette,
-  Users2, ShoppingCart, Wallet, Package, Truck, UserRound, FolderKanban, FileText, BarChart3,
-} from "lucide-react";
+import { Settings2, Shield, ScrollText, LogOut, Palette, Users2, ShoppingCart, Wallet, Package, Truck, UserRound, FolderKanban, FileText, BarChart3, Sparkles } from "lucide-react";
 
 type CurrentUser = {
   id: string;
@@ -50,6 +47,7 @@ const LIVE_MODULES: { name: string; href: string; stat?: keyof Summary; label?: 
   { name: "Projects", href: "/projects", stat: "open_tasks", label: "open tasks", icon: FolderKanban },
   { name: "Documents", href: "/documents", stat: "pending_approvals", label: "approvals", icon: FileText },
   { name: "Reports", href: "/reports", stat: "saved_reports", label: "saved", icon: BarChart3 },
+  { name: "Ask Data", href: "/intelligence", icon: Sparkles },
 ];
 
 export default function DashboardPage() {

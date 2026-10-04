@@ -104,3 +104,78 @@ def signup(client):
         token = resp.json()["access_token"]
         return {"Authorization": f"Bearer {token}"}
     return _signup
+
+
+# ---------------------------------------------------------------------------
+# Unified Intelligence Layer fixtures (only requested by test_uil_*.py)
+# ---------------------------------------------------------------------------
+UIL_TEST_PASSWORD = "uil_test_password_123"
+UIL_TEST_URL = f"postgresql://uil_readonly:{UIL_TEST_PASSWORD}@localhost:5432/erp_pytest_db"
+
+
+@pytest.fixture(scope="session")
+def uil_env(apply_migrations):
+    """
+    Creates the real uil_readonly login in the test database (idempotent),
+    points the app at it, and yields a PRIVILEGED engine for tests that need to
+    inspect or arrange data directly. Nothing here is mocked: the same role
+    setup code that production uses.
+    """
+    from sqlalchemy import create_engine
+    from app.services.intelligence.role_setup import ensure_uil_role
+
+    admin_engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
+    ensure_uil_role(admin_engine, UIL_TEST_PASSWORD)
+    original = settings.UIL_DATABASE_URL
+    settings.UIL_DATABASE_URL = UIL_TEST_URL
+    yield admin_engine
+    settings.UIL_DATABASE_URL = original
+    admin_engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def seeded_orgs(uil_env):
+    """
+    Two fully populated synthetic organizations (a year of history across every
+    module), seeded with DIFFERENT random seeds so their numbers differ. Used to
+    prove tenant isolation against realistic data, not 5-row toy orgs.
+    """
+    import importlib.util
+    import app.core.database as db_module
+
+    spec = importlib.util.spec_from_file_location("seed_uil_demo_data", "scripts/seed_uil_demo_data.py")
+    seeder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(seeder)
+
+    orgs = {}
+    for key, seed in (("a", 11), ("b", 22)):
+        db = db_module.SessionLocal()
+        try:
+            subdomain = f"uilseed{key}{uuid.uuid4().hex[:8]}"
+            email = f"admin@{subdomain}.example.com"
+            org_id = seeder.seed_demo_org(
+                db, org_name=f"Seed Org {key.upper()}", subdomain=subdomain,
+                admin_email=email, admin_password="DemoPass123!", seed=seed,
+            )
+            orgs[key] = {"org_id": org_id, "email": email, "password": "DemoPass123!"}
+        finally:
+            db.close()
+    return orgs
+
+
+@pytest.fixture
+def db_session():
+    """A plain privileged session on the test database."""
+    import app.core.database as db_module
+
+    db = db_module.SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def login_headers(client, email, password):
+    resp = client.post("/api/auth/login", json={"email": email, "password": password})
+    assert resp.status_code == 200, resp.text
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}

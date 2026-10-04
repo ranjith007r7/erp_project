@@ -2405,3 +2405,145 @@ alembic upgrade head
 
 **Still open from Reporting & Analytics**: custom report builder (a genuinely large, separate architecture decision) and dedicated trend/forecast views (needs its own design choices around forecasting method and honest disclaimers about accuracy) — each its own future pass.
 
+
+---
+
+## PART 56: Unified Intelligence Layer (plain-English questions over ERP data)
+
+Ask "Which invoices are overdue?" and get an answer grounded in the organization's own data, with the SQL shown. Built per the blueprint agreed in this project (Option A: one permission, read-only, curated manifest, two safety layers). Operating instructions are in `UIL_SETUP_GUIDE.md`.
+
+### Where this deliberately departs from the blueprint, and why
+The blueprint called for Postgres row-level security plus an injected `WHERE org_id = ...`. Two facts in this schema made that the wrong tool: **four tables have no `org_id`** (`quotation_items`, `sales_order_items`, `journal_lines`, `stock_levels`, plus six more child tables), and a row-level-security policy driven by a session setting can be overwritten by any query that calls `set_config()`. So tenant isolation is done with **33 tenant-filtered views** that read a per-connection registration the read-only login cannot write. It is accurate to call this "view-based tenant isolation with a tamper-proof session context", not "RLS". No `org_id` column is exposed, which removes a whole class of hallucinated filters.
+
+### What was built
+- `app/services/intelligence/`: `manifest.py` (what the AI may see), `safety.py` (parser-based validator), `executor.py` (tenant registration + read-only run), `llm.py` (Gemini client with retry), `pipeline.py` (rewrite → scope gate → SQL → validate → run → grounded answer), `role_setup.py`.
+- Migration `533798133a8d`: the `uil` schema, `uil.session_context`, `uil.current_org()`, 33 `security_barrier` views.
+- `/api/intelligence/{status,manifest,ask}`, gated by a new `intelligence.view` permission; every question audited (including refused and blocked ones).
+- Frontend `/intelligence` chat page, dashboard tile, roles-screen entry.
+- `scripts/`: `setup_uil_role.py`, `seed_uil_demo_data.py`, `uil_smoke_test.py`.
+
+### Real bugs found and fixed while building it
+1. **The role setup script silently did nothing.** It set `autocommit` on SQLAlchemy's pooled connection wrapper, which does not reach the real connection; the DDL ran in a transaction rolled back on return to the pool, while the script printed "role ready". Now commits explicitly (atomic) and `verify_uil_role()` checks the role's *effective* privileges (including anything inherited from PUBLIC) and fails loudly.
+2. **The role was too locked down to work.** Views check `EXECUTE` on functions against the *querying* user, not the view owner (tables are the opposite). Granted `EXECUTE` on `uil.current_org()` only (safe: no arguments, returns only the caller's own tenant). Added `smoke_test_login()`, a functional check, because privilege lists alone had missed this.
+3. **A deployment-breaker.** `google-genai` needs `httpx>=0.28.1` and `pydantic>=2.12.5`; `requirements.txt` pinned 0.27.2 and 2.9.2, so appending it would have failed the next Render build with `ResolutionImpossible`. Re-pinned and verified from a clean venv built only from the file (`pip check` clean).
+4. Seeder: the email-silencing patch targeted the wrong function name (it would have tried real sends with a live Resend key); low-stock demo data was generating zero low-stock products; and the patch is now restored afterwards instead of leaking global state.
+5. Test hygiene: tenant registrations left behind by tests made two executor tests fail and could make the "no context means zero rows" test flaky through PID reuse; now cleaned around every test.
+6. A smoke-test design flaw caught in review: treating "model answered a hostile question" as a hard failure would false-alarm on a harmless answer. Now listed for human review with the SQL.
+
+### Verified
+```
+Clean venv built ONLY from requirements.txt, fresh database:
+  292 passed  (89 existing + 203 new)   pip check: no broken requirements
+
+Migration: applies, downgrades, round-trips; zero Alembic drift.
+
+Database layer attacked DIRECTLY as uil_readonly with no app validator:
+  19 attack statements all refused (writes, DDL, base tables, tenant-context
+  tampering, SET ROLE, set_config('role'), pg_read_file, lo_import, COPY PROGRAM)
+  Tenant isolation checked for ALL 33 views x 2 seeded orgs against ground
+  truth computed from the base tables (incl. the 10 child tables with no org_id)
+  No tenant context => zero rows in every single view (fail closed)
+  Overwriting a session setting changes nothing (isolation does not use one)
+
+Validator: 33 attack queries rejected; 17 everyday patterns accepted
+  (trailing ';', ILIKE '%x%', CTEs, UNION, window functions...); every
+  manifest example validates AND runs against realistic data.
+
+Pipeline with a scripted model made to misbehave on purpose: 11 malicious
+  SQL strings (set_config, public.users, DROP, DELETE, generate_series,
+  pg_sleep, COPY...) -> never answered, nothing changed, nothing dropped.
+  Fabricated figures in prose are discarded; "no data" is reported, never
+  invented; result rows are provably absent from prompts when disabled.
+
+AI's definition of revenue == the Finance screen's own total_revenue (test).
+
+Real HTTP against a running server (real DB login, real seeded orgs; only
+  the model scripted): question answered (23 overdue invoices), out-of-scope
+  refused, hostile blocked, 401 without token, two orgs got different totals.
+
+Frontend: ESLint clean, production build clean (26 routes), page + tile +
+  roles entry confirmed in the COMPILED output.
+```
+
+### NOT verified (be honest about this)
+- **No real Gemini call was ever made**; the development sandbox cannot reach Google. The client is written against the real SDK's inspected interface and its retry/error handling is tested with injected failures, but run `scripts/uil_smoke_test.py` once yourself.
+- **Supabase**: custom role login through the pooler (username may need `uil_readonly.<project-ref>`) and `ALTER ROLE`/grants on Supabase's managed Postgres are unverified.
+- **Python 3.11** (your local) was not available to test; all new packages declare support for 3.10+, and CI/Render use 3.12 (tested).
+- **A browser click-through** was not possible; the page was verified by build, lint, serving, and compiled output.
+- The pydantic 2.9→2.13 and httpx 0.27→0.28 upgrade is covered by the full suite but is a change to review.
+
+### Deploying
+See `UIL_SETUP_GUIDE.md` section 2 (order matters). Short form: push → confirm Render deploy → run `setup_uil_role.py` against Supabase (read the target before typing its name) → set `GEMINI_API_KEY` and `UIL_DATABASE_URL` → seed a *synthetic* demo org → smoke test.
+
+**Still open:** per-table permission checks (Option B), field-level restrictions, document retrieval (RAG), conversation memory beyond the last four exchanges, and a Playwright test of the chat page.
+
+
+---
+
+## PART 57: Per-user access control for Ask Data (the "two ticks")
+
+Replaces Part 56's all-or-nothing access ("anyone with `intelligence.view` can ask about anything, including salaries") with per-user control, built as specified: **view** = use Ask Data on the modules the role can already open; **approve** = also ask about restricted data (salary, payroll).
+
+### The rule
+Ask Data must never show a person more than the normal screens would. A view is readable if the user holds `view` on **at least one** module whose screens already show that data. The three restricted views (`employee_pay`, `payslips`, `payroll_runs`) additionally need `intelligence.approve`, **and** HR access: approve is additional, never a substitute. Admin gets everything (by role name, same rule as global search). Resolved on **every** question, so a revoked tick applies immediately.
+
+### Where it is enforced (three independent places)
+1. **Prompts:** the model is only told about views the user may read. Locked views appear by name and description only (never columns), with a rule to answer `DENIED: <view>`. Glossary entries and example queries are filtered the same way. An admin's prompt mentions none of this.
+2. **SQL validator:** a query naming any other view raises `AccessDeniedError`, deliberately *not* a subclass of the safety error, so a permission problem is never "corrected" by retrying. Structural attacks are still reported as attacks, not as permission problems. A model-issued `DENIED:` is honoured **only if true** for that user.
+3. **The database itself:** `uil.session_context` gained `modules` and `restricted`; new `uil.can_read()`; every view was rebuilt to call it. A connection with no registration, or too few modules, gets zero rows (fail closed). The executor's defaults are "no modules, not approved", so a caller that forgets to pass access gets nothing, not everything. `answer_question` takes `access` as a **required** argument for the same reason.
+
+### Design decisions worth knowing
+- **Salary moved out of `employees`** into its own restricted `employee_pay` view: permissions here work per module with no per-field control, so a salary column inside a general HR view could not be restricted on its own. This dropped and recreated all views (a view cannot lose a column via `CREATE OR REPLACE`); the migration re-grants to the read-only login if it exists, so there is no gap.
+- **`products`, `customers`, `invoices`, `crm_accounts`, `product_categories`, `users`** are readable via several modules (e.g. `products` via Sales, Inventory or Procurement), because those modules' screens already show them: an Inventory-only user must still be able to ask "which products are low on stock". The full table is `ACCESS` in the manifest.
+- **Total payroll expense** stays visible to Finance users (it is a ledger line on their normal Finance report); **per-person pay** is what is restricted.
+- UI: the roles grid shows only the two meaningful ticks for the `intelligence` row (the other three render as "—") with a one-line explanation; the Ask Data page tells each user what they can ask and what is locked and why; suggested questions are filtered to what that user can run.
+
+### Verified
+```
+Clean venv built only from requirements.txt, fresh database:
+  353 passed (292 before this change + 61 new)      pip check: clean
+
+Migration: upgrade (34 views, no salary in employees), downgrade
+  (33 views, salary restored, can_read removed), upgrade again: all verified;
+  zero Alembic drift.
+
+DATABASE ALONE (real read-only login, no validator, no prompts), 6 profiles x
+  all 34 views vs ground truth from the base tables:
+  nothing | inventory only | HR not approved | HR + approved |
+  approved but NO HR | finance only            -> exact row counts, every view
+  HR without approve: sees 18 employees, 0 pay rows / payslips / payroll runs
+  approved but no HR module: sees NO pay data
+  a user cannot edit their own modules/restricted (UPDATE/INSERT refused)
+
+Hand-written expected view sets per profile (independent of the ACCESS table, so
+  the table is not tested against itself).
+
+MUTATION TESTING: each layer was deliberately broken and the tests had to fail:
+  permission rule always-true ........ 23 failures
+  validator ignores allowed_views .... 12 failures
+  executor lies to the database ...... 1 failure (too thin) -> added direct
+                                        executor tests -> now 6 failures
+  pipeline forgets to pass access .... 3 failures
+  restored -> green.
+
+Defense in depth, proven: with the validator's per-user check disabled, a basic
+  user asking for salaries gets zero rows from the database (stage "no data").
+
+Real HTTP against a running server (only the model scripted): a role created
+  through the real API with Ask Data + Inventory only: stock question answered;
+  "what does everyone earn" DENIED (needs HR module + approve); employees question
+  DENIED (needs HR module, correctly NOT mentioning approve); no SQL/rows revealed;
+  admin unaffected; admin then ticked HR + approve and the user's very next
+  question worked with no re-login. No server errors logged.
+
+Frontend: ESLint clean, production build clean.
+```
+
+### One flaw found and fixed by the tests
+The prompt told every user, including admins, about a "NOT AVAILABLE TO THIS USER" section even when none existed (rule 8 was a constant). Harmless but noisy for the model; the rule now appears only for users who actually have locked views.
+
+### NOT verified
+Same as Part 56: no real Gemini call, Supabase pooler/`ALTER ROLE` behaviour, Python 3.11, and a browser click-through of the new page and roles grid. Additionally: the access rules were checked against **seeded** roles and the real API, not a long-lived production permission set.
+
+### Deploying
+Push; Render runs both UIL migrations. Re-run `scripts/setup_uil_role.py` (idempotent: it re-asserts grants and checks the new `can_read` privilege). Then, in Settings → Roles & Permissions, tick `intelligence.view` (and, only for people you trust with pay data, `approve` plus HR access) on the roles that need them.

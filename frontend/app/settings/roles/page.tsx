@@ -25,9 +25,11 @@ type ManagedUser = {
 // module the backend doesn't actually recognize.
 const MODULES = [
   "core", "dashboard", "crm", "sales", "procurement", "inventory",
-  "finance", "hr", "projects", "documents", "reports", "custom_fields",
+  "finance", "hr", "projects", "documents", "reports", "custom_fields", "intelligence",
 ];
 const ACTIONS = ["view", "create", "edit", "delete", "approve"] as const;
+// Ask Data only uses two of the five ticks; the other three are meaningless for it, so they are not offered.
+const ASK_DATA_ACTIONS: readonly string[] = ["view", "approve"];
 
 export default function RolesSettingsPage() {
   const { showToast } = useToast();
@@ -328,17 +330,25 @@ export default function RolesSettingsPage() {
                       <td className="py-1.5 pr-2 text-slate-700 dark:text-zinc-200">{module}</td>
                       {ACTIONS.map((action) => (
                         <td key={action} className="py-1.5 px-1 text-center">
-                          <input
-                            type="checkbox"
-                            checked={!!hasPermission(module, action)}
-                            onChange={() => togglePermission(module, action)}
-                          />
+                          {module === "intelligence" && !ASK_DATA_ACTIONS.includes(action) ? (
+                            <span className="text-slate-300 dark:text-zinc-700" title="Not used by Ask Data">—</span>
+                          ) : (
+                            <input
+                              type="checkbox"
+                              checked={!!hasPermission(module, action)}
+                              onChange={() => togglePermission(module, action)}
+                            />
+                          )}
                         </td>
                       ))}
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <p className="mt-3 text-xs text-slate-500 dark:text-zinc-500">
+                <span className="font-medium">intelligence (Ask Data):</span> <b>view</b> lets this role ask about the modules it
+                can already open. <b>approve</b> also lets it ask about salary and payroll, and only works together with HR access.
+              </p>
             </div>
           )}
         </Card>

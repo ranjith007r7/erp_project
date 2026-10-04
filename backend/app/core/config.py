@@ -80,6 +80,32 @@ class Settings(BaseSettings):
     R2_BUCKET_NAME: str = ""
     MAX_UPLOAD_SIZE_MB: int = 10
 
+    # --- Unified Intelligence Layer (plain-English questions over ERP data) ---
+    # All optional: the app boots and every other module works without any
+    # of these. The /api/intelligence endpoints answer 503 with a clear
+    # message until they are set, instead of crashing.
+    #
+    # GEMINI_API_KEY: a free-tier key from Google AI Studio. FREE-TIER DATA
+    # MAY BE USED BY GOOGLE TO IMPROVE ITS MODELS (and read by reviewers),
+    # so only ever point this at synthetic / non-sensitive data. Never
+    # enable billing on that Google project to "fix" a rate limit: that
+    # leaves the free tier.
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-3.1-flash-lite"
+    # Connection string for the dedicated read-only database login
+    # (uil_readonly). A DIFFERENT login from DATABASE_URL on purpose: the
+    # AI's queries must run on a connection that is physically incapable of
+    # writing, reading base tables, or changing which tenant it acts for.
+    UIL_DATABASE_URL: str = ""
+    UIL_MAX_ROWS: int = 200
+    UIL_STATEMENT_TIMEOUT_MS: int = 5000
+    # When False, query RESULT ROWS are never sent to the LLM: the answer is
+    # the raw table only. (The schema description and question are always
+    # sent; those contain no business data.) Set False for any data you
+    # would not want a third party to see.
+    UIL_SEND_ROWS_TO_LLM: bool = True
+    UIL_MAX_HISTORY_EXCHANGES: int = 4
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @field_validator("JWT_SECRET_KEY")

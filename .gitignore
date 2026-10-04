@@ -1,15 +1,27 @@
 # Backend
-**/venv/
-**/__pycache__/
-**/.pytest_cache/
+backend/venv/
 backend/.env
-**/*.pyc
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
 
 # Frontend
-**/node_modules/
-**/.next/
+frontend/node_modules/
+frontend/.next/
+frontend/.env
 frontend/.env.local
 
 # General
 .DS_Store
 *.log
+
+# Broadened to catch these folder names at ANY depth, not just the
+# fixed paths above - closes the real gap found when an archived
+# old_Phase snapshot's own nested venv/node_modules weren't covered
+# by the fixed-path rules alone.
+**/venv/
+**/node_modules/
+**/__pycache__/
+**/.pytest_cache/
+**/.next/
+old_Phase/
