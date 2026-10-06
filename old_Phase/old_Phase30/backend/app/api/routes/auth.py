@@ -18,6 +18,7 @@ from app.core.security import (
 from app.models.organization import Organization
 from app.models.role import Role, Permission
 from app.models.user import User
+from app.models.reports import ReportSubscription
 from app.schemas.auth import (
     OrganizationSignup, LoginRequest, TokenResponse, UserOut,
     ForgotPasswordRequest, ResetPasswordRequest, VerifyEmailRequest, ResendVerificationRequest,
@@ -95,6 +96,14 @@ def signup(payload: OrganizationSignup, db: Session = Depends(get_db)):
         role_id=admin_role.id,
     )
     db.add(admin_user)
+    db.flush()  # need admin_user.id for the subscription row below
+
+    # Preserves today's exact behavior for brand-new orgs: the org's
+    # creator gets the weekly digest by default, same as before this
+    # feature existed - they can unsubscribe anytime from Reports.
+    # Existing orgs get backfilled once by a real grandfather script,
+    # not by this signup code (which only ever runs for NEW orgs).
+    db.add(ReportSubscription(org_id=org.id, user_id=admin_user.id))
 
     # 4. Seed a minimal default Chart of Accounts, so Finance isn't empty
     #    the moment this organization exists - see app/services/accounting.py

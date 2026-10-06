@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiRequest, getToken } from "@/lib/api";
 import { PageHeader, Card, Button } from "@/components/ui";
-import { Sparkles, TriangleAlert, Info, Database } from "lucide-react";
+import { Sparkles, TriangleAlert, Info, Database, ChevronDown } from "lucide-react";
 
 type Cell = string | number | boolean | null;
 
@@ -54,6 +54,8 @@ export default function IntelligencePage() {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [blocked, setBlocked] = useState<string | null>(null);
+  // Suggested questions: open at first; collapses when one is clicked; always one tap away.
+  const [suggestionsOpen, setSuggestionsOpen] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
 
@@ -103,6 +105,13 @@ export default function IntelligencePage() {
   }
 
   const notReady = status && (!status.llm_configured || !status.database_configured);
+
+  // Clears this tab's conversation (the only place it is kept). Nothing is stored on the server.
+  function newChat() {
+    setTurns([]);
+    setQuestion("");
+    setSuggestionsOpen(true);
+  }
 
   return (
     <main className="min-h-screen p-8">
@@ -154,26 +163,6 @@ export default function IntelligencePage() {
       )}
 
       <div className="max-w-3xl space-y-4">
-        {turns.length === 0 && (
-          <Card className="p-5">
-            <div className="flex items-center gap-2 mb-3 text-slate-800 dark:text-white font-medium">
-              <Sparkles size={18} /> Try asking
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {examples.map((ex) => (
-                <button
-                  key={ex}
-                  onClick={() => ask(ex)}
-                  disabled={loading || !!notReady}
-                  className="text-xs text-left rounded-full px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-700 disabled:opacity-50 transition-colors"
-                >
-                  {ex}
-                </button>
-              ))}
-            </div>
-          </Card>
-        )}
-
         {turns.map((t) => (
           <div key={t.id} className="space-y-2">
             <div className="flex justify-end">
@@ -196,8 +185,41 @@ export default function IntelligencePage() {
         <div ref={bottomRef} />
       </div>
 
+      {examples.length > 0 && (
+        <div className="max-w-3xl mt-6" data-testid="suggestions">
+          <button
+            type="button"
+            onClick={() => setSuggestionsOpen((open) => !open)}
+            aria-expanded={suggestionsOpen}
+            aria-controls="suggested-questions"
+            className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-zinc-300 hover:text-slate-800 dark:hover:text-white transition-colors"
+          >
+            <Sparkles size={16} /> Suggested questions
+            <ChevronDown size={16} className={`transition-transform ${suggestionsOpen ? "rotate-180" : ""}`} />
+          </button>
+          {suggestionsOpen && (
+            <div id="suggested-questions" className="mt-2 flex flex-wrap gap-2">
+              {examples.map((ex) => (
+                <button
+                  key={ex}
+                  type="button"
+                  onClick={() => {
+                    setSuggestionsOpen(false); // collapse after picking one; the bar above re-opens it
+                    ask(ex);
+                  }}
+                  disabled={loading || !!notReady}
+                  className="text-xs text-left rounded-full px-3 py-1.5 bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 hover:bg-slate-200 dark:hover:bg-zinc-700 disabled:opacity-50 transition-colors"
+                >
+                  {ex}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <form
-        className="max-w-3xl mt-6 flex gap-2"
+        className="max-w-3xl mt-3 flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
           ask(question);
@@ -217,6 +239,23 @@ export default function IntelligencePage() {
           {loading ? "Thinking…" : "Ask"}
         </Button>
       </form>
+
+      <div className="max-w-3xl mt-2 flex items-start justify-between gap-4">
+        <p className="text-xs text-slate-500 dark:text-zinc-500" data-testid="memory-note">
+          This chat remembers the last few questions within the current session only, so follow-ups work naturally.
+          Nothing is saved once this page is closed or refreshed. The memory exists only for as long as this tab stays open.
+        </p>
+        {turns.length > 0 && (
+          <button
+            type="button"
+            onClick={newChat}
+            disabled={loading}
+            className="shrink-0 text-xs text-slate-600 dark:text-zinc-300 underline hover:text-slate-800 dark:hover:text-white disabled:opacity-50"
+          >
+            New chat
+          </button>
+        )}
+      </div>
     </main>
   );
 }

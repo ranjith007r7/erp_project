@@ -7,6 +7,7 @@ import { ConfirmModal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { NavLink } from "@/components/NavLink";
 import { Palette, Settings2 } from "lucide-react";
+import { isChecked, toggleDraft, planChanges, type Draft } from "@/lib/permissionDraft";
 
 type Role = { id: string; org_id: string; name: string };
 type Permission = { id: string; role_id: string; module: string; action: string };
@@ -43,6 +44,11 @@ export default function RolesSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(false);
   const [showManageAccessConfirm, setShowManageAccessConfirm] = useState(false);
+  // STAGED edits: nothing below is saved until the admin presses Save.
+  const [draft, setDraft] = useState<Draft>({});                       // permission ticks, per selected role
+  const [savingPermissions, setSavingPermissions] = useState(false);
+  const [pendingRoles, setPendingRoles] = useState<Record<string, string>>({}); // userId -> wanted role id ("" = none)
+  const [savingRoleFor, setSavingRoleFor] = useState<string | null>(null);
 
   const [roleForm, setRoleForm] = useState({ name: "" });
   const [userForm, setUserForm] = useState({ name: "", email: "", password: "", role_id: "" });
@@ -82,6 +88,7 @@ export default function RolesSettingsPage() {
 
   async function handleCreateRole(e: React.FormEvent) {
     e.preventDefault();
+    if (pendingCount > 0 && !window.confirm("You have unsaved permission changes. Discard them and create the new role?")) return;
     setError(null);
     try {
       const role = await apiRequest<Role>("/api/core/roles", {
@@ -138,6 +145,118 @@ export default function RolesSettingsPage() {
     }
   }
 
+  // ---- staged permission edits (the grid) --------------------------------------------
+  const pendingCount = Object.keys(draft).length;
+  const pendingRoleCount = Object.keys(pendingRoles).length;
+
+  function stagePermission(module: string, action: string) {
+    setDraft((d) => toggleDraft(permissions, d, module, action));
+  }
+
+  function discardPermissionChanges() {
+    setDraft({});
+  }
+
+  async function savePermissionChanges() {
+    if (!selectedRoleId) return;
+    const plan = planChanges(permissions, draft);
+    const total = plan.adds.length + plan.removes.length;
+    if (total === 0) {
+      setDraft({});
+      return;
+    }
+    setSavingPermissions(true);
+    setError(null);
+    const failures: string[] = [];
+    // Additions first, then removals: if something is interrupted, the role is left with
+    // too much rather than too little, and the grid below always shows what is really saved.
+    for (const a of plan.adds) {
+      try {
+        await apiRequest(`/api/core/roles/${selectedRoleId}/permissions`, {
+          method: "POST", auth: true, body: { module: a.module, action: a.action },
+        });
+      } catch (err) {
+        failures.push(`${a.module} ${a.action}: ${err instanceof Error ? err.message : "failed"}`);
+      }
+    }
+    for (const r of plan.removes) {
+      try {
+        await apiRequest(`/api/core/roles/${selectedRoleId}/permissions/${r.id}`, { method: "DELETE", auth: true });
+      } catch (err) {
+        failures.push(`${r.module} ${r.action}: ${err instanceof Error ? err.message : "failed"}`);
+      }
+    }
+    setDraft({});
+    loadPermissions(selectedRoleId); // always show the server's truth, whatever happened above
+    setSavingPermissions(false);
+    if (failures.length === 0) {
+      showToast(`Saved ${total} permission change${total === 1 ? "" : "s"}.`, "success");
+    } else {
+      setError(`Saved ${total - failures.length} of ${total} changes. Not saved: ${failures.join("; ")}`);
+    }
+  }
+
+  function selectRole(roleId: string) {
+    if (roleId === selectedRoleId) return;
+    if (pendingCount > 0 && !window.confirm("You have unsaved permission changes. Discard them and switch roles?")) return;
+    setDraft({});
+    setSelectedRoleId(roleId);
+  }
+
+  // ---- staged role change for one user ------------------------------------------------
+  function stageUserRole(user: ManagedUser, wanted: string) {
+    setPendingRoles((prev) => {
+      const next = { ...prev };
+      if (wanted === (user.role_id ?? "")) delete next[user.id]; // back to the saved role: no change
+      else next[user.id] = wanted;
+      return next;
+    });
+  }
+
+  function discardUserRole(userId: string) {
+    setPendingRoles((prev) => {
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
+  }
+
+  async function saveUserRole(userId: string) {
+    const wanted = pendingRoles[userId];
+    if (wanted === undefined) return;
+    setSavingRoleFor(userId);
+    setError(null);
+    try {
+      await apiRequest(`/api/core/users/${userId}/role`, {
+        method: "PATCH", auth: true, body: { role_id: wanted || null },
+      });
+      discardUserRole(userId);
+      loadUsers();
+      showToast("Role updated.", "success");
+    } catch (err) {
+      // Keep the staged choice so the admin can see what was attempted and cancel it.
+      setError(err instanceof Error ? err.message : "Failed to change user's role");
+    } finally {
+      setSavingRoleFor(null);
+    }
+  }
+
+  // Staged ticks belong to one role, so they are dropped whenever the selected role changes by any route.
+  useEffect(() => {
+    setDraft({});
+  }, [selectedRoleId]);
+
+  // Warn before leaving the page with anything unsaved.
+  useEffect(() => {
+    if (pendingCount === 0 && pendingRoleCount === 0) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [pendingCount, pendingRoleCount]);
+
   async function handleCreateUser(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -187,18 +306,6 @@ export default function RolesSettingsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to resend invite");
       setResendStatus((prev) => ({ ...prev, [userId]: "idle" }));
-    }
-  }
-
-  async function handleChangeUserRole(userId: string, roleId: string) {
-    setError(null);
-    try {
-      await apiRequest(`/api/core/users/${userId}/role`, {
-        method: "PATCH", auth: true, body: { role_id: roleId || null },
-      });
-      loadUsers();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to change user's role");
     }
   }
 
@@ -262,7 +369,7 @@ export default function RolesSettingsPage() {
             {roles.map((role) => (
               <button
                 key={role.id}
-                onClick={() => setSelectedRoleId(role.id)}
+                onClick={() => selectRole(role.id)}
                 className={`w-full text-left py-2 px-2 text-sm rounded-lg ${
                   selectedRoleId === role.id ? "bg-slate-100 dark:bg-zinc-800 font-medium text-slate-800 dark:text-white" : "text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800"
                 }`}
@@ -335,8 +442,8 @@ export default function RolesSettingsPage() {
                           ) : (
                             <input
                               type="checkbox"
-                              checked={!!hasPermission(module, action)}
-                              onChange={() => togglePermission(module, action)}
+                              checked={isChecked(permissions, draft, module, action)}
+                              onChange={() => stagePermission(module, action)}
                             />
                           )}
                         </td>
@@ -349,6 +456,26 @@ export default function RolesSettingsPage() {
                 <span className="font-medium">intelligence (Ask Data):</span> <b>view</b> lets this role ask about the modules it
                 can already open. <b>approve</b> also lets it ask about salary and payroll, and only works together with HR access.
               </p>
+            </div>
+          )}
+
+          {selectedRole && pendingCount > 0 && (
+            <div
+              className="sticky bottom-4 mt-4 flex items-center justify-between gap-3 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950 px-3 py-2 shadow-md"
+              role="status"
+              data-testid="permission-save-bar"
+            >
+              <span className="text-xs text-amber-800 dark:text-amber-300">
+                {pendingCount} unsaved change{pendingCount === 1 ? "" : "s"} for {selectedRole.name}
+              </span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="secondary" onClick={discardPermissionChanges} disabled={savingPermissions}>
+                  Discard
+                </Button>
+                <Button size="sm" onClick={savePermissionChanges} disabled={savingPermissions}>
+                  {savingPermissions ? "Saving…" : "Save changes"}
+                </Button>
+              </div>
             </div>
           )}
         </Card>
@@ -499,8 +626,9 @@ export default function RolesSettingsPage() {
                   </button>
                 )}
                 <Select
-                  value={u.role_id ?? ""}
-                  onChange={(e) => handleChangeUserRole(u.id, e.target.value)}
+                  value={pendingRoles[u.id] ?? u.role_id ?? ""}
+                  onChange={(e) => stageUserRole(u, e.target.value)}
+                  disabled={savingRoleFor === u.id}
                   className="w-48"
                 >
                   <option value="">No role assigned</option>
@@ -508,6 +636,21 @@ export default function RolesSettingsPage() {
                     <option key={r.id} value={r.id}>{r.name}</option>
                   ))}
                 </Select>
+                {pendingRoles[u.id] !== undefined && (
+                  <>
+                    <Button size="sm" onClick={() => saveUserRole(u.id)} disabled={savingRoleFor === u.id}>
+                      {savingRoleFor === u.id ? "Saving…" : "Save"}
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => discardUserRole(u.id)}
+                      disabled={savingRoleFor === u.id}
+                      className="text-xs text-slate-500 dark:text-zinc-400 underline hover:text-slate-700 dark:hover:text-white disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           ))}

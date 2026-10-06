@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { apiRequest, apiDownload } from "@/lib/api";
 import { PromptModal } from "@/components/Modal";
+import { PageHeader } from "@/components/ui";
 import { SkeletonCard } from "@/components/Skeleton";
 import { TrendLineChart } from "@/components/charts/TrendLineChart";
 import { ComparisonBarChart } from "@/components/charts/ComparisonBarChart";
@@ -140,10 +140,10 @@ export default function ReportsPage() {
 
   return (
     <main className="min-h-screen p-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Reports & Analytics</h1>
-        <div className="flex items-center gap-4">
-          {subscribed !== null && (
+      <PageHeader
+        title="Reports & Analytics"
+        actions={
+          subscribed !== null && (
             <button
               onClick={handleToggleSubscription}
               disabled={subscribing}
@@ -156,12 +156,9 @@ export default function ReportsPage() {
             >
               {subscribing ? "…" : subscribed ? "✓ Weekly digest on" : "Get weekly digest email"}
             </button>
-          )}
-          <Link href="/dashboard" className="text-sm text-slate-500 dark:text-zinc-500 underline">
-            ← Dashboard
-          </Link>
-        </div>
-      </div>
+          )
+        }
+      />
 
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 

@@ -20,7 +20,7 @@ from app.api.deps import verify_cron_secret
 from app.models.organization import Organization
 from app.models.sales import Invoice
 from app.models.user import User
-from app.models.role import Role
+from app.models.reports import ReportSubscription
 from app.services.notifications import notify_role
 from app.services.reports import sales_summary, finance_summary
 from app.services.email import send_email
@@ -73,9 +73,12 @@ def check_overdue_invoices(db: Session = Depends(get_db)):
 @router.post("/weekly-digest")
 def send_weekly_digest(db: Session = Depends(get_db)):
     """
-    Runs weekly. Emails each org's Admin(s) a short summary using the
-    SAME reports service the Reports page's live view already calls -
-    no separate calculation logic to keep in sync with the dashboard.
+    Runs weekly. Emails each org's real subscribers - see
+    ReportSubscription's own docstring for why this is no longer
+    hardcoded to "every Admin" (a real gap: no way to opt out, no way
+    for a non-Admin who wants visibility to opt in). Uses the SAME
+    reports service the Reports page's live view already calls - no
+    separate calculation logic to keep in sync with the dashboard.
     Soft-fails per org (a bad email for one org must not stop every
     other org's digest from sending) - same philosophy as
     notify_user()/notify_role()'s soft-fail.
@@ -91,13 +94,13 @@ def send_weekly_digest(db: Session = Depends(get_db)):
         except Exception:
             continue  # a data issue in one org's numbers must not break every other org's digest
 
-        admins = (
+        subscribers = (
             db.query(User)
-            .join(Role, User.role_id == Role.id)
-            .filter(User.org_id == org_id, Role.name == "Admin", User.status == "active")
+            .join(ReportSubscription, ReportSubscription.user_id == User.id)
+            .filter(User.org_id == org_id, User.status == "active")
             .all()
         )
-        if not admins:
+        if not subscribers:
             continue
 
         body = (
@@ -105,10 +108,10 @@ def send_weekly_digest(db: Session = Depends(get_db)):
             f"Revenue (this month so far): {finance.get('total_revenue', 0):,.2f}\n"
             f"Net profit (this month so far): {finance.get('net_profit', 0):,.2f}\n"
             f"Top product: {sales.get('top_products', [{}])[0].get('name', 'N/A') if sales.get('top_products') else 'N/A'}\n\n"
-            f"Log in to see the full report."
+            f"Log in to see the full report. To stop receiving this, unsubscribe from the Reports page."
         )
-        for admin in admins:
-            send_email(to=admin.email, subject=f"Weekly summary — {org.name}", body=body)
+        for subscriber in subscribers:
+            send_email(to=subscriber.email, subject=f"Weekly summary — {org.name}", body=body)
         sent_count += 1
 
     return {"orgs_processed": len(orgs), "digests_sent": sent_count}

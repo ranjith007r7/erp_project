@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/api";
 import { PageHeader, Card } from "@/components/ui";
 import { usePagination, PaginationControls } from "@/components/Pagination";
 import { SkeletonList } from "@/components/Skeleton";
+import { formatDateTime } from "@/lib/time";
 
 type AuditEntry = {
   id: string;
@@ -65,7 +66,7 @@ export default function AuditLogPage() {
                   {entry.entity && <span className="text-slate-500 dark:text-zinc-500"> ({entry.entity})</span>}
                 </p>
                 <p className="text-xs text-slate-400 dark:text-zinc-500 mt-0.5">
-                  {new Date(entry.created_at).toLocaleString()}
+                  {formatDateTime(entry.created_at)}
                 </p>
               </div>
             ))}

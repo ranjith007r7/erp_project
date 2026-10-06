@@ -10,6 +10,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api";
+import { formatDateTime } from "@/lib/time";
 
 type Notification = {
   id: string;
@@ -112,7 +113,7 @@ export function NotificationBell() {
                 >
                   <p className="text-sm text-slate-700 dark:text-zinc-100">{n.message}</p>
                   <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">
-                    {new Date(n.created_at).toLocaleString()}
+                    {formatDateTime(n.created_at)}
                   </p>
                 </button>
               ))}
