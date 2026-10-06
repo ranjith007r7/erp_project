@@ -5,3 +5,20 @@
 body {
   background-color: #f4f6f8;
 }
+
+/* Browser autofill paints its own pale background and can make typed text unreadable on a
+   dark field (the same "invisible text" class of bug fixed earlier in dark mode). Keep the
+   field's own colors when a saved email or password is filled in. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #0f172a;
+  box-shadow: 0 0 0 1000px #ffffff inset;
+  transition: background-color 9999s ease-out 0s;
+}
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #ffffff;
+  box-shadow: 0 0 0 1000px #18181b inset;
+}

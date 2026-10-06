@@ -3,7 +3,14 @@
 import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { CheckCircle2, Lock, TriangleAlert } from "lucide-react";
 import { apiRequest } from "@/lib/api";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { AuthField } from "@/components/auth/AuthField";
+import { AuthButton } from "@/components/auth/AuthButton";
+
+const alertClasses =
+  "flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700 motion-safe:animate-shake dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300";
 
 // useSearchParams() requires a Suspense boundary in the Next.js App
 // Router (otherwise the production build fails static generation for
@@ -52,11 +59,13 @@ function ResetPasswordForm() {
   if (!token) {
     return (
       <div className="space-y-4">
-        <p className="text-sm text-red-600">
-          This link is missing a reset token. Please use the link from your password reset email
-          directly, or request a new one.
+        <p role="alert" className={alertClasses}>
+          <TriangleAlert size={16} className="mt-0.5 shrink-0" aria-hidden />
+          <span>
+            This link is missing a reset token. Please use the link from your password reset email directly, or request a new one.
+          </span>
         </p>
-        <Link href="/forgot-password" className="block text-center text-sm text-slate-800 dark:text-white underline">
+        <Link href="/forgot-password" className="block text-center text-sm font-medium text-indigo-600 underline-offset-4 hover:underline dark:text-indigo-400">
           Request a new reset link
         </Link>
       </div>
@@ -65,59 +74,60 @@ function ResetPasswordForm() {
 
   if (success) {
     return (
-      <p className="text-sm text-slate-600 dark:text-zinc-300">
-        Password updated. Redirecting you to login…
-      </p>
+      <div className="space-y-3 text-center" role="status">
+        <CheckCircle2 className="mx-auto text-emerald-500" size={44} aria-hidden />
+        <p className="text-sm text-slate-600 dark:text-zinc-300">Password updated. Redirecting you to login…</p>
+      </div>
     );
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-slate-600 dark:text-zinc-300 mb-1">New password</label>
-        <input
-          type="password"
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          required
-          minLength={8}
-          className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-slate-600 dark:text-zinc-300 mb-1">Confirm new password</label>
-        <input
-          type="password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          required
-          minLength={8}
-          className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2"
-        />
-      </div>
+      <AuthField
+        label="New password"
+        type="password"
+        name="new_password"
+        icon={Lock}
+        autoComplete="new-password"
+        autoFocus
+        required
+        minLength={8}
+        value={newPassword}
+        onChange={(e) => setNewPassword(e.target.value)}
+        hint="At least 8 characters."
+      />
+      <AuthField
+        label="Confirm new password"
+        type="password"
+        name="confirm_password"
+        icon={Lock}
+        autoComplete="new-password"
+        required
+        minLength={8}
+        value={confirmPassword}
+        onChange={(e) => setConfirmPassword(e.target.value)}
+      />
 
-      {error && <p className="text-red-600 text-sm">{error}</p>}
+      {error && (
+        <div role="alert" className={alertClasses}>
+          <TriangleAlert size={16} className="mt-0.5 shrink-0" aria-hidden />
+          <span>{error}</span>
+        </div>
+      )}
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 font-medium hover:bg-slate-700 dark:hover:bg-zinc-300 disabled:opacity-50"
-      >
-        {loading ? "Resetting..." : "Reset Password"}
-      </button>
+      <AuthButton type="submit" loading={loading} loadingLabel="Resetting…">
+        Reset password
+      </AuthButton>
     </form>
   );
 }
 
 export default function ResetPasswordPage() {
   return (
-    <main className="min-h-screen flex items-center justify-center px-4">
-      <div className="max-w-sm w-full bg-white dark:bg-zinc-900 p-8 rounded-xl shadow-sm space-y-4">
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Reset password</h1>
-        <Suspense fallback={<p className="text-sm text-slate-400 dark:text-zinc-500">Loading…</p>}>
-          <ResetPasswordForm />
-        </Suspense>
-      </div>
-    </main>
+    <AuthShell title="Set a new password" subtitle="Choose a new password for your account.">
+      <Suspense fallback={<p className="text-sm text-slate-400 dark:text-zinc-500">Loading…</p>}>
+        <ResetPasswordForm />
+      </Suspense>
+    </AuthShell>
   );
 }

@@ -3,10 +3,12 @@ import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { OrgBranding } from "@/components/OrgBranding";
+import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "Base ERP",
-  description: "Customizable base ERP platform",
+  title: { default: BRAND.productName, template: `%s · ${BRAND.productName}` },
+  applicationName: BRAND.productName,
+  description: `${BRAND.productName} by ${BRAND.companyName}: sales, finance, inventory, HR, projects and reporting in one workspace.`,
 };
 
 // Next.js App Router injects a sensible default viewport tag automatically,
@@ -15,6 +17,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  themeColor: "#4f46e5", // tints the browser toolbar on phones
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
