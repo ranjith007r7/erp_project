@@ -39,8 +39,12 @@ export function SwipeToDelete({ children, onDelete }: { children: React.ReactNod
   return (
     <div className="relative overflow-hidden rounded-lg">
       <motion.div
-        className="absolute inset-0 bg-red-600 flex items-center justify-end pr-4 rounded-lg"
+        // pointer-events-none is essential: this layer is absolutely positioned,
+        // so it paints OVER the (non-positioned) row. Opacity 0 hides it but does
+        // not stop it receiving clicks, which made every control in the row dead.
+        className="pointer-events-none absolute inset-0 z-0 bg-red-600 flex items-center justify-end pr-4 rounded-lg"
         style={{ opacity: deleteOpacity }}
+        aria-hidden="true"
       >
         <Trash2 className="text-white" size={18} />
       </motion.div>
@@ -50,7 +54,7 @@ export function SwipeToDelete({ children, onDelete }: { children: React.ReactNod
         dragElastic={0.15}
         style={{ x }}
         onDragEnd={handleDragEnd}
-        className="touch-pan-y"
+        className="relative z-10 touch-pan-y"
       >
         {children}
       </motion.div>

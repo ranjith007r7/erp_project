@@ -55,17 +55,17 @@ export function VerificationBanner({ email }: { email: string }) {
     status === "sending" ? "Sending..." : status === "cooldown" ? `Resend in ${secondsLeft}s` : "Resend verification email";
 
   return (
-    <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-6 flex justify-between items-center flex-wrap gap-2">
-      <p className="text-sm text-amber-800">
+    <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/60 rounded-lg p-3 mb-6 flex justify-between items-center flex-wrap gap-2">
+      <p className="text-sm text-amber-800 dark:text-amber-200">
         <span className="font-medium">Verify your email</span> — check your inbox for a link sent to{" "}
         {email}. Some features may be limited until you verify.
       </p>
       <div className="flex items-center gap-2">
-        {error && <p className="text-xs text-red-600">{error}</p>}
+        {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
         <button
           onClick={handleResend}
           disabled={status !== "idle"}
-          className="text-xs bg-amber-800 text-white dark:text-zinc-900 px-3 py-1.5 rounded-lg hover:bg-amber-700 disabled:opacity-50 whitespace-nowrap"
+          className="text-xs bg-amber-800 text-white hover:bg-amber-700 dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-300 px-3 py-1.5 rounded-lg disabled:opacity-50 whitespace-nowrap"
         >
           {buttonLabel}
         </button>
