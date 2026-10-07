@@ -34,6 +34,15 @@ const ACTION_LABELS: Record<string, string> = {
   send_defect_notice_email: "emailed a defect notice to a vendor",
   print_defect_notice: "printed a defect notice",
   process_payroll: "processed payroll",
+  create_department: "created a department",
+  create_position: "created a role with a fixed salary",
+  update_position: "changed a role or its salary",
+  create_employee: "added an employee",
+  update_employee: "updated an employee",
+  create_employee_login: "created a login for an employee",
+  set_payroll_deductions: "set an employee's payroll deductions",
+  set_payroll_lop_days: "set unpaid-leave days for a payroll run",
+  update_leave_type: "changed a leave policy",
   generate_invoice: "generated an invoice",
 };
 

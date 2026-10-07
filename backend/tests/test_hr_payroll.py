@@ -32,9 +32,17 @@ def test_payroll_run_calculates_net_pay_correctly_and_blocks_reprocessing(client
 
 
 def test_payroll_posts_one_balanced_journal_entry_for_the_whole_run(client, signup):
+    """
+    Same 60,000 + 40,000 salaries. The old flat 10% is gone, so Finance sets a 10% PF
+    for each (the equivalent of the old behaviour): expense 100,000, cash out 90,000,
+    10,000 owed onward as Payroll Deductions Payable. One entry, balanced.
+    """
     headers = signup()
-    client.post("/api/hr/employees", headers=headers, json={"name": "Employee One", "salary": 60000})
-    client.post("/api/hr/employees", headers=headers, json={"name": "Employee Two", "salary": 40000})
+    e1 = client.post("/api/hr/employees", headers=headers, json={"name": "Employee One", "salary": 60000}).json()
+    e2 = client.post("/api/hr/employees", headers=headers, json={"name": "Employee Two", "salary": 40000}).json()
+    for e in (e1, e2):
+        r = client.put(f"/api/finance/payroll-deductions/{e['id']}", headers=headers, json={"pf_percent": 10})
+        assert r.status_code == 200, r.text
 
     run = client.post("/api/hr/payroll-runs", headers=headers, json={"month": 9, "year": 2026}).json()
     client.post(f"/api/hr/payroll-runs/{run['id']}/process", headers=headers)
@@ -48,7 +56,6 @@ def test_payroll_posts_one_balanced_journal_entry_for_the_whole_run(client, sign
     entry = payroll_entries[0]
     total_debit = sum(Decimal(str(l["debit"])) for l in entry["lines"])
     total_credit = sum(Decimal(str(l["credit"])) for l in entry["lines"])
-    assert total_debit == total_credit == Decimal("90000"), (
-        f"expected net pay of 54000 + 36000 = 90000 (10% deduction each) to balance. "
-        f"Got debit={total_debit} credit={total_credit}"
-    )
+    assert total_debit == total_credit == Decimal("100000")
+    credits = sorted(Decimal(str(l["credit"])) for l in entry["lines"] if Decimal(str(l["credit"])) > 0)
+    assert credits == [Decimal("10000"), Decimal("90000")]

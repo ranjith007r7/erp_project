@@ -9,7 +9,10 @@ a circular import: Sales needs Finance's accounts to post to, and Finance
 needs Sales' Invoice model for Payments - putting the shared logic in its
 own module means neither route file has to import the other.
 """
+from sqlalchemy import func
 from sqlalchemy.orm import Session
+
+from app.models.organization import Organization
 
 from app.models.finance import ChartOfAccounts, JournalEntry, JournalLine
 
@@ -22,6 +25,9 @@ DEFAULT_ACCOUNTS = [
     ("1100", "Accounts Receivable", "asset"),
     ("4000", "Sales Revenue", "revenue"),
     ("5000", "Payroll Expense", "expense"),
+    # PF, insurance and TDS withheld from salaries: owed to the authorities
+    # until paid out, so a liability. Created on first use like every default.
+    ("2100", "Payroll Deductions Payable", "liability"),
 ]
 
 
@@ -67,6 +73,23 @@ def get_account(db: Session, org_id: str, code: str) -> ChartOfAccounts:
     return account
 
 
+def next_entry_number(db: Session, org_id: str) -> str:
+    """
+    Readable running number ("JE-0001") per organization. The organization row
+    is locked for the rest of the transaction so two simultaneous postings can
+    never be given the same number.
+    """
+    db.flush()  # entries added earlier in this transaction must be visible to the count below
+    db.query(Organization).filter(Organization.id == org_id).with_for_update().first()
+    n = db.query(func.count(JournalEntry.id)).filter(JournalEntry.org_id == org_id).scalar() or 0
+    while True:
+        n += 1
+        number = f"JE-{n:04d}"
+        taken = db.query(JournalEntry.id).filter(JournalEntry.org_id == org_id, JournalEntry.entry_number == number).first()
+        if not taken:
+            return number
+
+
 def post_invoice_journal_entry(db: Session, org_id: str, invoice_id: str, amount) -> JournalEntry:
     """
     The moment an Invoice is generated, we record:
@@ -78,14 +101,15 @@ def post_invoice_journal_entry(db: Session, org_id: str, invoice_id: str, amount
     ar_account = get_account(db, org_id, "1100")
     revenue_account = get_account(db, org_id, "4000")
 
-    entry = JournalEntry(org_id=org_id, reference=f"INV-{invoice_id}", description="Invoice issued")
+    entry = JournalEntry(org_id=org_id, entry_number=next_entry_number(db, org_id),
+                         reference=f"INV-{invoice_id}", description="Invoice issued")
     entry.lines.append(JournalLine(account_id=ar_account.id, debit=amount, credit=0))
     entry.lines.append(JournalLine(account_id=revenue_account.id, debit=0, credit=amount))
     db.add(entry)
     return entry
 
 
-def post_payment_journal_entry(db: Session, org_id: str, payment_id: str, amount) -> JournalEntry:
+def post_payment_journal_entry(db: Session, org_id: str, payment_id: str, amount, note: str | None = None) -> JournalEntry:
     """
     The moment a Payment is recorded against an Invoice, we record:
         Debit  Cash                  (money has arrived)
@@ -94,29 +118,36 @@ def post_payment_journal_entry(db: Session, org_id: str, payment_id: str, amount
     cash_account = get_account(db, org_id, "1000")
     ar_account = get_account(db, org_id, "1100")
 
-    entry = JournalEntry(org_id=org_id, reference=f"PMT-{payment_id}", description="Payment received")
+    entry = JournalEntry(org_id=org_id, entry_number=next_entry_number(db, org_id), reference=f"PMT-{payment_id}",
+                         description="Payment received" + (f" ({note})" if note else ""))
     entry.lines.append(JournalLine(account_id=cash_account.id, debit=amount, credit=0))
     entry.lines.append(JournalLine(account_id=ar_account.id, debit=0, credit=amount))
     db.add(entry)
     return entry
 
 
-def post_payroll_journal_entry(db: Session, org_id: str, payroll_run_id: str, total_net_pay) -> JournalEntry:
+def post_payroll_journal_entry(db: Session, org_id: str, payroll_run_id: str, total_net_pay,
+                               total_expense=None, statutory_deductions=0) -> JournalEntry:
     """
-    The moment a Payroll Run is processed, we record:
-        Debit  Payroll Expense   (this cost the company money)
-        Credit Cash              (assuming immediate payment - a company
-                                  using a 'Salaries Payable' liability
-                                  account instead, for payroll paid on a
-                                  delay, is a reasonable later refinement)
-    One entry for the WHOLE run's total, not one per employee - keeps the
-    ledger readable, matching how a real payroll journal entry looks.
+    The moment a Payroll Run is processed, we record ONE entry for the whole run:
+        Debit  Payroll Expense              earned pay (gross less unpaid-leave deduction)
+        Credit Cash                         net pay actually paid out
+        Credit Payroll Deductions Payable   PF + insurance + TDS withheld, owed onward
+    expense = net + withheld, so it always balances. Unpaid-leave money is simply
+    never an expense. Called with only the net amount (old callers), it behaves as
+    before: Debit Payroll Expense / Credit Cash for that amount.
     """
+    statutory = statutory_deductions or 0
+    expense = total_expense if total_expense is not None else total_net_pay + statutory
     payroll_expense_account = get_account(db, org_id, "5000")
     cash_account = get_account(db, org_id, "1000")
 
-    entry = JournalEntry(org_id=org_id, reference=f"PAYROLL-{payroll_run_id}", description="Payroll processed")
-    entry.lines.append(JournalLine(account_id=payroll_expense_account.id, debit=total_net_pay, credit=0))
+    entry = JournalEntry(org_id=org_id, entry_number=next_entry_number(db, org_id),
+                         reference=f"PAYROLL-{payroll_run_id}", description="Payroll processed")
+    entry.lines.append(JournalLine(account_id=payroll_expense_account.id, debit=expense, credit=0))
     entry.lines.append(JournalLine(account_id=cash_account.id, debit=0, credit=total_net_pay))
+    if statutory:
+        payable = get_account(db, org_id, "2100")
+        entry.lines.append(JournalLine(account_id=payable.id, debit=0, credit=statutory))
     db.add(entry)
     return entry

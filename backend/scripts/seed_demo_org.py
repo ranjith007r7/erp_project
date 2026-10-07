@@ -198,10 +198,16 @@ def main():
     ]
     employee_ids = []
     for name, designation, dept_id, salary in employees:
+        # Salary is fixed on the role up front; the employee just picks department + role.
+        position = post("/api/hr/positions", headers=auth, json={"department_id": dept_id, "title": designation, "base_salary": salary})
         emp = post("/api/hr/employees", headers=auth, json={
-            "name": name, "designation": designation, "department_id": dept_id, "salary": salary,
+            "name": name, "department_id": dept_id, "position_id": position["id"],
+            "employment_type": "full_time", "joining_date": str(date.today() - timedelta(days=200)),
         })
         employee_ids.append(emp["id"])
+        # Finance fills in each person's deductions before payroll (PF %, insurance %, TDS %).
+        requests.put(f"{base}/api/finance/payroll-deductions/{emp['id']}", headers=auth,
+                     json={"pf_percent": 12, "insurance_percent": 1.5, "tds_percent": 5 if salary >= 50000 else 0})
 
     # A pending leave request left un-actioned, so HR's "Leave Requests"
     # panel has something real to click through during a demo.

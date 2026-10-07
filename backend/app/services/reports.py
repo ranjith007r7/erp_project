@@ -205,7 +205,7 @@ def hr_summary(db: Session, org_id: str, months: int = 6) -> dict:
     )
 
     payroll_rows = (
-        db.query(PayrollRun.year, PayrollRun.month, func.sum(Payslip.net_pay).label("total"))
+        db.query(PayrollRun.year, PayrollRun.month, func.sum(Payslip.gross - Payslip.leave_deduction).label("total"))
         .join(Payslip, Payslip.payroll_run_id == PayrollRun.id)
         .filter(PayrollRun.org_id == org_id, PayrollRun.status == "processed")
         .group_by(PayrollRun.year, PayrollRun.month)

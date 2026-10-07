@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date
 
-from sqlalchemy import Column, String, ForeignKey, DateTime, Date, Numeric
+from sqlalchemy import Column, String, ForeignKey, DateTime, Date, Numeric, Integer, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -35,9 +35,13 @@ class JournalEntry(Base):
     its credits.
     """
     __tablename__ = "journal_entries"
+    __table_args__ = (UniqueConstraint("org_id", "entry_number", name="uq_journal_entry_number"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    # Readable running number per organization ("JE-0001"); the UUID id stays
+    # the internal key, this is what people quote.
+    entry_number = Column(String, nullable=True)
     date = Column(Date, default=date.today)
     reference = Column(String, nullable=True)     # e.g. "INV-<invoice id>"
     description = Column(String, nullable=True)
@@ -75,6 +79,9 @@ class Payment(Base):
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     invoice_id = Column(UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=False)
     amount = Column(Numeric(12, 2), nullable=False)
-    method = Column(String, default="bank_transfer")
+    method = Column(String, default="cash")        # cash / card / gpay (bank_transfer kept for old rows)
+    # Required for card and gpay: the payment's transaction / UPI reference.
+    transaction_id = Column(String, nullable=True)
+    recorded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     date = Column(Date, default=date.today)
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -218,3 +218,19 @@ def verify_cron_secret(x_cron_secret: str = Header(default="")) -> None:
     """
     if not settings.CRON_SECRET or x_cron_secret != settings.CRON_SECRET:
         raise HTTPException(status_code=401, detail="Invalid or missing cron secret.")
+
+
+def user_has_permission(db: Session, user: User, module: str, action: str) -> bool:
+    """
+    For routes that behave differently depending on a SECOND permission (e.g.
+    HR may hire, but only someone with hr.approve may set a salary by hand).
+    An Admin role is always allowed, matching require_permission's self-heal.
+    """
+    role = user.role
+    if not role:
+        return False
+    if role.name == ADMIN_ROLE_NAME:
+        return True
+    return db.query(Permission).filter(
+        Permission.role_id == role.id, Permission.module == module, Permission.action == action
+    ).first() is not None

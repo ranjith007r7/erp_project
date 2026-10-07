@@ -42,7 +42,7 @@ from app.schemas.roles import (
     RoleCreate, RoleOut, PermissionCreate, PermissionOut,
     UserCreate, UserRoleUpdate, UserManagementOut, InviteCreate, BulkRoleAssignRequest,
 )
-from app.services.email import send_invite_email
+from app.services.invites import issue_invite_token
 from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/api/core", tags=["roles-users"], dependencies=[Depends(get_current_user)])
@@ -208,18 +208,7 @@ def update_user_role(user_id: str, payload: UserRoleUpdate, db: Session = Depend
 INVITE_RESEND_COOLDOWN_SECONDS = 60
 
 
-def _issue_invite_token(db: Session, user: User, org_name: str) -> None:
-    """
-    Mirrors app/api/routes/auth.py's _issue_verification_token() shape
-    exactly - overwriting invite_token_hash implicitly kills whatever
-    invite link came before it, so a resend never leaves two valid
-    links floating around at once.
-    """
-    raw_token, token_hash = generate_one_time_token()
-    user.invite_token_hash = token_hash
-    user.invite_token_expires = datetime.now(timezone.utc) + timedelta(hours=settings.INVITE_TOKEN_EXPIRE_HOURS)
-    user.last_invite_email_sent_at = datetime.now(timezone.utc)
-    send_invite_email(user.email, org_name, raw_token)
+_issue_invite_token = issue_invite_token  # kept name: the logic now lives in app/services/invites.py
 
 
 @router.post("/invites", response_model=UserManagementOut, status_code=201, dependencies=[Depends(require_permission("core", "manage_access"))])

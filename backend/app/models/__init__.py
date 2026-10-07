@@ -15,7 +15,7 @@ from app.models.sales import Product, Customer, Quotation, QuotationItem, SalesO
 from app.models.finance import ChartOfAccounts, JournalEntry, JournalLine, Payment
 from app.models.inventory import ProductCategory, Warehouse, StockLevel, StockMovement
 from app.models.procurement import Vendor, PurchaseOrder, PurchaseOrderItem, GoodsReceipt, GoodsReceiptFile, ProcurementEmailLog
-from app.models.hr import Department, Employee, Attendance, LeaveRequest, PayrollRun, Payslip
+from app.models.hr import Department, Employee, Attendance, LeaveRequest, PayrollRun, Payslip, Position, LeaveType, EmployeePayrollProfile, PayrollInput
 from app.models.projects import Project, Task, TimeLog
 from app.models.documents import Document, ApprovalWorkflow, ApprovalRequest, ApprovalStep
 from app.models.reports import SavedReport
@@ -57,7 +57,7 @@ __all__ = [
     "Attendance",
     "LeaveRequest",
     "PayrollRun",
-    "Payslip",
+    "Payslip", "Position", "LeaveType", "EmployeePayrollProfile", "PayrollInput",
     "Project",
     "Task",
     "TimeLog",

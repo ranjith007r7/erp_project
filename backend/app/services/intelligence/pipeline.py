@@ -117,6 +117,11 @@ _GATE_EXAMPLES = (
     ("What is the average salary in the engineering department?", "YES"),
     ("How many tasks are still open in each project?", "YES"),
     ("Which employees joined last year?", "YES"),
+    ("Which products are low on stock?", "YES"),
+    ("How many units of each product do we have in the warehouse?", "YES"),
+    ("Which vendors have purchase orders that are still pending?", "YES"),
+    ("Which leave requests are waiting for approval?", "YES"),
+    ("What is our total payroll expense?", "YES"),
     ("What is the weather in Chennai today?", "NO"),
     ("Who won the Formula 1 championship in 2022?", "NO"),
     ("Write me a poem about sales.", "NO"),
@@ -136,10 +141,30 @@ def _gate_prompt(question: str) -> str:
         "You decide whether a question can be answered using ONLY the ERP data described below.\n"
         "Reply with exactly one word: YES or NO.\n"
         "YES: the answer can be looked up or calculated from these views.\n"
+        "When the question is about the company's own products, stock, orders, invoices, people, vendors, leads or "
+        "projects, answer YES even if it is phrased loosely.\n"
         "NO: it needs outside knowledge, predicts the future, compares with other companies, asks for passwords, "
         "credentials or personal contact details, asks to change or delete anything, or is not a data question.\n\n"
         f"Data available:\n{views}\n\n{examples}\n\nQuestion: {question}\nAnswer:"
     )
+
+
+# The YES/NO gate is a cheap first filter, not a security control (the SQL validator, the read-only
+# database role and per-user access still guard everything). A small model sometimes says NO to a
+# perfectly ordinary ERP question ("Which products are low on stock?"), so a NO is double-checked
+# deterministically: ordinary ERP vocabulary and nothing that asks to change data, reach secrets,
+# predict or compare outside the company -> let it through to the SQL stage.
+_ERP_WORDS = re.compile(
+    r"\b(stock|inventory|product|sku|warehouse|reorder|invoice|payment|quotation|sales?|order|customer|revenue|"
+    r"vendor|supplier|purchase|procurement|goods|employee|headcount|payroll|salary|leave|attendance|department|"
+    r"lead|opportunit\w*|contact|project|task|journal|account|expense|receivable|overdue)s?\b", re.I)
+_NOT_ALLOWED_WORDS = re.compile(
+    r"\b(delete|drop|update|insert|remove|truncate|alter|create|password|passwords|secret|token|credential\w*|"
+    r"ignore|instruction\w*|prompt|competitor\w*|forecast|predict\w*|next year|weather|poem|joke|email addresses?)\b", re.I)
+
+
+def looks_like_erp_question(question: str) -> bool:
+    return bool(_ERP_WORDS.search(question)) and not _NOT_ALLOWED_WORDS.search(question)
 
 
 def _sql_prompt(question: str, access: AccessProfile, previous: tuple | None = None) -> str:
@@ -284,7 +309,7 @@ def answer_question(db: Session, org_id: str, question: str, history: list | Non
                 resolved = rewritten[:MAX_QUESTION_CHARS]
 
         verdict = llm.generate(_gate_prompt(resolved), max_tokens=256).strip().upper()
-        if not verdict.startswith("YES"):
+        if not verdict.startswith("YES") and not looks_like_erp_question(resolved):
             return finish(AskResult(False, REFUSED_SCOPE, REFUSAL_TEXT, resolved_question=resolved,
                                     detail="The question is outside the ERP's data."))
 

@@ -2831,3 +2831,42 @@ Before: create a PO, click Receive, stock goes up. No approval, no way to get th
 - A bad delivery is not stock-adjusted or credited in Finance; it only records proof and the notice.
 - The buttons are shown to every user; the server refuses with the role message if the role lacks the permission.
 - Test hygiene: some older tests use fixed email addresses, so they fail if the same test database is reused between runs. Recreate the test DB for a clean run.
+
+---
+
+## Part 62 – Finance and HR update (payments, journal numbers, payroll deductions, HR structure, Ask Data fix)
+
+Migration: `b8d2e4f60a17` (down_revision `a7c1d2e3f405`). Run `alembic upgrade head`.
+
+### 62.1 Chart of Accounts and journal numbers
+- The Chart of Accounts is the fixed list of ledger buckets (Cash, Receivables, Payables, Revenue, Expenses, ...) seeded per org. It self-extends: a missing account (e.g. 2100 Payroll Deductions Payable) is created the first time something posts to it. There is no manual add-account UI because nothing posts to custom accounts yet.
+- Journal entries get an auto-generated readable number per org (`JE-0001`, ...) on top of the internal UUID. Existing rows were back-filled.
+
+### 62.2 Payments
+- Record payment on an invoice: mode cash / card / gpay / bank transfer. Card, GPay and bank transfer require a transaction id (6-40 chars, letters/digits/-/_). A transaction id cannot be reused within an org. Mode, id and recorder are stored and shown in the payments list and the journal note.
+- Known gap: the payment amount is not forced to equal the invoice amount; any payment marks the invoice paid. Bank payments go to the same Cash account.
+
+### 62.3 Payroll deductions (replaces flat 10%)
+- Finance fills per employee: PF %, insurance %, TDS % (0 if not applicable) in Finance > Payroll deductions (`PUT /finance/payroll-deductions/{employee_id}`, sum <= 100%).
+- Unpaid leave days are entered per employee per run (`PUT /finance/payroll-runs/{run_id}/lop/{employee_id}`); a day = salary / days in month. Net pay never goes below 0.
+- Leave legend (`GET /hr/leave-types`, editable): casual, sick (1/month), earned, maternity, paternity, comp-off, marriage, bereavement, unpaid. Self-healing defaults.
+- Employees without a deductions profile are paid with 0% deductions and a warning is shown (no flat 10%).
+- Journal: Dr Payroll Expense (gross - unpaid leave), Cr Cash (net), Cr Payroll Deductions Payable 2100 (PF + insurance + TDS). Reported payroll cost = gross - leave deduction.
+
+### 62.4 HR structure and application form
+- Admin (`hr.approve`) creates Departments, then Positions (roles) under them with a fixed monthly salary and a login access role. Editing a salary can optionally apply to existing employees.
+- HR clerks (view/create/edit) add employees on `/hr/employees/new`: department dropdown, then role dropdown (only that department's roles), salary auto-shown and not editable, full application details, auto employee code `EMP-0001`.
+- "Create login & send invite" links an employee to a user with the position's access role, so employees appear in Settings > Users / roles.
+
+### 62.5 Ask Data fix
+- "Which products are low on stock?" was refused by the YES/NO gate. Added few-shot examples plus a deterministic ERP-keyword override (dangerous/off-topic words still refuse).
+
+### 62.6 Verified
+- 409 backend tests pass on a fresh DB. Real-browser run (Playwright, real backend) covers structure, application form, deductions, payroll journal, payments with txn ids and duplicate rejection, JE numbering.
+
+### 62.7 Known and still open
+- Ask Data fix was tested with a scripted model only, not the live Gemini.
+- Login creation is by invite email (Resend free-tier limits apply).
+- UIL manifest views do not include employee_code or deductions.
+- Playbook PDFs are outdated for the procurement and HR flows.
+- Recreate the test DB before full test runs (old tests use fixed emails).
