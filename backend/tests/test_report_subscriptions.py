@@ -1,3 +1,4 @@
+from conftest import login_any
 """
 Regression tests for per-user report subscriptions - the real behaviors
 proven manually during development, captured here so they can never
@@ -50,7 +51,7 @@ def test_non_admin_can_subscribe(client, signup):
     client.post(f"/api/core/roles/{role['id']}/permissions", headers=admin, json={"module": "sales", "action": "view"})
     email = f"nonadmin-{uuid.uuid4().hex[:8]}@test.com"
     client.post("/api/core/users", headers=admin, json={"name": "Non Admin", "email": email, "password": "testpass123", "role_id": role["id"]})
-    login = client.post("/api/auth/login", json={"email": email, "password": "testpass123"}).json()
+    login = login_any(client, email, "testpass123").json()
     non_admin = {"Authorization": f"Bearer {login['access_token']}"}
 
     resp = client.post("/api/reports/subscription", headers=non_admin)

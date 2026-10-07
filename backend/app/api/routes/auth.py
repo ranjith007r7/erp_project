@@ -6,14 +6,15 @@ RESEND_API_KEY is configured or falls back to logging when it isn't.
 """
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import (
     hash_password, verify_password, create_access_token,
-    generate_one_time_token, hash_token,
+    generate_one_time_token, hash_token, create_purpose_token, decode_purpose_token,
 )
 from app.models.organization import Organization
 from app.models.role import Role, Permission
@@ -22,9 +23,12 @@ from app.models.reports import ReportSubscription
 from app.schemas.auth import (
     OrganizationSignup, LoginRequest, TokenResponse, UserOut,
     ForgotPasswordRequest, ResetPasswordRequest, VerifyEmailRequest, ResendVerificationRequest,
-    AcceptInviteRequest,
+    AcceptInviteRequest, LoginResponse, TotpVerifyIn, TotpSetupStartIn, TotpSetupOut, TotpSetupConfirmIn,
+    TotpEnrolledOut, SignupConfigOut,
 )
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_current_user_unverified_ok, user_has_permission
+from app.services import totp
+from app.services.signup_guard import check_signup_allowed, access_code_required
 from app.services.accounting import seed_default_accounts
 from app.services.email import send_password_reset_email, send_verification_email
 
@@ -49,7 +53,13 @@ def _issue_verification_token(db: Session, user: User) -> None:
 
 
 @router.post("/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def signup(payload: OrganizationSignup, db: Session = Depends(get_db)):
+def signup(payload: OrganizationSignup, request: Request, db: Session = Depends(get_db)):
+    check_signup_allowed(db, request, payload.access_code)
+    return create_organization(payload, db)
+
+
+def create_organization(payload: OrganizationSignup, db: Session) -> TokenResponse:
+    """The sign-up itself, without the abuse checks (those belong to the public HTTP route; seed scripts call this directly)."""
     # Subdomain must be unique across ALL organizations - it's how we'll
     # eventually route "clientname.yourapp.com" to the right tenant.
     existing_org = db.query(Organization).filter(Organization.subdomain == payload.subdomain).first()
@@ -120,10 +130,16 @@ def signup(payload: OrganizationSignup, db: Session = Depends(get_db)):
         "org_id": str(org.id),
         "role": "Admin",
     })
-    return TokenResponse(access_token=token)
+    return TokenResponse(access_token=token, email_verification_required=settings.REQUIRE_VERIFIED_EMAIL_FOR_API)
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.get("/signup-config", response_model=SignupConfigOut)
+def signup_config():
+    """Public: lets the sign-up page know whether to ask for an access code."""
+    return SignupConfigOut(access_code_required=access_code_required())
+
+
+@router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
 
@@ -186,22 +202,152 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
                    "link, or use 'Resend verification email' if you can't find it.",
         )
 
+    # Which door did they use? Checked only AFTER the password is right, so it
+    # never tells a stranger anything about an account they cannot log in to.
+    is_admin = user_has_permission(db, user, "core", "manage_access")
+    if payload.portal == "admin" and not is_admin:
+        raise HTTPException(status_code=403, detail="This is an employee account. Use the Employee sign-in page.")
+    if payload.portal == "employee" and is_admin:
+        raise HTTPException(status_code=403, detail="This is an administrator account. Use the Admin sign-in page.")
+
+    if payload.portal == "admin" and (settings.ADMIN_2FA_REQUIRED or user.totp_enabled):
+        # Not signed in yet: the counter is NOT cleared here, otherwise someone who
+        # knows the password could reset it by logging in again between code guesses.
+        if user.totp_enabled:
+            return LoginResponse(requires_totp=True, challenge_token=create_purpose_token(user.id, "totp"))
+        return LoginResponse(requires_totp_setup=True, challenge_token=create_purpose_token(user.id, "totp_setup"))
+
+    return LoginResponse(access_token=_finish_login(db, user, payload.portal))
+
+
+def _finish_login(db: Session, user: User, portal: str) -> str:
     # Successful login clears any prior failed attempts / lockout.
     user.failed_login_attempts = 0
     user.locked_until = None
     db.commit()
 
     role_name = user.role.name if user.role else None
-    token = create_access_token({
+    return create_access_token({
         "sub": str(user.id),
         "org_id": str(user.org_id),
         "role": role_name,
+        "portal": portal,
     })
-    return TokenResponse(access_token=token)
+
+
+def _user_from_challenge(db: Session, token: str, purpose: str) -> User:
+    user_id = decode_purpose_token(token, purpose)
+    user = db.query(User).filter(User.id == user_id).first() if user_id else None
+    if not user or user.status != "active":
+        raise HTTPException(status_code=401, detail="This sign-in step has expired. Please sign in again.")
+    return user
+
+
+def _check_not_locked(user: User) -> None:
+    now = datetime.now(timezone.utc)
+    if user.locked_until:
+        locked_until = user.locked_until if user.locked_until.tzinfo else user.locked_until.replace(tzinfo=timezone.utc)
+        if locked_until > now:
+            raise HTTPException(status_code=429, detail=f"Too many failed attempts. Try again in {max(1, int((locked_until - now).total_seconds()) // 60)} minute(s).")
+
+
+def _register_failure(db: Session, user: User) -> None:
+    user.failed_login_attempts += 1
+    if user.failed_login_attempts >= settings.MAX_FAILED_LOGIN_ATTEMPTS:
+        user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=settings.LOGIN_LOCKOUT_MINUTES)
+    db.commit()
+
+
+@router.post("/totp/verify", response_model=TokenResponse)
+def totp_verify(payload: TotpVerifyIn, db: Session = Depends(get_db)):
+    """Second step of an admin sign-in: the 6-digit code from the authenticator app, or one recovery code."""
+    user = _user_from_challenge(db, payload.challenge_token, "totp")
+    _check_not_locked(user)
+    secret = totp.decrypt_secret(user.totp_secret_enc) if user.totp_secret_enc else None
+    if not user.totp_enabled or not secret:
+        raise HTTPException(status_code=400, detail="Authenticator is not set up for this account. Ask another administrator to reset it.")
+
+    code = payload.code.strip()
+    step = totp.verify_code(secret, code, user.totp_last_step) if code.replace(" ", "").isdigit() else None
+    if step is not None:
+        user.totp_last_step = step
+    else:
+        remaining = totp.consume_recovery_code(user.recovery_codes_hash, code)
+        if remaining is None:
+            _register_failure(db, user)
+            raise HTTPException(status_code=401, detail="That code is not correct.")
+        user.recovery_codes_hash = remaining   # single use
+    return TokenResponse(access_token=_finish_login(db, user, "admin"))
+
+
+@router.post("/totp/setup/start", response_model=TotpSetupOut)
+def totp_setup_start(payload: TotpSetupStartIn, db: Session = Depends(get_db)):
+    """An admin without an authenticator yet (just passed the password step) asks for a new secret to scan."""
+    user = _user_from_challenge(db, payload.challenge_token, "totp_setup")
+    if user.totp_enabled:
+        raise HTTPException(status_code=400, detail="An authenticator is already set up. Sign in again.")
+    secret = totp.new_secret()
+    user.totp_secret_enc = totp.encrypt_secret(secret)
+    db.commit()
+    return TotpSetupOut(secret=secret, otpauth_uri=totp.provisioning_uri(secret, user.email))
+
+
+@router.post("/totp/setup/confirm", response_model=TotpEnrolledOut)
+def totp_setup_confirm(payload: TotpSetupConfirmIn, db: Session = Depends(get_db)):
+    """Proves the app works by entering its first code; only then is 2FA switched on and recovery codes shown (once)."""
+    user = _user_from_challenge(db, payload.challenge_token, "totp_setup")
+    _check_not_locked(user)
+    if user.totp_enabled or not user.totp_secret_enc:
+        raise HTTPException(status_code=400, detail="Start the authenticator setup first.")
+    secret = totp.decrypt_secret(user.totp_secret_enc)
+    step = totp.verify_code(secret, payload.code) if secret else None
+    if step is None:
+        _register_failure(db, user)
+        raise HTTPException(status_code=401, detail="That code is not correct. Check the time on your phone and try the next code.")
+    codes, stored = totp.generate_recovery_codes()
+    user.totp_enabled = True
+    user.totp_last_step = step
+    user.recovery_codes_hash = stored
+    return TotpEnrolledOut(access_token=_finish_login(db, user, "admin"), recovery_codes=codes)
+
+
+class _SecurityOut(BaseModel):
+    totp_enabled: bool
+    recovery_codes_left: int
+    two_factor_required: bool
+
+
+class _RegenIn(BaseModel):
+    password: str
+    code: str
+
+
+@router.get("/security", response_model=_SecurityOut)
+def my_security(current_user: User = Depends(get_current_user)):
+    return _SecurityOut(totp_enabled=current_user.totp_enabled, recovery_codes_left=totp.recovery_codes_left(current_user.recovery_codes_hash),
+                        two_factor_required=settings.ADMIN_2FA_REQUIRED)
+
+
+@router.post("/totp/recovery-codes", response_model=list[str])
+def regenerate_recovery_codes(payload: _RegenIn, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """New set of recovery codes (the old ones stop working). Needs the password and a current authenticator code."""
+    if not current_user.totp_enabled:
+        raise HTTPException(status_code=400, detail="Authenticator is not enabled for this account.")
+    if not verify_password(payload.password, current_user.password_hash):
+        raise HTTPException(status_code=401, detail="Incorrect password.")
+    secret = totp.decrypt_secret(current_user.totp_secret_enc) if current_user.totp_secret_enc else None
+    step = totp.verify_code(secret, payload.code, current_user.totp_last_step) if secret else None
+    if step is None:
+        raise HTTPException(status_code=401, detail="That authenticator code is not correct.")
+    current_user.totp_last_step = step
+    codes, stored = totp.generate_recovery_codes()
+    current_user.recovery_codes_hash = stored
+    db.commit()
+    return codes
 
 
 @router.get("/me", response_model=UserOut)
-def get_me(current_user: User = Depends(get_current_user)):
+def get_me(current_user: User = Depends(get_current_user_unverified_ok), db: Session = Depends(get_db)):
     return UserOut(
         id=str(current_user.id),
         name=current_user.name,
@@ -209,6 +355,8 @@ def get_me(current_user: User = Depends(get_current_user)):
         org_id=str(current_user.org_id),
         status=current_user.status,
         email_verified=current_user.email_verified,
+        is_admin=user_has_permission(db, current_user, "core", "manage_access"),
+        role_name=current_user.role.name if current_user.role else None,
     )
 
 
@@ -359,10 +507,6 @@ def accept_invite(payload: AcceptInviteRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
-    role_name = user.role.name if user.role else None
-    token = create_access_token({
-        "sub": str(user.id),
-        "org_id": str(user.org_id),
-        "role": role_name,
-    })
-    return TokenResponse(access_token=token)
+    if user_has_permission(db, user, "core", "manage_access") and settings.ADMIN_2FA_REQUIRED:
+        return TokenResponse(access_token="")   # no session: the new admin signs in on the Admin page and sets up the authenticator
+    return TokenResponse(access_token=_finish_login(db, user, "employee"))

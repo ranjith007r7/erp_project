@@ -5,6 +5,7 @@ the department-name lookup, which is genuinely different from Leads'
 plain-column import).
 """
 import io
+from conftest import login_any
 
 
 # ---------------- Search full mode ----------------
@@ -45,7 +46,7 @@ def test_document_delete_requires_documents_delete_permission(client, signup):
     client.post(f"/api/core/roles/{role['id']}/permissions", headers=admin, json={"module": "documents", "action": "view"})
     email = f"docviewer-{uuid.uuid4().hex[:8]}@test.com"
     client.post("/api/core/users", headers=admin, json={"name": "Viewer", "email": email, "password": "testpass123", "role_id": role["id"]})
-    login = client.post("/api/auth/login", json={"email": email, "password": "testpass123"}).json()
+    login = login_any(client, email, "testpass123").json()
     restricted = {"Authorization": f"Bearer {login['access_token']}"}
 
     resp = client.post("/api/documents/bulk-delete", headers=restricted, json={"ids": ["00000000-0000-0000-0000-000000000000"]})

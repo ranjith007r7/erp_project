@@ -3,6 +3,7 @@ Procurement workflow: approval -> email/PDF to vendor -> receiving with proof
 (good / defective) -> defect notice by email or print. Real DB, real requests.
 """
 import logging
+from conftest import login_any
 import uuid
 
 import pytest
@@ -19,7 +20,7 @@ def make_user(client, admin, perms, name="Buyer Bob"):
         client.post(f"/api/core/roles/{role['id']}/permissions", headers=admin, json={"module": module, "action": action})
     email = f"u-{unique}@test.com"
     client.post("/api/core/users", headers=admin, json={"name": name, "email": email, "password": "pass12345", "role_id": role["id"]})
-    tok = client.post("/api/auth/login", json={"email": email, "password": "pass12345"}).json()["access_token"]
+    tok = login_any(client, email, "pass12345").json()["access_token"]
     return {"Authorization": f"Bearer {tok}"}
 
 

@@ -1,4 +1,5 @@
 from conftest import receive_po
+from conftest import login_any
 """
 Locks in this session's three real additions as permanent regression
 tests: the audit log actually recording real entity_ids (the flush-
@@ -50,7 +51,7 @@ def test_audit_log_requires_core_view_permission(client, signup):
     client.post("/api/core/users", headers=admin, json={
         "name": "Restricted", "email": email, "password": "testpass123", "role_id": role["id"],
     })
-    login = client.post("/api/auth/login", json={"email": email, "password": "testpass123"}).json()
+    login = login_any(client, email, "testpass123").json()
     restricted = {"Authorization": f"Bearer {login['access_token']}"}
 
     resp = client.get("/api/core/audit-log", headers=restricted)

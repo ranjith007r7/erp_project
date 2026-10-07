@@ -284,6 +284,23 @@ def resend_invite(user_id: str, db: Session = Depends(get_db), org_id: str = Dep
 
 
 # ---------------- Bulk role assignment ----------------
+@router.post("/users/{user_id}/reset-2fa", status_code=200, dependencies=[Depends(require_permission("core", "manage_access"))])
+def reset_user_2fa(user_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    """A colleague lost their phone: clear their authenticator so they enrol a new one at their next admin sign-in. Not for yourself."""
+    if str(current_user.id) == user_id:
+        raise HTTPException(400, "Ask another administrator to reset your authenticator.")
+    user = db.query(User).filter(User.id == user_id, User.org_id == org_id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    user.totp_enabled = False
+    user.totp_secret_enc = None
+    user.totp_last_step = None
+    user.recovery_codes_hash = None
+    log_audit_event(db, org_id, current_user.id, "reset_user_2fa", "User", user.id)
+    db.commit()
+    return {"status": "reset"}
+
+
 @router.post("/users/bulk-role-assign", dependencies=[Depends(require_permission("core", "manage_access"))])
 def bulk_assign_role(payload: BulkRoleAssignRequest, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     """

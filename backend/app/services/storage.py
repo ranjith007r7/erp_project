@@ -103,3 +103,28 @@ def generate_presigned_url(storage_key: str, expires_in_seconds: int = 600) -> s
         )
     except Exception as e:
         raise HTTPException(502, f"Could not generate a download link: {e}")
+
+
+def delete_org_files(org_id: str) -> int:
+    """Remove every stored object under this organization's prefix. Best effort: returns how many were deleted (0 when storage is not configured)."""
+    if not _r2_configured():
+        return 0
+    deleted = 0
+    try:
+        client = _client()
+        token = None
+        while True:
+            kwargs = {"Bucket": settings.R2_BUCKET_NAME, "Prefix": f"{org_id}/"}
+            if token:
+                kwargs["ContinuationToken"] = token
+            page = client.list_objects_v2(**kwargs)
+            keys = [{"Key": o["Key"]} for o in page.get("Contents", [])]
+            if keys:
+                client.delete_objects(Bucket=settings.R2_BUCKET_NAME, Delete={"Objects": keys})
+                deleted += len(keys)
+            if not page.get("IsTruncated"):
+                break
+            token = page.get("NextContinuationToken")
+    except Exception:
+        return deleted
+    return deleted

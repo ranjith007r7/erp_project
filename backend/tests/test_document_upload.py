@@ -10,6 +10,7 @@ downloads, which 404s from the org_id filter before storage.py is
 reached at all.
 """
 import io
+from conftest import login_any
 
 
 def test_existing_json_document_creation_is_unaffected(client, signup):
@@ -89,7 +90,7 @@ def test_upload_requires_documents_create_permission(client, signup):
     client.post("/api/core/users", headers=admin, json={
         "name": "Restricted", "email": email, "password": "testpass123", "role_id": role["id"],
     })
-    login = client.post("/api/auth/login", json={"email": email, "password": "testpass123"}).json()
+    login = login_any(client, email, "testpass123").json()
     restricted = {"Authorization": f"Bearer {login['access_token']}"}
 
     resp = client.post(

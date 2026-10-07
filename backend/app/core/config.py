@@ -106,6 +106,28 @@ class Settings(BaseSettings):
     UIL_SEND_ROWS_TO_LLM: bool = True
     UIL_MAX_HISTORY_EXCHANGES: int = 4
 
+    # --- Sign-up protection ---
+    # Empty = anyone with the link can create an organization (subject to the
+    # throttles below). Set a value and every sign-up must present it.
+    SIGNUP_ACCESS_CODE: str = ""
+    SIGNUP_MAX_PER_IP_PER_HOUR: int = 5
+    SIGNUP_MAX_PER_DAY: int = 50          # global; protects the free email quota
+    TRUSTED_PROXY_HOPS: int = 1           # Render/Vercel put 1 proxy in front; 0 = read the socket address
+    # A brand-new organization cannot use the API until its admin has clicked
+    # the emailed verification link (nobody gets a working org without a real inbox).
+    REQUIRE_VERIFIED_EMAIL_FOR_API: bool = True
+
+    # --- Admin sign-in security ---
+    ADMIN_2FA_REQUIRED: bool = True       # admins must use an authenticator app
+    TOTP_ISSUER: str = "ERP"
+    TOTP_ENCRYPTION_KEY: str = ""         # falls back to a key derived from JWT_SECRET_KEY
+    CHALLENGE_TOKEN_MINUTES: int = 10
+
+    # --- Organization reset / permanent delete ---
+    ORG_ACTION_CODE_MINUTES: int = 15
+    ORG_ACTION_MAX_ATTEMPTS: int = 5
+    ORG_ACTION_RESEND_SECONDS: int = 60
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @field_validator("JWT_SECRET_KEY")

@@ -5,6 +5,7 @@ route) could silently remove rate limiting and nothing would catch it
 until a real attacker did.
 """
 from datetime import datetime, timedelta, timezone
+from conftest import login_any
 
 
 def create_user_directly(client, signup_headers, email_prefix, password="testpass123"):
@@ -30,11 +31,11 @@ def test_login_locks_out_after_max_failed_attempts(client, signup):
     email, password = create_user_directly(client, admin, "lockout-test")
 
     for _ in range(5):
-        resp = client.post("/api/auth/login", json={"email": email, "password": "wrongpassword"})
+        resp = login_any(client, email, "wrongpassword")
         assert resp.status_code == 401
 
     # 6th attempt, even with the CORRECT password, must be blocked.
-    resp = client.post("/api/auth/login", json={"email": email, "password": password})
+    resp = login_any(client, email, password)
     assert resp.status_code == 429, f"expected lockout, got {resp.status_code}: {resp.text}"
 
 
@@ -43,10 +44,10 @@ def test_lockout_clears_after_the_window_expires(client, signup):
     email, password = create_user_directly(client, admin, "lockout-expiry-test")
 
     for _ in range(5):
-        client.post("/api/auth/login", json={"email": email, "password": "wrong"})
+        login_any(client, email, "wrong")
 
     # Confirm actually locked first.
-    assert client.post("/api/auth/login", json={"email": email, "password": password}).status_code == 429
+    assert login_any(client, email, password).status_code == 429
 
     # Directly expire the lockout window, same as a real 15 minutes passing.
     from app.core.database import SessionLocal
@@ -60,7 +61,7 @@ def test_lockout_clears_after_the_window_expires(client, signup):
     finally:
         db.close()
 
-    resp = client.post("/api/auth/login", json={"email": email, "password": password})
+    resp = login_any(client, email, password)
     assert resp.status_code == 200, f"expected lockout to have cleared, got {resp.status_code}"
 
 
@@ -69,9 +70,9 @@ def test_successful_login_resets_failed_attempt_count(client, signup):
     admin = signup()
     email, password = create_user_directly(client, admin, "reset-attempts-test")
 
-    client.post("/api/auth/login", json={"email": email, "password": "wrong"})
-    client.post("/api/auth/login", json={"email": email, "password": "wrong"})
-    assert client.post("/api/auth/login", json={"email": email, "password": password}).status_code == 200
+    login_any(client, email, "wrong")
+    login_any(client, email, "wrong")
+    assert login_any(client, email, password).status_code == 200
 
     from app.core.database import SessionLocal
     from app.models.user import User
@@ -116,8 +117,8 @@ def test_password_reset_full_flow(client, signup):
     reset_resp = client.post("/api/auth/reset-password", json={"token": raw_token, "new_password": new_password})
     assert reset_resp.status_code == 200, reset_resp.text
 
-    assert client.post("/api/auth/login", json={"email": email, "password": old_password}).status_code == 401
-    assert client.post("/api/auth/login", json={"email": email, "password": new_password}).status_code == 200
+    assert login_any(client, email, old_password).status_code == 401
+    assert login_any(client, email, new_password).status_code == 200
 
     # Single-use: the same token must not work a second time.
     reuse_resp = client.post("/api/auth/reset-password", json={"token": raw_token, "new_password": "yet-another-pw"})

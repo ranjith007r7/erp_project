@@ -20,10 +20,11 @@ from app.models.role import Permission, Role
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
-def get_current_user(
+def get_current_user_unverified_ok(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
+    """Valid login, but does not insist the email is verified. Only for /auth/me and similar."""
     credentials_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -31,7 +32,7 @@ def get_current_user(
     )
 
     payload = decode_access_token(token)
-    if payload is None:
+    if payload is None or payload.get("purpose"):   # purpose tokens (2FA challenges) are never logins
         raise credentials_error
 
     user_id = payload.get("sub")
@@ -42,6 +43,17 @@ def get_current_user(
     if user is None or user.status != "active":
         raise credentials_error
 
+    return user
+
+
+def get_current_user(user: User = Depends(get_current_user_unverified_ok)) -> User:
+    """
+    The login every protected route uses. A new organization's admin must click
+    the emailed link first, so nobody gets a working organization (and nobody can
+    run up the bill) without owning a real inbox.
+    """
+    if settings.REQUIRE_VERIFIED_EMAIL_FOR_API and not user.email_verified:
+        raise HTTPException(status_code=403, detail="Please verify your email address first. Check your inbox for the link.")
     return user
 
 

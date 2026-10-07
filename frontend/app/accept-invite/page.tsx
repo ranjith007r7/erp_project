@@ -47,8 +47,14 @@ function AcceptInviteForm() {
       // Same auto-login pattern as signup - accepting an invite counts
       // as email verification too (a real clicked link already proves
       // inbox ownership), so there's no separate verify step to gate on.
-      setToken(data.access_token);
-      router.push("/dashboard");
+      // Administrator accounts get no token here: they must sign in through the
+      // Admin page and enrol an authenticator first.
+      if (data.access_token) {
+        setToken(data.access_token);
+        router.push("/dashboard");
+      } else {
+        router.push("/login/admin");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {

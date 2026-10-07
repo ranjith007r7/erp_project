@@ -14,6 +14,12 @@ Usage:
     # against a deployed instance:
     python3 scripts/seed_demo_org.py --api-url https://your-backend.onrender.com
 
+NOTE: the new admin it creates is not email-verified, and the API refuses an
+unverified account by default. Run the target server with
+REQUIRE_VERIFIED_EMAIL_FOR_API=false (and no SIGNUP_ACCESS_CODE) while seeding,
+then turn the gate back on. To sign in to the seeded org, use the Admin
+sign-in page (authenticator enrolment applies) and the Employee page for the viewer.
+
 Safe to re-run: each run creates a brand-new org with a timestamped
 subdomain, so it never collides with a previous seed run or real client
 data. It does NOT touch or modify any existing organization.

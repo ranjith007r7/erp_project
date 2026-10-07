@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Building2, Check, Globe, Lock, Mail, TriangleAlert, User } from "lucide-react";
-import { apiRequest, setToken } from "@/lib/api";
+import { ArrowLeft, ArrowRight, Building2, Check, Globe, KeyRound, Lock, Mail, TriangleAlert, User } from "lucide-react";
+import { apiRequest } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { AuthField } from "@/components/auth/AuthField";
@@ -22,7 +21,6 @@ type Form = {
 type Errors = Partial<Record<keyof Form, string>>;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const REDIRECT_DELAY_MS = 1200;
 
 // These mirror the server's rules (OrganizationSignup) so mistakes are caught before a round trip.
 // The server remains the authority and still validates everything.
@@ -71,8 +69,15 @@ function StrengthMeter({ password }: { password: string }) {
 }
 
 export default function SignupPage() {
-  const router = useRouter();
   const { showToast } = useToast();
+  const [accessCodeRequired, setAccessCodeRequired] = useState(false);
+  const [accessCode, setAccessCode] = useState("");
+  const [verifyRequired, setVerifyRequired] = useState(false);
+  useEffect(() => {
+    apiRequest<{ access_code_required: boolean }>("/api/auth/signup-config")
+      .then((c) => setAccessCodeRequired(c.access_code_required))
+      .catch(() => {});
+  }, []);
   const [form, setForm] = useState<Form>({ org_name: "", subdomain: "", admin_name: "", admin_email: "", admin_password: "" });
   const [step, setStep] = useState<1 | 2>(1);
   const [direction, setDirection] = useState<"forward" | "back">("forward");
@@ -83,11 +88,6 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => () => {
-    if (redirectTimer.current) clearTimeout(redirectTimer.current);
-  }, []);
 
   const orgErrs = showOrgErrors ? organizationErrors(form) : {};
   const acctErrs = showAccountErrors ? accountErrors(form) : {};
@@ -140,7 +140,7 @@ export default function SignupPage() {
     if (Object.keys(accountErrors(form)).length > 0) return;
     setLoading(true);
     try {
-      const data = await apiRequest<{ access_token: string }>("/api/auth/signup", {
+      const data = await apiRequest<{ access_token: string; email_verification_required: boolean }>("/api/auth/signup", {
         method: "POST",
         body: {
           org_name: form.org_name.trim(),
@@ -148,9 +148,11 @@ export default function SignupPage() {
           admin_name: form.admin_name.trim(),
           admin_email: form.admin_email.trim(),
           admin_password: form.admin_password,
+          access_code: accessCode.trim() || undefined,
         },
       });
-      setToken(data.access_token);
+      // No automatic sign-in: administrators sign in on the Admin page (with their authenticator app).
+      setVerifyRequired(data.email_verification_required);
       showToast(`Welcome, ${form.admin_name.trim()}! Your organization is ready.`, "success");
       // A real gap this fixes, found through actual use: signup used to
       // redirect INSTANTLY with zero visible confirmation, which is
@@ -161,7 +163,6 @@ export default function SignupPage() {
       // alone, since a toast can still be missed if it fires the same
       // instant the page navigates away.
       setSuccess(true);
-      redirectTimer.current = setTimeout(() => router.push("/dashboard"), REDIRECT_DELAY_MS);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Something went wrong";
       // Put a taken subdomain / taken email next to the field that caused it.
@@ -169,6 +170,8 @@ export default function SignupPage() {
         setServerErrors({ subdomain: message });
         setDirection("back");
         setStep(1);
+      } else if (/access code/i.test(message)) {
+        setError(message);
       } else if (/email/i.test(message)) {
         setServerErrors({ admin_email: message });
       } else {
@@ -181,19 +184,26 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <AuthShell title="Organization created" subtitle="Taking you to your dashboard…">
-        <div className="py-4 text-center" role="status">
-          <div className="relative mx-auto h-20 w-20">
-            <span aria-hidden className="absolute inset-0 rounded-full bg-emerald-400/40 motion-safe:animate-ring-out" />
-            <span className="relative flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/30">
-              <svg viewBox="0 0 24 24" className="h-9 w-9" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M5 12.5l4.5 4.5L19 7.5" strokeDasharray="26" className="motion-safe:animate-draw-check" />
-              </svg>
-            </span>
-          </div>
-          <div className="mx-auto mt-8 h-1 w-44 overflow-hidden rounded-full bg-slate-200 dark:bg-zinc-800">
-            <div className="h-full rounded-full bg-emerald-500 motion-safe:animate-grow-bar" style={{ animationDuration: `${REDIRECT_DELAY_MS}ms` }} />
-          </div>
+      <AuthShell title="Organization created" subtitle="One more step before you sign in.">
+        <div className="space-y-5 py-2 text-center" role="status">
+          <span className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/30">
+            <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M5 12.5l4.5 4.5L19 7.5" strokeDasharray="26" className="motion-safe:animate-draw-check" />
+            </svg>
+          </span>
+          {verifyRequired ? (
+            <p className="text-sm text-slate-600 dark:text-zinc-300" data-testid="signup-next">
+              We sent a verification link to <b>{form.admin_email.trim()}</b>. Click it first, then sign in as Admin.
+              The first time you will be asked to link an authenticator app such as Microsoft Authenticator.
+            </p>
+          ) : (
+            <p className="text-sm text-slate-600 dark:text-zinc-300" data-testid="signup-next">
+              Sign in as Admin to continue. The first time you will be asked to link an authenticator app such as Microsoft Authenticator.
+            </p>
+          )}
+          <Link href="/login/admin" className="block rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500">
+            Go to Admin sign-in
+          </Link>
         </div>
       </AuthShell>
     );
@@ -207,7 +217,7 @@ export default function SignupPage() {
         <>
           Already have an account?{" "}
           <Link href="/login" className="font-medium text-indigo-600 underline-offset-4 hover:underline dark:text-indigo-400">
-            Log in
+            Sign in
           </Link>
         </>
       }
@@ -288,6 +298,20 @@ export default function SignupPage() {
                 error={acctErrs.admin_password}
               />
               <StrengthMeter password={form.admin_password} />
+              {accessCodeRequired && (
+                <div className="mt-4">
+                  <AuthField
+                    label="Access code"
+                    name="access_code"
+                    icon={KeyRound}
+                    autoComplete="off"
+                    required
+                    value={accessCode}
+                    onChange={(e) => setAccessCode(e.target.value)}
+                  />
+                  <p className="mt-1.5 text-xs text-slate-500 dark:text-zinc-400">Sign-ups are invitation only. Use the code you were given.</p>
+                </div>
+              )}
             </div>
 
             {error && (

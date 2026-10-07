@@ -10,7 +10,7 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { SkeletonStatTile, SkeletonCard } from "@/components/Skeleton";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import { Settings2, Shield, ScrollText, LogOut, Palette, Users2, ShoppingCart, Wallet, Package, Truck, UserRound, FolderKanban, FileText, BarChart3, Sparkles } from "lucide-react";
+import { Settings2, Shield, ScrollText, LogOut, Palette, Users2, ShoppingCart, Wallet, Package, Truck, UserRound, FolderKanban, FileText, BarChart3, Sparkles, TriangleAlert } from "lucide-react";
 
 type CurrentUser = {
   id: string;
@@ -19,6 +19,7 @@ type CurrentUser = {
   org_id: string;
   status: string;
   email_verified: boolean;
+  is_admin?: boolean;
 };
 
 type Summary = {
@@ -129,6 +130,14 @@ export default function DashboardPage() {
             >
               <Palette size={16} /> Appearance
             </Link>
+            {user?.is_admin && (
+              <Link
+                href="/settings/danger"
+                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+              >
+                <TriangleAlert size={16} /> Danger Zone
+              </Link>
+            )}
             <button
               onClick={handleLogout}
               className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-800 dark:hover:text-white transition-colors"

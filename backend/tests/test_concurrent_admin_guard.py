@@ -12,6 +12,7 @@ perfect substitute for true multi-process concurrency, but exercises
 the same code path and locking behavior the manual attack did.
 """
 import threading
+from conftest import login_any
 
 
 def test_concurrent_mutual_demotion_cannot_leave_zero_admins(client, signup):
@@ -23,7 +24,7 @@ def test_concurrent_mutual_demotion_cannot_leave_zero_admins(client, signup):
     client.post("/api/core/users", headers=admin, json={
         "name": "Admin B", "email": "adminb-concurrent@test.com", "password": "testpass123", "role_id": second_role["id"],
     })
-    login_b = client.post("/api/auth/login", json={"email": "adminb-concurrent@test.com", "password": "testpass123"}).json()
+    login_b = login_any(client, "adminb-concurrent@test.com", "testpass123").json()
     auth_b = {"Authorization": f"Bearer {login_b['access_token']}"}
     me_b = client.get("/api/auth/me", headers=auth_b).json()
 
@@ -45,7 +46,9 @@ def test_concurrent_mutual_demotion_cannot_leave_zero_admins(client, signup):
     # The real invariant: regardless of which request "won", exactly one
     # of them must have been rejected - both succeeding would mean both
     # admins got demoted simultaneously, leaving zero.
-    assert 400 in results.values(), f"expected one request to be rejected by the last-admin guard, got {results}"
+    # The loser is rejected either by the last-admin guard (400) or, when the winner committed
+    # first, by the permission check itself (403): both mean the second demotion did not happen.
+    assert any(c in (400, 403) for c in results.values()), f"expected one request to be rejected, got {results}"
     assert 200 in results.values(), f"expected the other request to succeed, got {results}"
 
     from app.core.database import SessionLocal

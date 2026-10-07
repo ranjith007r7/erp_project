@@ -2868,7 +2868,7 @@ Migration: `b8d2e4f60a17` (down_revision `a7c1d2e3f405`). Run `alembic upgrade h
 - Ask Data fix was tested with a scripted model only, not the live Gemini.
 - Login creation is by invite email (Resend free-tier limits apply).
 - UIL manifest views do not include employee_code or deductions.
-- Playbook PDFs are outdated for the procurement and HR flows.
+- Playbook PDFs were outdated for the procurement and HR flows (an Updates section was appended later).
 - Recreate the test DB before full test runs (old tests use fixed emails).
 
 ### 62.8 Departments & Roles now feed Roles & Permissions (added later)
@@ -2883,3 +2883,35 @@ Migration: `b8d2e4f60a17` (down_revision `a7c1d2e3f405`). Run `alembic upgrade h
 ### 62.9 Dark-mode and layout fixes
 - Roles & Permissions: the "Manage Roles & Permissions" box now uses the same neutral card in both states (Granted adds an amber left edge and a small "Granted" badge) instead of a light amber box that made white text unreadable in dark mode.
 - Custom fields (Inventory > Fields, and every other module using `CustomFieldsSection`) and the shared prompt dialog now set background and text colours for dark mode, so selects and inputs are readable. All other raw form fields were checked and already had dark colours.
+
+### 62.10 Sign-up protection, separate Admin/Employee sign-in, admin authenticator, Danger Zone
+Migration: `50ac06aa4b9c` (adds `users.totp_*`, `recovery_codes_hash`, tables `signup_attempts`, `org_action_codes`). Run `alembic upgrade head`.
+
+**Stopping sign-up spam** (layers, all in `services/signup_guard.py` + `deps.py`):
+- `SIGNUP_ACCESS_CODE` (optional): when set, sign-up needs it. Strongest control for demos; share it only with prospects. `GET /api/auth/signup-config` tells the form whether to show the field.
+- Per-IP limit `SIGNUP_MAX_PER_IP_PER_HOUR` (5) and a global daily cap `SIGNUP_MAX_PER_DAY` (50). The client IP is the Nth-from-right `X-Forwarded-For` entry (`TRUSTED_PROXY_HOPS`, 1 for Render).
+- Email-verified gate: an unverified account cannot call the API (`REQUIRE_VERIFIED_EMAIL_FOR_API`, default true).
+- `python scripts/purge_unverified_orgs.py --days 7 [--yes]` deletes organizations whose admin never verified (dry run by default). Run it on a schedule.
+
+**Separate sign-in pages**: `/login` is a chooser with two banners; `/login/admin` and `/login/employee` share `components/auth/SignInForm.tsx`. The request carries `portal`. An account is an Admin account if it holds `core.manage_access`. The portal is checked only after the password is right, so a wrong password stays a generic 401 and no one can probe which accounts exist; a right password on the wrong page gives a 403 pointing to the other page.
+
+**Admin authenticator (TOTP)**: RFC 6238 (Microsoft/Google Authenticator, Authy, etc.). Admin sign-in is mandatory 2-step while `ADMIN_2FA_REQUIRED` is true. First admin sign-in shows a QR code and manual key, then 8 single-use recovery codes (shown once). Secrets are Fernet-encrypted (`TOTP_ENCRYPTION_KEY`, else derived from `JWT_SECRET_KEY`). A code can be used once (`totp_last_step`), the ±1 step window tolerates clock drift, failed attempts count toward the lockout, and the intermediate "challenge" tokens cannot be used as logins. Endpoints: `/api/auth/totp/verify`, `/totp/setup/start`, `/totp/setup/confirm`, `GET /security`, `POST /totp/recovery-codes`.
+- Lost phone: use a recovery code, or another admin presses "Reset 2FA" beside the user (Settings > Roles & Permissions), or the platform owner runs `python scripts/reset_admin_2fa.py <email>`.
+- Invited admins (accept-invite) are sent to the Admin page to enrol, no token is handed out.
+
+**Danger Zone** (`/settings/danger`, admins only; `/api/organizations/danger/*`): two options.
+1. Reset organization data: deletes business records (customers, orders, invoices, stock, projects, documents...). Kept: users, roles, permissions, departments, job roles, employees and payroll profiles, leave types, chart of accounts, custom fields, approval workflows, saved reports/subscriptions, warehouses, audit log.
+2. Delete permanently: removes everything including the organization, all logins and stored files (Cloudflare R2 prefix `{org_id}/`). The same email can sign up again. Other admins get a notice email.
+Both need: password, a 6-digit code emailed to the admin (15 min, 5 tries, 60 s resend wait, single use), a typed confirmation (`RESET` or the subdomain) and, when the admin has an authenticator, the authenticator code. Actions are audited (reset) and the wipe is schema-driven, so new tables are covered automatically unless added to `KEEP_ON_RESET`.
+
+**New environment variables**: SIGNUP_ACCESS_CODE, SIGNUP_MAX_PER_IP_PER_HOUR, SIGNUP_MAX_PER_DAY, TRUSTED_PROXY_HOPS, REQUIRE_VERIFIED_EMAIL_FOR_API, ADMIN_2FA_REQUIRED, TOTP_ISSUER, TOTP_ENCRYPTION_KEY, CHALLENGE_TOKEN_MINUTES, ORG_ACTION_CODE_MINUTES, ORG_ACTION_MAX_ATTEMPTS, ORG_ACTION_RESEND_SECONDS.
+
+**Verified**: 27 new backend tests (`test_signup_protection`, `test_admin_portal_2fa`, `test_org_danger_zone`); a real-browser run covered sign-up, email verification, chooser, wrong-portal messages, authenticator enrolment (wrong code refused), recovery codes, replayed-code rejection, next-code login, recovery-code login, employee invite and sign-in, Danger Zone reset (staff kept) and permanent delete (all logins gone).
+
+**Known gaps and risks**
+- With the verified-email gate on, prospects need a working inbox. Resend's free sender only delivers to the Resend account owner: verify a sending domain, or set `REQUIRE_VERIFIED_EMAIL_FOR_API=false` and rely on `SIGNUP_ACCESS_CODE`.
+- Every new admin must enrol an authenticator on first sign-in (demo friction). `ADMIN_2FA_REQUIRED=false` turns the requirement off (admins who already enrolled still get asked).
+- Changing `JWT_SECRET_KEY` (or `TOTP_ENCRYPTION_KEY`) makes stored authenticator secrets unreadable; set `TOTP_ENCRYPTION_KEY` separately so rotating the JWT key is safe.
+- No CAPTCHA yet (Cloudflare Turnstile is the natural next step). Forgot-password and resend-verification emails are not throttled beyond the existing cooldowns.
+- Permanent delete cannot erase the hosting provider's own database backups.
+- Old test files log in through `login_any` in `tests/conftest.py`; `scripts/seed_demo_org.py` needs the verified-email gate off while it runs.

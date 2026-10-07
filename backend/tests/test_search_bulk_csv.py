@@ -6,6 +6,7 @@ does - a more reliable way to lock in correctness regardless of
 environment conditions.
 """
 import io
+from conftest import login_any
 import uuid
 
 
@@ -27,7 +28,7 @@ def test_search_respects_rbac_per_module(client, signup):
     client.post("/api/core/users", headers=admin, json={
         "name": "Sales Only User", "email": email, "password": "testpass123", "role_id": role["id"],
     })
-    login = client.post("/api/auth/login", json={"email": email, "password": "testpass123"}).json()
+    login = login_any(client, email, "testpass123").json()
     restricted = {"Authorization": f"Bearer {login['access_token']}"}
 
     restricted_results = client.get("/api/search?q=Zephyr", headers=restricted).json()["results"]
@@ -88,7 +89,7 @@ def test_bulk_delete_requires_crm_delete_permission(client, signup):
     client.post("/api/core/users", headers=admin, json={
         "name": "Viewer", "email": email, "password": "testpass123", "role_id": role["id"],
     })
-    login = client.post("/api/auth/login", json={"email": email, "password": "testpass123"}).json()
+    login = login_any(client, email, "testpass123").json()
     restricted = {"Authorization": f"Bearer {login['access_token']}"}
 
     resp = client.post("/api/crm/leads/bulk-delete", headers=restricted, json={"ids": ["00000000-0000-0000-0000-000000000000"]})
@@ -200,7 +201,7 @@ def test_csv_import_requires_crm_create_permission(client, signup):
     client.post("/api/core/users", headers=admin, json={
         "name": "Viewer", "email": email, "password": "testpass123", "role_id": role["id"],
     })
-    login = client.post("/api/auth/login", json={"email": email, "password": "testpass123"}).json()
+    login = login_any(client, email, "testpass123").json()
     restricted = {"Authorization": f"Bearer {login['access_token']}"}
 
     csv_content = "name\nSome Lead\n"

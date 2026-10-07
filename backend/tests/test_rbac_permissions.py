@@ -1,3 +1,4 @@
+from conftest import login_any
 """
 Locks in Phase 11's RBAC enforcement as a permanent regression test —
 without this, a future change could silently reintroduce "any logged-in
@@ -18,7 +19,7 @@ def create_restricted_user(client, admin_headers, module, action, email_prefix="
     client.post("/api/core/users", headers=admin_headers, json={
         "name": "Restricted User", "email": email, "password": "restrictedpass123", "role_id": role["id"],
     })
-    login = client.post("/api/auth/login", json={"email": email, "password": "restrictedpass123"}).json()
+    login = login_any(client, email, "restrictedpass123").json()
     return {"Authorization": f"Bearer {login['access_token']}"}
 
 

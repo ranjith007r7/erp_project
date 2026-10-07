@@ -344,6 +344,16 @@ export default function RolesSettingsPage() {
     }
   }
 
+  async function handleReset2fa(u: ManagedUser) {
+    if (!window.confirm(`Reset two-step verification for ${u.email}? They will set up a new authenticator at their next Admin sign-in.`)) return;
+    try {
+      await apiRequest(`/api/core/users/${u.id}/reset-2fa`, { method: "POST", auth: true });
+      showToast(`Authenticator reset for ${u.email}`, "success");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reset two-step verification");
+    }
+  }
+
   function toggleUserSelection(id: string) {
     setSelectedUserIds((prev) => {
       const next = new Set(prev);
@@ -717,6 +727,14 @@ export default function RolesSettingsPage() {
                       : "Resend invite"}
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => handleReset2fa(u)}
+                  className="text-xs text-slate-500 dark:text-zinc-500 underline hover:text-slate-700 dark:hover:text-white whitespace-nowrap"
+                  title="Remove this person's authenticator (admins only)"
+                >
+                  Reset 2FA
+                </button>
                 <Select
                   value={pendingRoles[u.id] ?? u.role_id ?? ""}
                   onChange={(e) => stageUserRole(u, e.target.value)}

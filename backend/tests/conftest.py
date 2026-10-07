@@ -37,6 +37,13 @@ import uuid
 # already set (see .github/workflows/ci.yml).
 os.environ.setdefault("JWT_SECRET_KEY", "pytest_test_secret_key_not_for_production")
 os.environ.setdefault("ALLOWED_ORIGINS", "http://localhost:3000")
+# Security features are switched ON by default in the app; the shared test fixtures create hundreds of
+# organizations from one address with no inbox, so these are relaxed here and the dedicated tests
+# (test_signup_protection.py, test_admin_portal_2fa.py) turn them on one at a time.
+os.environ.setdefault("ADMIN_2FA_REQUIRED", "false")
+os.environ.setdefault("REQUIRE_VERIFIED_EMAIL_FOR_API", "false")
+os.environ.setdefault("SIGNUP_MAX_PER_IP_PER_HOUR", "100000")
+os.environ.setdefault("SIGNUP_MAX_PER_DAY", "100000")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -75,6 +82,16 @@ def apply_migrations():
     yield
 
     settings.DATABASE_URL = original_url
+
+
+def login_any(client, email, password):
+    """Sign in without caring which portal the account belongs to (tests only). Retries the other portal when told to."""
+    for portal in ("employee", "admin"):
+        resp = client.post("/api/auth/login", json={"email": email, "password": password, "portal": portal})
+        if resp.status_code == 403 and "sign-in page" in resp.json().get("detail", ""):
+            continue
+        return resp
+    return resp
 
 
 @pytest.fixture
@@ -176,7 +193,7 @@ def db_session():
 
 
 def login_headers(client, email, password):
-    resp = client.post("/api/auth/login", json={"email": email, "password": password})
+    resp = login_any(client, email, password)
     assert resp.status_code == 200, resp.text
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
 

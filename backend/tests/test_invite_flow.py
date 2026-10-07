@@ -2,13 +2,14 @@
 Locks in the invite-by-email flow as permanent regression tests.
 """
 from datetime import datetime, timedelta, timezone
+from conftest import login_any
 
 
 def test_invited_user_cannot_log_in_before_accepting(client, signup):
     admin = signup()
     client.post("/api/core/invites", headers=admin, json={"name": "Invitee", "email": "invitee1@test.com"})
 
-    resp = client.post("/api/auth/login", json={"email": "invitee1@test.com", "password": "anything123"})
+    resp = login_any(client, "invitee1@test.com", "anything123")
     assert resp.status_code == 403
     assert "activated" in resp.json()["detail"].lower()
 
@@ -59,7 +60,7 @@ def test_accept_invite_full_flow(client, signup):
     finally:
         db.close()
 
-    login_resp = client.post("/api/auth/login", json={"email": "invitee3@test.com", "password": "realpassword123"})
+    login_resp = login_any(client, "invitee3@test.com", "realpassword123")
     assert login_resp.status_code == 200
 
 
@@ -163,7 +164,7 @@ def test_creating_an_invite_requires_manage_access(client, signup):
     client.post("/api/core/users", headers=admin, json={
         "name": "Restricted", "email": email, "password": "testpass123", "role_id": role["id"],
     })
-    login = client.post("/api/auth/login", json={"email": email, "password": "testpass123"}).json()
+    login = login_any(client, email, "testpass123").json()
     restricted = {"Authorization": f"Bearer {login['access_token']}"}
 
     resp = client.post("/api/core/invites", headers=restricted, json={"name": "Sneaky Invite", "email": "sneaky@test.com"})

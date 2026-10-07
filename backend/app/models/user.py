@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, String, ForeignKey, DateTime, Boolean, Integer
+from sqlalchemy import Column, String, ForeignKey, DateTime, Boolean, Integer, BigInteger
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -69,5 +69,13 @@ class User(Base):
     # conflating the two cooldowns would be tracking unrelated things
     # under one column.
     last_invite_email_sent_at = Column(DateTime(timezone=True), nullable=True)
+
+    # --- Authenticator-app (TOTP) sign-in, used for admin accounts ---
+    # The secret is stored encrypted (see app/services/totp.py). totp_enabled is
+    # only set after the user proves the app works by entering a first code.
+    totp_secret_enc = Column(String, nullable=True)
+    totp_enabled = Column(Boolean, nullable=False, default=False)
+    totp_last_step = Column(BigInteger, nullable=True)       # blocks replaying the same 30s code
+    recovery_codes_hash = Column(String, nullable=True)      # JSON list of sha256 hashes, single use
 
     role = relationship("Role")

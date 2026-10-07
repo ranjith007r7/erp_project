@@ -95,7 +95,7 @@ def seed_demo_org(db, *, org_name, subdomain, admin_email, admin_password, seed=
     original_sender = auth_routes.send_verification_email
     auth_routes.send_verification_email = lambda *args, **kwargs: None
     try:
-        auth_routes.signup(
+        auth_routes.create_organization(
             OrganizationSignup(org_name=org_name, subdomain=subdomain, admin_name="Demo Admin",
                                admin_email=admin_email, admin_password=admin_password),
             db,

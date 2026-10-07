@@ -63,3 +63,21 @@ def decode_access_token(token: str) -> dict | None:
         return jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
     except JWTError:
         return None
+
+
+def create_purpose_token(user_id: str, purpose: str, minutes: int | None = None) -> str:
+    """
+    A short-lived token that is NOT a login: it only proves "this person just
+    passed the password step" (purpose 'totp') or "may enrol an authenticator"
+    ('totp_setup'). get_current_user refuses any token that carries a purpose.
+    """
+    expire = datetime.now(timezone.utc) + timedelta(minutes=minutes or settings.CHALLENGE_TOKEN_MINUTES)
+    return jwt.encode({"sub": str(user_id), "purpose": purpose, "exp": expire}, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+
+
+def decode_purpose_token(token: str, purpose: str) -> str | None:
+    """Returns the user id if the token is valid and made for `purpose`, else None."""
+    payload = decode_access_token(token)
+    if not payload or payload.get("purpose") != purpose:
+        return None
+    return payload.get("sub")

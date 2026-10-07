@@ -7,6 +7,7 @@ and writing (manage_access only), the null-before-upload state, and
 multi-tenancy isolation.
 """
 import io
+from conftest import login_any
 import uuid
 
 
@@ -24,7 +25,7 @@ def test_uploading_branding_requires_manage_access(client, signup):
     client.post("/api/core/users", headers=admin, json={
         "name": "Restricted", "email": email, "password": "testpass123", "role_id": role["id"],
     })
-    login = client.post("/api/auth/login", json={"email": email, "password": "testpass123"}).json()
+    login = login_any(client, email, "testpass123").json()
     restricted = {"Authorization": f"Bearer {login['access_token']}"}
 
     resp = client.post(
@@ -42,7 +43,7 @@ def test_any_org_member_can_read_branding_even_without_manage_access(client, sig
     client.post("/api/core/users", headers=admin, json={
         "name": "Reader", "email": email, "password": "testpass123", "role_id": role["id"],
     })
-    login = client.post("/api/auth/login", json={"email": email, "password": "testpass123"}).json()
+    login = login_any(client, email, "testpass123").json()
     reader = {"Authorization": f"Bearer {login['access_token']}"}
 
     resp = client.get("/api/organizations/branding", headers=reader)
@@ -77,7 +78,7 @@ def test_removing_branding_requires_manage_access(client, signup):
     client.post("/api/core/users", headers=admin, json={
         "name": "Restricted", "email": email, "password": "testpass123", "role_id": role["id"],
     })
-    login = client.post("/api/auth/login", json={"email": email, "password": "testpass123"}).json()
+    login = login_any(client, email, "testpass123").json()
     restricted = {"Authorization": f"Bearer {login['access_token']}"}
 
     resp = client.delete("/api/organizations/branding", headers=restricted)

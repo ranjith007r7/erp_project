@@ -5,6 +5,7 @@ the full story - reproduced here as automated tests so a future change
 can't silently reopen either hole.
 """
 import uuid
+from conftest import login_any
 
 
 def make_role_with_permissions(client, admin_headers, name, permissions):
@@ -23,7 +24,7 @@ def create_login(client, admin_headers, role_id, email_prefix="user"):
         "name": "Test User", "email": email, "password": "testpass123", "role_id": role_id,
     })
     assert resp.status_code == 201, resp.text
-    login = client.post("/api/auth/login", json={"email": email, "password": "testpass123"}).json()
+    login = login_any(client, email, "testpass123").json()
     return {"Authorization": f"Bearer {login['access_token']}"}, resp.json()["id"]
 
 
