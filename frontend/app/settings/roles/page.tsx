@@ -492,13 +492,14 @@ export default function RolesSettingsPage() {
 
           {selectedRole && !permissionsLoading && (
             <div
-              className={`mb-4 p-3 rounded-lg border-2 flex justify-between items-center ${
-                hasManageAccess() ? "bg-amber-50 border-amber-300" : "bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-800"
-              }`}
+              className={`mb-4 p-3 rounded-lg border flex justify-between items-center bg-slate-50 dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 ${hasManageAccess() ? "border-l-4 border-l-amber-500" : ""}`}
             >
               <div>
                 <p className="text-sm font-semibold text-slate-800 dark:text-white">
-                  {hasManageAccess() ? "⚠️ " : ""}Manage Roles &amp; Permissions
+                  Manage Roles &amp; Permissions
+                  {hasManageAccess() && (
+                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 px-1.5 py-0.5 rounded-full align-middle">Granted</span>
+                  )}
                 </p>
                 <p className="text-xs text-slate-600 dark:text-zinc-300 mt-0.5 max-w-md">
                   Full control over every role and user in this organization — create/change roles,
@@ -694,7 +695,7 @@ export default function RolesSettingsPage() {
                   <p className="text-slate-800 dark:text-white font-medium">
                     {u.name}
                     {u.status === "invited" && (
-                      <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full align-middle">
+                      <span className="ml-2 text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 px-1.5 py-0.5 rounded-full align-middle">
                         Invite pending
                       </span>
                     )}

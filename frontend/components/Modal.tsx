@@ -87,7 +87,7 @@ export function PromptModal({
             required
             defaultValue={defaultValue}
             placeholder={placeholder}
-            className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm mt-1"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm mt-1"
           />
         </label>
         <div className="flex justify-end gap-2">

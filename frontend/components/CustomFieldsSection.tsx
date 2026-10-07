@@ -119,7 +119,7 @@ export function CustomFieldsSection({ entityType, entityId }: { entityType: stri
                 <select
                   value={current}
                   onChange={(e) => setDraft({ ...draft, [v.custom_field_id]: e.target.value })}
-                  className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 text-sm mt-1"
+                  className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-zinc-500 rounded-lg px-2 py-1.5 text-sm mt-1"
                 >
                   <option value="">—</option>
                   {(def?.options ?? "").split(",").filter(Boolean).map((opt) => (
@@ -131,7 +131,7 @@ export function CustomFieldsSection({ entityType, entityId }: { entityType: stri
                   type={v.field_type === "number" ? "number" : v.field_type === "date" ? "date" : "text"}
                   value={current}
                   onChange={(e) => setDraft({ ...draft, [v.custom_field_id]: e.target.value })}
-                  className="w-full border border-slate-300 dark:border-zinc-700 rounded-lg px-2 py-1.5 text-sm mt-1"
+                  className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-zinc-500 rounded-lg px-2 py-1.5 text-sm mt-1"
                 />
               )}
             </label>

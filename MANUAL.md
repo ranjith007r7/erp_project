@@ -2879,3 +2879,7 @@ Migration: `b8d2e4f60a17` (down_revision `a7c1d2e3f405`). Run `alembic upgrade h
 - A job role's permission role starts empty, so a login created for it has no access until the admin ticks boxes. This replaces the old error "no access role set".
 - Tests: 9 new in `tests/test_position_roles.py`; one old test updated for the new rule. Full suite 418 passed on a fresh DB. Real-browser run verified the flow end to end.
 - Known: a role shared by two job roles (chosen by hand) appears under both. Deleting departments or roles is still not offered.
+
+### 62.9 Dark-mode and layout fixes
+- Roles & Permissions: the "Manage Roles & Permissions" box now uses the same neutral card in both states (Granted adds an amber left edge and a small "Granted" badge) instead of a light amber box that made white text unreadable in dark mode.
+- Custom fields (Inventory > Fields, and every other module using `CustomFieldsSection`) and the shared prompt dialog now set background and text colours for dark mode, so selects and inputs are readable. All other raw form fields were checked and already had dark colours.
