@@ -1,3 +1,4 @@
+from conftest import receive_po
 
 
 def stock_product(client, headers, product_id, qty=100):
@@ -7,7 +8,7 @@ def stock_product(client, headers, product_id, qty=100):
         "vendor_id": vendor["id"],
         "items": [{"product_id": product_id, "qty": qty, "unit_price": 10}],
     }).json()
-    client.post(f"/api/procurement/purchase-orders/{po['id']}/receive", headers=headers)
+    receive_po(client, headers, po['id'])
 
 """
 Flagged as an open gap since the very first handoff document: every

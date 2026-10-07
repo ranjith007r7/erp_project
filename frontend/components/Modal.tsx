@@ -13,10 +13,12 @@ export function Modal({
   title,
   onClose,
   children,
+  wide = false,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  wide?: boolean;
 }) {
   useEffect(() => {
     function handleEscape(e: KeyboardEvent) {
@@ -32,7 +34,7 @@ export function Modal({
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-zinc-900 rounded-xl shadow-lg p-6 w-full max-w-md"
+        className={`bg-white dark:bg-zinc-900 rounded-xl shadow-lg p-6 w-full ${wide ? "max-w-2xl max-h-[90vh] overflow-y-auto" : "max-w-md"}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-4">

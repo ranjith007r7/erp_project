@@ -25,18 +25,46 @@ RESEND_API_URL = "https://api.resend.com/emails"
 FROM_ADDRESS = "Base ERP <onboarding@resend.dev>"
 
 
-def send_email(to: str, subject: str, body: str) -> None:
+def send_email(
+    to: str,
+    subject: str,
+    body: str,
+    *,
+    from_name: str | None = None,
+    reply_to: str | None = None,
+    attachments: list[tuple[str, bytes, str]] | None = None,
+) -> str:
+    """
+    Returns "sent" when the provider accepted the message, "logged" when it
+    was only written to the server log (no key, or the provider rejected it).
+    `attachments` is a list of (filename, bytes, content_type). The sender
+    address stays the shared Resend one; `from_name` only changes the
+    display name, and `reply_to` makes the vendor's reply go to a real person.
+    """
     if not settings.RESEND_API_KEY:
-        _log_fallback(to, subject, body, reason="no RESEND_API_KEY configured")
-        return
+        _log_fallback(to, subject, body, reason="no RESEND_API_KEY configured", attachments=attachments)
+        return "logged"
 
     html_body = body.replace("\n", "<br>")
+    sender = FROM_ADDRESS
+    if from_name:
+        safe = from_name.replace('"', "").replace("<", "").replace(">", "")
+        sender = f"{safe} via ERP <onboarding@resend.dev>"
+    payload = {"from": sender, "to": [to], "subject": subject, "html": html_body}
+    if reply_to:
+        payload["reply_to"] = reply_to
+    if attachments:
+        import base64
+        payload["attachments"] = [
+            {"filename": n, "content": base64.b64encode(c).decode(), "content_type": t}
+            for n, c, t in attachments
+        ]
     try:
         response = httpx.post(
             RESEND_API_URL,
             headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
-            json={"from": FROM_ADDRESS, "to": [to], "subject": subject, "html": html_body},
-            timeout=10.0,
+            json=payload,
+            timeout=20.0,
         )
         if response.status_code >= 400:
             # Never let a provider-side failure (bad key, rate limit,
@@ -57,20 +85,26 @@ def send_email(to: str, subject: str, body: str) -> None:
             # Now falls back to logging the full content on ANY failure,
             # not just when no key is configured at all.
             logger.error(f"Resend API returned {response.status_code} sending to {to}: {response.text}")
-            _log_fallback(to, subject, body, reason=f"Resend rejected the send (HTTP {response.status_code})")
-        else:
-            logger.info(f"Email sent via Resend to {to}: {subject!r} (id={response.json().get('id')})")
+            _log_fallback(to, subject, body, reason=f"Resend rejected the send (HTTP {response.status_code})", attachments=attachments)
+            return "logged"
+        logger.info(f"Email sent via Resend to {to}: {subject!r} (id={response.json().get('id')})")
+        return "sent"
     except Exception as e:
         logger.error(f"Failed to send email via Resend to {to}: {e}")
-        _log_fallback(to, subject, body, reason=f"a network/client error occurred: {e}")
+        _log_fallback(to, subject, body, reason=f"a network/client error occurred: {e}", attachments=attachments)
+        return "logged"
 
 
-def _log_fallback(to: str, subject: str, body: str, reason: str) -> None:
+def _log_fallback(to: str, subject: str, body: str, reason: str, attachments=None) -> None:
+    att = ""
+    if attachments:
+        att = "Attachments: " + ", ".join(f"{n} ({len(c)} bytes)" for n, c, _ in attachments) + "\n"
     logger.warning(
         "\n"
         f"==================== EMAIL NOT DELIVERED ({reason}) ====================\n"
         f"To: {to}\n"
         f"Subject: {subject}\n"
+        f"{att}"
         f"{body}\n"
         "=========================================================================="
     )

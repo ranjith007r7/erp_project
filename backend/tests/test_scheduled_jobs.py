@@ -1,3 +1,4 @@
+from conftest import receive_po
 """
 Locks in the scheduled-job endpoints as permanent regression tests -
 both the auth gate (these run with no logged-in user, so the usual
@@ -26,7 +27,7 @@ def create_overdue_invoice(client, headers, days_overdue=5):
     po = client.post("/api/procurement/purchase-orders", headers=headers, json={
         "vendor_id": vendor["id"], "items": [{"product_id": product["id"], "qty": 10, "unit_price": 100}],
     }).json()
-    client.post(f"/api/procurement/purchase-orders/{po['id']}/receive", headers=headers)
+    receive_po(client, headers, po['id'])
 
     customer = client.post("/api/sales/customers", headers=headers, json={"name": "Customer"}).json()
     quotation = client.post("/api/sales/quotations", headers=headers, json={
@@ -90,7 +91,7 @@ def test_overdue_invoice_job_does_not_flag_invoices_not_yet_due(client, signup, 
     po = client.post("/api/procurement/purchase-orders", headers=admin, json={
         "vendor_id": vendor["id"], "items": [{"product_id": product["id"], "qty": 10, "unit_price": 100}],
     }).json()
-    client.post(f"/api/procurement/purchase-orders/{po['id']}/receive", headers=admin)
+    receive_po(client, admin, po['id'])
     customer = client.post("/api/sales/customers", headers=admin, json={"name": "Customer"}).json()
     quotation = client.post("/api/sales/quotations", headers=admin, json={
         "customer_id": customer["id"], "items": [{"product_id": product["id"], "qty": 1, "unit_price": 1000}],

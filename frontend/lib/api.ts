@@ -148,3 +148,40 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as T);
 }
+
+/**
+ * Fetches a protected file (PDF, uploaded proof) with the auth header and
+ * returns it as a Blob. `method` is POST for actions that also log
+ * themselves (e.g. printing a defect notice).
+ */
+export async function apiBlob(path: string, method: "GET" | "POST" = "GET"): Promise<Blob> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${API_URL}${path}`, { method, headers });
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({ detail: "Could not load the file" }));
+    throw new Error(formatErrorDetail(errorBody.detail));
+  }
+  return res.blob();
+}
+
+/** Saves a blob to disk under the given filename. */
+export function saveBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+}
+
+/** Opens a blob in a new tab (PDF viewer / image) so it can be viewed or printed. Falls back to download if popups are blocked. */
+export function openBlob(blob: Blob, fallbackName: string) {
+  const url = window.URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (!win) saveBlob(blob, fallbackName);
+  setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+}

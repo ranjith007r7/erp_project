@@ -179,3 +179,28 @@ def login_headers(client, email, password):
     resp = client.post("/api/auth/login", json={"email": email, "password": password})
     assert resp.status_code == 200, resp.text
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+
+# Smallest valid-enough proof files for the receiving flow.
+def _make_png() -> bytes:
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 30), (200, 30, 30)).save(buf, "PNG")
+    return buf.getvalue()
+
+
+PNG_BYTES = _make_png()
+PDF_BYTES = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF"
+
+
+def receive_po(client, headers, po_id):
+    """Approve (if still pending) and receive a PO in good condition - the legacy one-click receive."""
+    r = client.post(f"/api/procurement/purchase-orders/{po_id}/approve", headers=headers)
+    assert r.status_code in (200, 400), r.text
+    r = client.post(
+        f"/api/procurement/purchase-orders/{po_id}/receive-good", headers=headers,
+        files={"invoice": ("inv.pdf", PDF_BYTES, "application/pdf"), "pod": ("pod.png", PNG_BYTES, "image/png")},
+    )
+    assert r.status_code == 200, r.text
+    return r

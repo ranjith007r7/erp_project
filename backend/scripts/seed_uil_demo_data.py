@@ -270,7 +270,7 @@ def seed_demo_org(db, *, org_name, subdomain, admin_email, admin_password, seed=
             if od > today:
                 continue
             received = (today - od).days > 14 and rng.random() < 0.9
-            po = PurchaseOrder(org_id=org_id, vendor_id=rng.choice(vendors).id, order_date=od, status="received" if received else "pending", total=0)
+            po = PurchaseOrder(org_id=org_id, vendor_id=rng.choice(vendors).id, order_date=od, status="received" if received else "pending", approval_status="approved", total=0)
             db.add(po)
             db.flush()
             total = 0

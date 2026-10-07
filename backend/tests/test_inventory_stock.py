@@ -1,3 +1,4 @@
+from conftest import receive_po
 """
 The insufficient-stock rejection is the single scenario the original
 Phase 4 build manual calls out by name as proof the whole chain (stock
@@ -20,7 +21,7 @@ def create_product_with_stock(client, headers, qty_received=10):
         "items": [{"product_id": product["id"], "qty": qty_received, "unit_price": 50}],
     }).json()
 
-    client.post(f"/api/procurement/purchase-orders/{po['id']}/receive", headers=headers)
+    receive_po(client, headers, po['id'])
 
     return product
 

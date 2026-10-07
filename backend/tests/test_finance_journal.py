@@ -1,3 +1,4 @@
+from conftest import receive_po
 """
 Debits must equal credits on EVERY journal entry, always — this is the
 one invariant real accounting software can never violate. Tests this
@@ -14,7 +15,7 @@ def stock_product(client, headers, product_id, qty=100):
         "vendor_id": vendor["id"],
         "items": [{"product_id": product_id, "qty": qty, "unit_price": 10}],
     }).json()
-    client.post(f"/api/procurement/purchase-orders/{po['id']}/receive", headers=headers)
+    receive_po(client, headers, po['id'])
 
 
 

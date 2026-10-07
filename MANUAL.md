@@ -2794,3 +2794,40 @@ Requested: (1) a tab icon (favicon); (2) replace the plain home/login/signup pag
 - **A light flash on load for dark-mode users:** `ThemeProvider` starts in light and switches after the page loads (pre-existing). The new brand panel is always dark, so it is less noticeable here, but the form side flashes. An inline script in the layout would remove it; not done.
 - Add the real logo and confirm or change the product name and brand colors.
 - Open from before: a real-browser check of Part 59 (sticky Save bar, dark mode), and the other items in Parts 58-59.
+
+---
+
+## PART 61: Procurement the way a real buyer works
+
+### 61.1 What changed and why
+Before: create a PO, click Receive, stock goes up. No approval, no way to get the PO to the vendor, no proof of delivery. Now the module follows the real sequence: raise, approve, send to vendor (email or paper), receive with proof, and handle bad deliveries.
+
+### 61.2 The flow
+1. **Raise** a PO (one or more products). It gets a number (`PO-0001`, unique per organization) and starts as *Pending approval*. Admins are notified.
+2. **Approve / Reject** needs `procurement.approve`. Rejecting cancels the PO. The raiser is notified. Only an **approved** PO can be emailed, exported or received.
+3. **Send to vendor.** *Send to vendor* opens a preview of one common template for every vendor. From (your company) and To (vendor name) are filled in. The body lists PO number, date, items, quoted values, who raised it and who approved it. The buyer types the vendor's email (pre-filled if the vendor has one saved), can add an optional note, previews, and sends. The PO PDF is attached.
+4. **No email?** In the same screen, "This vendor has no email ID" switches the send button to **Download PO as PDF** for hand delivery.
+5. **Vendor PDF export.** On the Procurement page, pick a vendor in the dropdown, then **Download PDF** offers: 1. Pending items only, 2. Approved items only, 3. All items (each shows its count). The PDF lists that vendor's POs with their status.
+6. **Receive Goods.** The receiver checks the goods by hand, then chooses:
+   - **Good condition:** must upload the vendor's original invoice and the POD (courier) copy first. Only then does *Goods received in good condition* enable. **This is the only action that increases stock.**
+   - **Bad condition:** must upload invoice, POD and at least one defect photo, plus a note on what is wrong. Stock does **not** change; the PO becomes *Delivered defective* and stays receivable for the replacement.
+7. **Defect notice.** Opens right after a bad receipt (or later via *Send defect notice to vendor*): same template mechanism, manual email ID, From/To prefilled, invoice, POD and photos attached automatically, preview, send. **No email ID** gives a printable PDF (message plus the defect photos) to hand back.
+
+### 61.3 Technical notes
+- Migration `a7c1d2e3f405`: `vendors.email`, PO number/approval/creator/approver columns, receipt condition/notes/receiver, new `goods_receipt_files` and `procurement_email_log`. **Existing POs are back-filled as approved and numbered**, so nothing already received is disturbed.
+- The old one-click `POST /purchase-orders/{id}/receive` is **removed**. Replaced by `/approve`, `/reject`, `/email-preview`, `/send-email`, `/pdf`, `/receive-good`, `/receive-bad`, `/receipts/{id}/defect-preview|send-defect-email|print-notice`, `/receipt-files/{id}`, `/vendors/{id}/purchase-orders/pdf?scope=`.
+- `send_email()` now supports attachments, a display name and reply-to, and returns `sent` or `logged`. Every PO or defect send/print is stored in `procurement_email_log` and the audit log.
+- Proof files (PDF/PNG/JPG/WEBP, 10 MB each) are stored **in the database**, not in R2, so receiving works without a bucket configured. Defect images are checked to be real, readable images at upload.
+- PDFs use "Rs." because the built-in PDF fonts have no rupee glyph.
+
+### 61.4 Verified
+- 18 new backend tests on real PostgreSQL (approval rules and permissions, template content, send fallback, PDF scopes, both proof requirements, stock only on good receipt, replacement after defect, defect notice email and print, tenant isolation of every new route). Full suite: 371 passed on a fresh database.
+- Real-browser run against the real backend (headless Chrome): multi-line PO, approve, vendor dropdown and 3-option PDF menu with counts, email preview and send, good receipt with disabled-until-both-files, bad receipt, defect notice by email and by print, PDF for a no-email vendor.
+
+### 61.5 Known and still open
+- **"Raised by" shows the user's name, email and role.** Users are not linked to HR employee records, so there is no employee ID to print.
+- **Resend's free sender only delivers to the Resend account owner's own address.** Any other address returns "recorded in the server log only". The app says so honestly; real delivery to vendors needs a verified sending domain.
+- **A user can approve their own PO.** Not blocked; separate the Buyer and Approver roles to prevent it.
+- A bad delivery is not stock-adjusted or credited in Finance; it only records proof and the notice.
+- The buttons are shown to every user; the server refuses with the role message if the role lacks the permission.
+- Test hygiene: some older tests use fixed email addresses, so they fail if the same test database is reused between runs. Recreate the test DB for a clean run.

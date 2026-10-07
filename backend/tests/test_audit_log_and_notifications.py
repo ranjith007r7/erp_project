@@ -1,3 +1,4 @@
+from conftest import receive_po
 """
 Locks in this session's three real additions as permanent regression
 tests: the audit log actually recording real entity_ids (the flush-
@@ -69,11 +70,10 @@ def test_receiving_a_purchase_order_notifies_and_logs(client, signup):
     admin = signup()
     product, po = _create_stocked_product(client, admin)
 
-    before = client.get("/api/notifications/unread-count", headers=admin).json()["unread_count"]
-    resp = client.post(f"/api/procurement/purchase-orders/{po['id']}/receive", headers=admin)
+    resp = receive_po(client, admin, po['id'])
     assert resp.status_code == 200
-    after = client.get("/api/notifications/unread-count", headers=admin).json()["unread_count"]
-    assert after == before + 1
+    msgs = [n["message"] for n in client.get("/api/notifications", headers=admin).json()]
+    assert any("received in good condition" in m and "stock updated" in m for m in msgs)
 
     entries = client.get("/api/core/audit-log", headers=admin).json()
     assert any(e["action"] == "receive_purchase_order" for e in entries)
@@ -82,7 +82,7 @@ def test_receiving_a_purchase_order_notifies_and_logs(client, signup):
 def test_recording_a_payment_notifies_and_logs(client, signup):
     admin = signup()
     product, po = _create_stocked_product(client, admin)
-    client.post(f"/api/procurement/purchase-orders/{po['id']}/receive", headers=admin)
+    receive_po(client, admin, po['id'])
 
     customer = client.post("/api/sales/customers", headers=admin, json={"name": "Customer"}).json()
     quotation = client.post("/api/sales/quotations", headers=admin, json={

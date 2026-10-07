@@ -103,14 +103,27 @@ def main():
             {"product_id": product_ids["CHR-002"], "qty": 3, "unit_price": 4500},  # receiving 3 against reorder_level=5 -> genuinely low stock
         ],
     })
-    post(f"/api/procurement/purchase-orders/{po['id']}/receive", headers=auth)
+    # Approve, then receive in good condition with the two required proofs.
+    post(f"/api/procurement/purchase-orders/{po['id']}/approve", headers=auth)
+    resp = requests.post(
+        f"{base}/api/procurement/purchase-orders/{po['id']}/receive-good", headers=auth,
+        files={"invoice": ("vendor-invoice.pdf", b"%PDF-1.4 demo invoice", "application/pdf"),
+               "pod": ("courier-pod.pdf", b"%PDF-1.4 demo pod", "application/pdf")},
+    )
+    if resp.status_code != 200:
+        print(f"FAILED: receive-good -> {resp.status_code}: {resp.text}", file=sys.stderr)
+        sys.exit(1)
 
-    # A SECOND, small PO for visitor chairs left deliberately unreceived,
-    # so Procurement's list shows a real "pending" order, not just
-    # everything already fulfilled.
-    post("/api/procurement/purchase-orders", headers=auth, json={
+    # A SECOND PO, approved but not yet delivered (ready to email / export), and a
+    # THIRD left pending approval, so the list shows every state.
+    po2 = post("/api/procurement/purchase-orders", headers=auth, json={
         "vendor_id": vendor["id"],
         "items": [{"product_id": product_ids["CHR-002"], "qty": 10, "unit_price": 4500}],
+    })
+    post(f"/api/procurement/purchase-orders/{po2['id']}/approve", headers=auth)
+    post("/api/procurement/purchase-orders", headers=auth, json={
+        "vendor_id": vendor["id"],
+        "items": [{"product_id": product_ids["STG-001"], "qty": 5, "unit_price": 5500}],
     })
 
     # ---------------- CRM: leads at different stages ----------------
