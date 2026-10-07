@@ -43,6 +43,7 @@ from app.schemas.roles import (
     UserCreate, UserRoleUpdate, UserManagementOut, InviteCreate, BulkRoleAssignRequest,
 )
 from app.services.invites import issue_invite_token
+from app.services.position_roles import build_role_tree
 from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/api/core", tags=["roles-users"], dependencies=[Depends(get_current_user)])
@@ -65,6 +66,14 @@ def create_role(payload: RoleCreate, db: Session = Depends(get_db), org_id: str 
     db.commit()
     db.refresh(role)
     return role
+
+
+@router.get("/roles/tree", dependencies=[Depends(require_permission("core", "view"))])
+def roles_tree(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+    """Departments -> job roles -> access role, for the grouped picker. Self-heals positions that lack an access role."""
+    tree = build_role_tree(db, org_id)
+    db.commit()
+    return tree
 
 
 @router.get("/roles", response_model=list[RoleOut], dependencies=[Depends(require_permission("core", "view"))])

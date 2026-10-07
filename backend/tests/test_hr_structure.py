@@ -107,7 +107,9 @@ def test_login_for_employee_uses_the_access_role_of_their_position(client, signu
     e2 = client.post("/api/hr/employees", headers=admin, json={"name": "Intern", "department_id": d["id"], "position_id": no_role["id"]}).json()
 
     r = client.post(f"/api/hr/employees/{e2['id']}/create-login", headers=admin, json={"email": intern})
-    assert r.status_code == 400 and "access role" in r.json()["detail"]
+    # every job role now has its own (initially empty) access role, so a login is allowed and starts with no access
+    assert r.status_code == 200 and r.json()["access_role_name"] == "Intern", r.text
+    assert client.get(f"/api/core/roles/{no_role['access_role_id']}/permissions", headers=admin).json() == []
 
     assert client.post(f"/api/hr/employees/{e1['id']}/create-login", headers=admin, json={"email": "bad"}).status_code == 422
     r = client.post(f"/api/hr/employees/{e1['id']}/create-login", headers=admin, json={"email": arjun})

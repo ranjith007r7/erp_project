@@ -38,6 +38,7 @@ from app.services.payroll import get_leave_types, lop_days_from_approved_leave, 
 from app.services.invites import create_invited_user
 from app.services.notifications import notify_user
 from app.services.audit import log_audit_event
+from app.services.position_roles import ensure_position_role, rename_position_role
 
 router = APIRouter(prefix="/api/hr", tags=["hr"], dependencies=[Depends(get_current_user)])
 
@@ -91,6 +92,7 @@ def create_position(payload: PositionCreate, db: Session = Depends(get_db), org_
     pos = Position(org_id=org_id, department_id=dept.id, title=title, base_salary=payload.base_salary, access_role_id=payload.access_role_id)
     db.add(pos)
     db.flush()
+    ensure_position_role(db, org_id, pos)  # shows up under Settings > Roles & Permissions automatically
     log_audit_event(db, org_id, current_user.id, "create_position", "Position", pos.id)
     db.commit()
     db.refresh(pos)
@@ -116,13 +118,17 @@ def update_position(position_id: str, payload: PositionUpdate, db: Session = Dep
                                              func.lower(Position.title) == title.lower(), Position.id != pos.id).first()
         if clash:
             raise HTTPException(400, f"'{title}' already exists in this department.")
+        old_title = pos.title
         pos.title = title
         db.query(Employee).filter(Employee.position_id == pos.id).update({"designation": title})
+        rename_position_role(db, org_id, pos, old_title)
     if payload.clear_access_role:
         pos.access_role_id = None
     elif payload.access_role_id is not None:
         _check_access_role(db, org_id, payload.access_role_id)
         pos.access_role_id = payload.access_role_id
+    if not pos.access_role_id:
+        ensure_position_role(db, org_id, pos)
     if payload.base_salary is not None:
         pos.base_salary = payload.base_salary
         if payload.apply_to_existing:

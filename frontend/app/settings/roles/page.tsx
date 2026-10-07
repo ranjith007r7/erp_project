@@ -6,10 +6,13 @@ import { PageHeader, Button, Input, Select, Card } from "@/components/ui";
 import { ConfirmModal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { NavLink } from "@/components/NavLink";
-import { Palette, Settings2 } from "lucide-react";
+import { Palette, Settings2, ChevronDown, ChevronRight } from "lucide-react";
 import { isChecked, toggleDraft, planChanges, type Draft } from "@/lib/permissionDraft";
 
 type Role = { id: string; org_id: string; name: string };
+type TreePosition = { position_id: string; title: string; role_id: string; role_name: string; user_count: number; employee_count: number };
+type TreeDept = { id: string; name: string; positions: TreePosition[] };
+type RoleTree = { departments: TreeDept[]; other_roles: { id: string; name: string; user_count: number }[] };
 type Permission = { id: string; role_id: string; module: string; action: string };
 type ManagedUser = {
   id: string;
@@ -35,6 +38,8 @@ const ASK_DATA_ACTIONS: readonly string[] = ["view", "approve"];
 export default function RolesSettingsPage() {
   const { showToast } = useToast();
   const [roles, setRoles] = useState<Role[]>([]);
+  const [tree, setTree] = useState<RoleTree>({ departments: [], other_roles: [] });
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [users, setUsers] = useState<ManagedUser[]>([]);
@@ -57,9 +62,35 @@ export default function RolesSettingsPage() {
   const [resendStatus, setResendStatus] = useState<Record<string, "idle" | "sending" | "sent">>({});
 
   function loadRoles() {
-    apiRequest<Role[]>("/api/core/roles", { auth: true })
-      .then(setRoles)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load roles"));
+    // The tree call also creates any missing access role for departments' job roles, so load it first.
+    apiRequest<RoleTree>("/api/core/roles/tree", { auth: true })
+      .then(setTree)
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load departments"))
+      .finally(() => {
+        apiRequest<Role[]>("/api/core/roles", { auth: true })
+          .then(setRoles)
+          .catch((err) => setError(err instanceof Error ? err.message : "Failed to load roles"));
+      });
+  }
+
+  // <option>s for every role picker: grouped Department > job role, then roles that belong to no department.
+  function roleOptions() {
+    return (
+      <>
+        {tree.departments.filter((d) => d.positions.length > 0).map((d) => (
+          <optgroup key={d.id} label={d.name}>
+            {d.positions.map((p) => (
+              <option key={`${d.id}-${p.position_id}`} value={p.role_id}>{p.title}</option>
+            ))}
+          </optgroup>
+        ))}
+        {tree.other_roles.length > 0 && (
+          <optgroup label="Other roles">
+            {tree.other_roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+          </optgroup>
+        )}
+      </>
+    );
   }
 
   function loadUsers() {
@@ -79,6 +110,10 @@ export default function RolesSettingsPage() {
   useEffect(() => {
     loadRoles();
     loadUsers();
+    try {
+      const wanted = new URLSearchParams(window.location.search).get("role");
+      if (wanted) setSelectedRoleId(wanted);
+    } catch { /* no query string available */ }
   }, []);
 
   useEffect(() => {
@@ -336,6 +371,13 @@ export default function RolesSettingsPage() {
   }
 
   const selectedRole = roles.find((r) => r.id === selectedRoleId);
+  const selectedLabel = (() => {
+    for (const d of tree.departments) {
+      const p = d.positions.find((x) => x.role_id === selectedRoleId);
+      if (p) return `${d.name} › ${p.title}`;
+    }
+    return selectedRole?.name ?? "";
+  })();
 
   return (
     <main className="min-h-screen p-8">
@@ -352,39 +394,94 @@ export default function RolesSettingsPage() {
       {error && <p className="text-red-600 text-sm mb-4">{error}</p>}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* Roles */}
+        {/* Roles: departments with their job roles (from the Departments & Roles page), then free-standing roles */}
         <Card className="p-4">
-          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm mb-3">Roles</h2>
-          <form onSubmit={handleCreateRole} className="flex gap-2 mb-4">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Roles by department</h2>
+            <NavLink href="/hr/structure" icon={Settings2}>Departments &amp; Roles</NavLink>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-zinc-400 mb-3">
+            Every job role added under a department appears here automatically. Pick one to set what it can access.
+          </p>
+
+          <div data-testid="role-tree" className="space-y-1 mb-4">
+            {tree.departments.map((d) => {
+              const open = !collapsed.has(d.id);
+              return (
+                <div key={d.id} data-testid={`tree-dept-${d.name}`}>
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    onClick={() => setCollapsed((prev) => { const n = new Set(prev); if (n.has(d.id)) n.delete(d.id); else n.add(d.id); return n; })}
+                    className="w-full flex items-center gap-1 py-1.5 px-1 text-sm font-semibold text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-lg"
+                  >
+                    {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                    {d.name}
+                    <span className="ml-auto text-xs font-normal text-slate-400 dark:text-zinc-500">{d.positions.length} role{d.positions.length === 1 ? "" : "s"}</span>
+                  </button>
+                  {open && (
+                    <div className="ml-5 border-l border-slate-200 dark:border-zinc-700 pl-2">
+                      {d.positions.map((p) => (
+                        <button
+                          key={p.position_id}
+                          data-testid={`tree-role-${d.name}-${p.title}`}
+                          onClick={() => selectRole(p.role_id)}
+                          className={`w-full text-left py-1.5 px-2 text-sm rounded-lg flex items-center gap-2 ${
+                            selectedRoleId === p.role_id ? "bg-slate-100 dark:bg-zinc-800 font-medium text-slate-800 dark:text-white" : "text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800"
+                          }`}
+                        >
+                          <span>{p.title}</span>
+                          <span className="ml-auto text-xs text-slate-400 dark:text-zinc-500">
+                            {p.user_count} login{p.user_count === 1 ? "" : "s"}
+                          </span>
+                        </button>
+                      ))}
+                      {d.positions.length === 0 && (
+                        <p className="text-xs text-slate-400 dark:text-zinc-500 py-1.5 px-2">No job roles yet. Add them on the Departments &amp; Roles page.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {tree.departments.length === 0 && (
+              <p className="text-sm text-slate-400 dark:text-zinc-500 py-1">No departments yet. Create them on the Departments &amp; Roles page.</p>
+            )}
+          </div>
+
+          <h3 className="font-semibold text-slate-700 dark:text-zinc-200 text-xs uppercase tracking-wide mb-2">Other roles</h3>
+          <p className="text-xs text-slate-500 dark:text-zinc-400 mb-2">Roles that do not belong to a department, such as Admin.</p>
+          <div className="divide-y mb-3" data-testid="other-roles">
+            {tree.other_roles.map((role) => (
+              <button
+                key={role.id}
+                onClick={() => selectRole(role.id)}
+                className={`w-full text-left py-2 px-2 text-sm rounded-lg flex items-center ${
+                  selectedRoleId === role.id ? "bg-slate-100 dark:bg-zinc-800 font-medium text-slate-800 dark:text-white" : "text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {role.name}
+                <span className="ml-auto text-xs text-slate-400 dark:text-zinc-500">{role.user_count} login{role.user_count === 1 ? "" : "s"}</span>
+              </button>
+            ))}
+            {tree.other_roles.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500 py-2">None.</p>}
+          </div>
+          <form onSubmit={handleCreateRole} className="flex gap-2">
             <Input
-              placeholder="e.g. Sales Executive"
+              placeholder="New standalone role, e.g. Auditor"
+              aria-label="New standalone role"
               value={roleForm.name}
               onChange={(e) => setRoleForm({ name: e.target.value })}
               required
             />
             <Button type="submit" size="sm">Add</Button>
           </form>
-
-          <div className="divide-y">
-            {roles.map((role) => (
-              <button
-                key={role.id}
-                onClick={() => selectRole(role.id)}
-                className={`w-full text-left py-2 px-2 text-sm rounded-lg ${
-                  selectedRoleId === role.id ? "bg-slate-100 dark:bg-zinc-800 font-medium text-slate-800 dark:text-white" : "text-slate-600 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800"
-                }`}
-              >
-                {role.name}
-              </button>
-            ))}
-            {roles.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500 py-2">No roles yet.</p>}
-          </div>
         </Card>
 
         {/* Permission matrix for the selected role */}
         <Card className="p-4">
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm mb-3">
-            {selectedRole ? `Permissions — ${selectedRole.name}` : "Select a role to manage its permissions"}
+            {selectedRole ? `Permissions — ${selectedLabel}` : "Select a role to manage its permissions"}
           </h2>
 
           {!selectedRole && (
@@ -526,9 +623,7 @@ export default function RolesSettingsPage() {
               className="sm:col-span-2"
             >
               <option value="">No role assigned</option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
+              {roleOptions()}
             </Select>
             <Button type="submit" className="sm:col-span-2">Send Invite</Button>
           </form>
@@ -560,9 +655,7 @@ export default function RolesSettingsPage() {
               onChange={(e) => setUserForm({ ...userForm, role_id: e.target.value })}
             >
               <option value="">No role assigned</option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
+              {roleOptions()}
             </Select>
             <Button type="submit" className="sm:col-span-2">Add User</Button>
           </form>
@@ -573,9 +666,7 @@ export default function RolesSettingsPage() {
             <span className="text-xs text-slate-600 dark:text-zinc-300">{selectedUserIds.size} selected</span>
             <Select value={bulkRoleId} onChange={(e) => setBulkRoleId(e.target.value)} className="w-48">
               <option value="">No role assigned</option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
+              {roleOptions()}
             </Select>
             <Button size="sm" onClick={handleBulkRoleAssign}>Assign Role to Selected</Button>
           </div>
@@ -632,9 +723,7 @@ export default function RolesSettingsPage() {
                   className="w-48"
                 >
                   <option value="">No role assigned</option>
-                  {roles.map((r) => (
-                    <option key={r.id} value={r.id}>{r.name}</option>
-                  ))}
+                  {roleOptions()}
                 </Select>
                 {pendingRoles[u.id] !== undefined && (
                   <>

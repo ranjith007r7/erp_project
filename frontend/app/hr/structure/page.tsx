@@ -6,6 +6,7 @@
  * access role people in it receive. HR then only picks department -> role when
  * hiring; the salary follows automatically.
  */
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
 import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
@@ -107,10 +108,10 @@ export default function StructurePage() {
                   <Input placeholder="Monthly salary" type="number" min={0} required value={form.base_salary} onChange={(e) => setForm({ ...form, base_salary: e.target.value })} />
                 </div>
                 <Select aria-label="Login access role" value={form.access_role_id} onChange={(e) => setForm({ ...form, access_role_id: e.target.value })}>
-                  <option value="">No login access role (set later)</option>
+                  <option value="">Create its own permission role automatically (recommended)</option>
                   {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </Select>
-                <p className="text-xs text-slate-500 dark:text-zinc-400">The access role is what permissions this person gets when you create their login (Settings &gt; Roles &amp; Permissions).</p>
+                <p className="text-xs text-slate-500 dark:text-zinc-400">Every role appears under its department in Settings &gt; Roles &amp; Permissions, where you tick what it can access. Choose an existing permission role here only if several roles should share the same access.</p>
                 <Button className="w-full">Add role</Button>
               </form>
             </Card>
@@ -129,7 +130,10 @@ export default function StructurePage() {
                           <div>
                             <p className="text-sm font-medium text-slate-800 dark:text-white">{p.title}</p>
                             <p className="text-xs text-slate-500 dark:text-zinc-400">{inr(p.base_salary)}/mo · {p.employee_count} employee{p.employee_count === 1 ? "" : "s"}</p>
-                            <p className="text-xs text-slate-500 dark:text-zinc-400">Login access: {p.access_role_name || "not set"}</p>
+                            <p className="text-xs text-slate-500 dark:text-zinc-400">
+                              Login access: {p.access_role_name || "not set"}
+                              {p.access_role_id && <> · <Link className="underline" href={`/settings/roles?role=${p.access_role_id}`}>Set permissions</Link></>}
+                            </p>
                           </div>
                           <Button size="sm" variant="secondary" onClick={() => openEdit(p)}>Edit</Button>
                         </li>

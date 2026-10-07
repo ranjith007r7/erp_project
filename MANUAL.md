@@ -2870,3 +2870,12 @@ Migration: `b8d2e4f60a17` (down_revision `a7c1d2e3f405`). Run `alembic upgrade h
 - UIL manifest views do not include employee_code or deductions.
 - Playbook PDFs are outdated for the procurement and HR flows.
 - Recreate the test DB before full test runs (old tests use fixed emails).
+
+### 62.8 Departments & Roles now feed Roles & Permissions (added later)
+- Every job role (Position) now has its own permission role (RBAC `Role`), created automatically when the position is added, named after the title (e.g. Finance > Accounts Manager). On a name clash it becomes "<Department> - <Title>". An existing, unused hand-made role with exactly the same name is adopted instead of duplicated. "Admin" is never adopted.
+- `GET /api/core/roles/tree` (core.view) returns departments -> job roles -> access role (with login and employee counts) plus "other roles" that belong to no department. It self-heals: positions with no access role (made before this change) get one on the first read, so no data migration was needed.
+- Settings > Roles & Permissions: left panel is now "Roles by department", collapsible per department, each job role selectable to tick its permissions. Standalone roles (Admin, custom) sit under "Other roles" with an Add box. Every role picker (invite, set-password, per-user, bulk) groups options by department.
+- Departments & Roles page: the access dropdown defaults to "Create its own permission role automatically"; each role card has a "Set permissions" link that opens it on the permissions screen (`/settings/roles?role=<id>`). Renaming a position renames its auto-named, unshared role.
+- A job role's permission role starts empty, so a login created for it has no access until the admin ticks boxes. This replaces the old error "no access role set".
+- Tests: 9 new in `tests/test_position_roles.py`; one old test updated for the new rule. Full suite 418 passed on a fresh DB. Real-browser run verified the flow end to end.
+- Known: a role shared by two job roles (chosen by hand) appears under both. Deleting departments or roles is still not offered.
