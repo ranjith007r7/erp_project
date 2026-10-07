@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, String, DateTime
+from sqlalchemy import Column, String, DateTime, Date, Integer, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base
@@ -35,3 +35,45 @@ class Organization(Base):
     # reused rather than standing up a second storage pattern for one
     # feature.
     branding_storage_key = Column(String, nullable=True)
+
+
+class OrganizationProfile(Base):
+    """
+    The company's own details (owner, contacts, address, tax ids, locale).
+    One row per organization, created on the first save. Admins edit it;
+    every member can read it. Kept separate from `organizations` so that
+    table stays the tiny tenant anchor every other table points at.
+    """
+    __tablename__ = "organization_profiles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, unique=True)
+    legal_name = Column(String, nullable=True)
+    industry = Column(String, nullable=True)
+    company_size = Column(String, nullable=True)
+    founded_on = Column(Date, nullable=True)
+    description = Column(Text, nullable=True)
+    website = Column(String, nullable=True)
+    owner_name = Column(String, nullable=True)
+    owner_designation = Column(String, nullable=True)
+    owner_email = Column(String, nullable=True)
+    owner_phone = Column(String, nullable=True)
+    company_email = Column(String, nullable=True)
+    company_phone = Column(String, nullable=True)
+    support_email = Column(String, nullable=True)
+    support_phone = Column(String, nullable=True)
+    address_line1 = Column(String, nullable=True)
+    address_line2 = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    postal_code = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+    gstin = Column(String, nullable=True)
+    pan = Column(String, nullable=True)
+    cin = Column(String, nullable=True)
+    registration_number = Column(String, nullable=True)
+    fiscal_year_start_month = Column(Integer, nullable=True)
+    currency = Column(String, nullable=True)
+    timezone = Column(String, nullable=True)
+    updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow)

@@ -12,7 +12,8 @@ from app.models.security import OrgActionCode
 from app.models.user import User
 from app.services.email import send_email
 
-PURPOSES = {"reset": "reset all data in", "delete": "permanently delete"}
+PURPOSES = {"reset": "reset all data in", "delete": "permanently delete", "profile": "change your personal details in"}
+SUBJECTS = {"reset": "reset", "delete": "delete", "profile": "update your profile in"}
 
 
 def _hash(code: str, user: User, purpose: str) -> str:
@@ -43,7 +44,7 @@ def issue_code(db: Session, user: User, org_name: str, purpose: str) -> None:
     db.commit()
     send_email(
         user.email,
-        f"Your confirmation code to {PURPOSES[purpose].split(' ')[0]} {org_name}",
+        f"Your confirmation code to {SUBJECTS[purpose]} {org_name}",
         f"Someone (hopefully you) asked to {PURPOSES[purpose]} {org_name}.\n\n"
         f"Confirmation code: {code}\n\n"
         f"It expires in {settings.ORG_ACTION_CODE_MINUTES} minutes and works once. "

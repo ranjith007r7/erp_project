@@ -357,6 +357,7 @@ def get_me(current_user: User = Depends(get_current_user_unverified_ok), db: Ses
         email_verified=current_user.email_verified,
         is_admin=user_has_permission(db, current_user, "core", "manage_access"),
         role_name=current_user.role.name if current_user.role else None,
+        org_name=db.query(Organization.name).filter(Organization.id == current_user.org_id).scalar(),
     )
 
 

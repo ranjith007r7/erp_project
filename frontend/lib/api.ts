@@ -31,7 +31,7 @@ function formatErrorDetail(detail: unknown): string {
         if (e && typeof e === "object" && "msg" in e) {
           const loc = Array.isArray((e as { loc?: unknown[] }).loc) ? (e as { loc: unknown[] }).loc : [];
           const field = loc.filter((part) => part !== "body").join(".") || "field";
-          return `${field}: ${(e as { msg: string }).msg}`;
+          return `${field}: ${(e as { msg: string }).msg.replace(/^Value error, /, "")}`;
         }
         return typeof e === "string" ? e : JSON.stringify(e);
       })

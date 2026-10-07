@@ -4,7 +4,7 @@ directly) is what makes Base.metadata.create_all() aware every table exists.
 Forgetting to add a new model to this list is a classic "why isn't my table
 being created?!" bug — if you add a new model file, add it here too.
 """
-from app.models.organization import Organization
+from app.models.organization import Organization, OrganizationProfile
 from app.models.role import Role, Permission
 from app.models.user import User
 from app.models.audit_log import AuditLog
@@ -22,6 +22,7 @@ from app.models.reports import SavedReport
 
 __all__ = [
     "Organization",
+    "OrganizationProfile",
     "Role",
     "Permission",
     "User",

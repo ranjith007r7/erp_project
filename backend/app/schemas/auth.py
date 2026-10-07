@@ -103,5 +103,6 @@ class UserOut(BaseModel):
     email_verified: bool
     is_admin: bool = False
     role_name: Optional[str] = None
+    org_name: Optional[str] = None
 
     model_config = {"from_attributes": True}

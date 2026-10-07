@@ -2915,3 +2915,27 @@ Both need: password, a 6-digit code emailed to the admin (15 min, 5 tries, 60 s 
 - No CAPTCHA yet (Cloudflare Turnstile is the natural next step). Forgot-password and resend-verification emails are not throttled beyond the existing cooldowns.
 - Permanent delete cannot erase the hosting provider's own database backups.
 - Old test files log in through `login_any` in `tests/conftest.py`; `scripts/seed_demo_org.py` needs the verified-email gate off while it runs.
+
+### 62.11 Organization Profile and My Profile
+Migration: `838514aec2df` (table `organization_profiles`). Run `alembic upgrade head`.
+
+**Organization name next to the ID**: the dashboard card now shows "Organization: <name>" above the Organization ID (`GET /api/auth/me` returns `org_name`).
+
+**Organization Profile** (`/settings/organization`, link "Organization" on the dashboard; `GET/PATCH /api/organizations/profile`)
+- Everyone in the organization can open it; only an administrator (`core.manage_access`) sees input boxes and a Save bar. For everyone else it is plain text and the API refuses changes with 403.
+- Sections: Company (name, legal name, industry, size, founded on, website, about), Owner / primary contact (name, designation, email, mobile), Company contacts (company and support email/phone), Address, Tax and registration (GSTIN, PAN, CIN, other registration number), Regional settings (financial year start month, currency, time zone). Organization ID, sub-domain, plan and member-since are shown but fixed.
+- Checked on the server: email and phone shape, GSTIN / PAN / CIN patterns (upper-cased), 3-letter currency, real time-zone names, month 1 to 12, founding date not in the future, website gets `https://` if missing. Only the fields sent are changed; empty text clears a field.
+- Until the first save the owner name and email default to the person who created the organization (saved with the first save). Currency INR, Asia/Kolkata, April and India are the defaults.
+- Reset keeps this profile; permanent delete removes it. Changes are written to the audit log.
+- Not included on purpose: bank account details (they would be readable by every employee); a per-field permission for who may edit.
+
+**My Profile** (`/profile`, link "My Profile"; `GET /api/me/profile`, `POST /api/me/profile/request-otp`, `PATCH /api/me/profile`)
+- Shows the person's own HR record. Read-only (HR controls them): employee code, department, role, employment type, joining date, status, salary. Editable: name, mobile, personal email, date of birth, gender, address, emergency contact name and phone.
+- Every save needs a 6-digit code emailed to the **login email**. The code is valid 15 minutes, works once, allows 5 wrong tries, and a new one can be requested after 60 seconds. It cannot be reused from other purposes (it is tied to this person and this action).
+- The server finds the HR record from the signed-in user, never from anything the browser sends, and rejects any field outside the editable list (422). A request that changes nothing, or has an invalid value, is refused **before** the code is used.
+- A name change updates both the login and the HR record. HR sees edits straight away in HR > Employees. Edits are audited as `update_own_profile:<fields>`.
+- A login with no linked HR record (for example the first administrator) can only change its name until HR links it.
+- Tests: 29 in `tests/test_profiles.py`; a real-browser run covered admin edit, employee read-only view, OTP success and failure, HR seeing the change, phone width and dark mode.
+
+Known gaps: the login email itself cannot be changed from My Profile; no profile photo; no approval step before an employee's edit reaches HR (the OTP is the control); the free email sender limits apply to OTP delivery just as they do for invites.
+

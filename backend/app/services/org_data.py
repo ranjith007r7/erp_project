@@ -21,7 +21,7 @@ import app.models  # noqa: F401  (make sure every model is registered)
 
 # Tables that survive a reset. Everything else that belongs to the organization is cleared.
 KEEP_ON_RESET = {
-    "organizations", "users", "roles", "permissions",
+    "organizations", "organization_profiles", "users", "roles", "permissions",
     "departments", "positions", "employees", "employee_payroll_profiles", "leave_types",
     "chart_of_accounts", "custom_fields", "approval_workflows", "report_subscriptions", "saved_reports",
     "warehouses", "audit_log",

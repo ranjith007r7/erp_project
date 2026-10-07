@@ -10,7 +10,7 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { SkeletonStatTile, SkeletonCard } from "@/components/Skeleton";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { PullToRefresh } from "@/components/PullToRefresh";
-import { Settings2, Shield, ScrollText, LogOut, Palette, Users2, ShoppingCart, Wallet, Package, Truck, UserRound, FolderKanban, FileText, BarChart3, Sparkles, TriangleAlert } from "lucide-react";
+import { Settings2, Shield, ScrollText, LogOut, Palette, Users2, ShoppingCart, Wallet, Package, Truck, UserRound, FolderKanban, FileText, BarChart3, Sparkles, TriangleAlert, UserCircle, Building2 } from "lucide-react";
 
 type CurrentUser = {
   id: string;
@@ -20,6 +20,7 @@ type CurrentUser = {
   status: string;
   email_verified: boolean;
   is_admin?: boolean;
+  org_name?: string | null;
 };
 
 type Summary = {
@@ -107,6 +108,18 @@ export default function DashboardPage() {
             <ThemeToggle />
             <NotificationBell />
             <Link
+              href="/profile"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-800 dark:hover:text-white transition-colors"
+            >
+              <UserCircle size={16} /> My Profile
+            </Link>
+            <Link
+              href="/settings/organization"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-800 dark:hover:text-white transition-colors"
+            >
+              <Building2 size={16} /> Organization
+            </Link>
+            <Link
               href="/settings/custom-fields"
               className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-800 dark:hover:text-white transition-colors"
             >
@@ -155,6 +168,7 @@ export default function DashboardPage() {
         <p className="text-lg font-medium text-slate-800 dark:text-white">{user.name}</p>
         <p className="text-slate-500 dark:text-zinc-400">{user.email}</p>
         <hr className="my-4 dark:border-zinc-800" />
+        <p className="text-xs text-slate-500 dark:text-zinc-400" data-testid="org-name">Organization: <span className="font-medium">{user.org_name ?? "—"}</span></p>
         <p className="text-xs text-slate-400 dark:text-zinc-600">Organization ID: {user.org_id}</p>
         <p className="text-xs text-slate-400 dark:text-zinc-600">Status: {user.status}</p>
       </div>
