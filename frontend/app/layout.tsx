@@ -3,6 +3,7 @@ import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { OrgBranding } from "@/components/OrgBranding";
+import { AppShell } from "@/components/AppShell";
 import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = {
@@ -34,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               pages before login (no token yet, e.g. /login, /signup) -
               harmless, just shows no background there, which is correct.
             */}
-            <OrgBranding>{children}</OrgBranding>
+            <OrgBranding><AppShell>{children}</AppShell></OrgBranding>
           </ToastProvider>
         </ThemeProvider>
       </body>

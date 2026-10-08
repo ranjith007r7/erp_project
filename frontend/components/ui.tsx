@@ -89,8 +89,8 @@ export function Select({ label, className = "", id, children, ...props }: Select
   );
 }
 
-export function Card({ className = "", children }: { className?: string; children: React.ReactNode }) {
-  return <div className={`bg-white dark:bg-zinc-900 rounded-xl shadow-sm dark:shadow-none dark:border dark:border-zinc-800 ${className}`.trim()}>{children}</div>;
+export function Card({ className = "", children, ...rest }: { className?: string; children: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={`bg-white dark:bg-zinc-900 rounded-xl shadow-sm dark:shadow-none dark:border dark:border-zinc-800 ${className}`.trim()} {...rest}>{children}</div>;
 }
 
 /**

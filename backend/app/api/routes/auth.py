@@ -29,8 +29,12 @@ from app.schemas.auth import (
 from app.api.deps import get_current_user, get_current_user_unverified_ok, user_has_permission
 from app.services import totp
 from app.services.signup_guard import check_signup_allowed, access_code_required
+from app.services.default_structure import seed_on_signup as seed_default_structure
 from app.services.accounting import seed_default_accounts
 from app.services.email import send_password_reset_email, send_verification_email
+
+ALL_MODULES = ["core", "dashboard", "crm", "sales", "procurement", "inventory",
+               "finance", "hr", "projects", "documents", "reports", "custom_fields", "intelligence", "workpage"]
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -83,8 +87,7 @@ def create_organization(payload: OrganizationSignup, db: Session) -> TokenRespon
     # Full-access permission per module we currently have. As new modules
     # are added later, add their names to this list so a fresh org's Admin
     # role automatically has access to everything from day one.
-    modules = ["core", "dashboard", "crm", "sales", "procurement", "inventory",
-               "finance", "hr", "projects", "documents", "reports", "custom_fields", "intelligence"]
+    modules = ALL_MODULES
     for module in modules:
         for action in ["view", "create", "edit", "delete", "approve"]:
             db.add(Permission(role_id=admin_role.id, module=module, action=action))
@@ -118,6 +121,10 @@ def create_organization(payload: OrganizationSignup, db: Session) -> TokenRespon
     # 4. Seed a minimal default Chart of Accounts, so Finance isn't empty
     #    the moment this organization exists - see app/services/accounting.py
     seed_default_accounts(db, org.id)
+
+    # 5. Standard departments, job roles and starting permissions (all editable).
+    db.flush()
+    seed_default_structure(db, org.id)
 
     db.flush()  # admin_user needs a real id before _issue_verification_token touches it
     _issue_verification_token(db, admin_user)
@@ -348,7 +355,15 @@ def regenerate_recovery_codes(payload: _RegenIn, db: Session = Depends(get_db), 
 
 @router.get("/me", response_model=UserOut)
 def get_me(current_user: User = Depends(get_current_user_unverified_ok), db: Session = Depends(get_db)):
+    role = current_user.role
+    if role and role.name == "Admin":
+        perms = [f"{m}:{a}" for m in ALL_MODULES for a in ("view", "create", "edit", "delete", "approve")] + ["core:manage_access"]
+    elif role:
+        perms = sorted({f"{p.module}:{p.action}" for p in db.query(Permission).filter(Permission.role_id == role.id)})
+    else:
+        perms = []
     return UserOut(
+        permissions=perms,
         id=str(current_user.id),
         name=current_user.name,
         email=current_user.email,

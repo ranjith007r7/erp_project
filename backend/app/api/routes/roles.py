@@ -44,6 +44,7 @@ from app.schemas.roles import (
 )
 from app.services.invites import issue_invite_token
 from app.services.position_roles import build_role_tree
+from app.services import default_structure
 from app.services.audit import log_audit_event
 
 router = APIRouter(prefix="/api/core", tags=["roles-users"], dependencies=[Depends(get_current_user)])
@@ -71,9 +72,25 @@ def create_role(payload: RoleCreate, db: Session = Depends(get_db), org_id: str 
 @router.get("/roles/tree", dependencies=[Depends(require_permission("core", "view"))])
 def roles_tree(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """Departments -> job roles -> access role, for the grouped picker. Self-heals positions that lack an access role."""
+    default_structure.heal_existing_org(db, org_id)   # old orgs with no departments get the standard set once
     tree = build_role_tree(db, org_id)
     db.commit()
     return tree
+
+
+@router.get("/roles/defaults", dependencies=[Depends(require_permission("core", "view"))])
+def default_roles_summary():
+    """What the standard departments / roles / permissions are (read-only preview)."""
+    return default_structure.summary()
+
+
+@router.post("/roles/defaults/restore", dependencies=[Depends(require_permission("core", "manage_access"))])
+def restore_default_roles(db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    """Add any standard department / job role that is missing. Never changes a role that already has permissions."""
+    made = default_structure.restore_defaults(db, org_id)
+    log_audit_event(db, org_id, current_user.id, "restore_default_roles", "Role", None)
+    db.commit()
+    return made
 
 
 @router.get("/roles", response_model=list[RoleOut], dependencies=[Depends(require_permission("core", "view"))])

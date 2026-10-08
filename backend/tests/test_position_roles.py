@@ -45,7 +45,7 @@ def test_many_roles_per_department_and_same_title_in_two_departments(client, sig
 
 def test_admin_role_is_never_adopted_by_a_position_called_admin(client, signup):
     admin = signup()
-    d = dept(client, admin, "Management")
+    d = dept(client, admin, "Board Office")   # (a fresh org already ships a standard "Management")
     p = pos(client, admin, d, "Admin")
     roles = {r["id"]: r["name"] for r in client.get("/api/core/roles", headers=admin).json()}
     assert roles[p["access_role_id"]] != "Admin"
@@ -54,13 +54,13 @@ def test_admin_role_is_never_adopted_by_a_position_called_admin(client, signup):
 
 def test_existing_hand_made_role_with_same_name_is_adopted_once(client, signup):
     admin = signup()
-    hand = client.post("/api/core/roles", headers=admin, json={"name": "Sales Executive"}).json()
-    d = dept(client, admin, "Sales")
-    p1 = pos(client, admin, d, "Sales Executive")
+    hand = client.post("/api/core/roles", headers=admin, json={"name": "Field Executive"}).json()
+    d = dept(client, admin, "Field Sales")
+    p1 = pos(client, admin, d, "Field Executive")
     assert p1["access_role_id"] == hand["id"]
     d2 = dept(client, admin, "Retail")
-    p2 = pos(client, admin, d2, "Sales Executive")
-    assert p2["access_role_id"] != hand["id"] and p2["access_role_name"] == "Retail - Sales Executive"
+    p2 = pos(client, admin, d2, "Field Executive")
+    assert p2["access_role_id"] != hand["id"] and p2["access_role_name"] == "Retail - Field Executive"
 
 
 def test_chosen_access_role_is_respected_and_unlinked_roles_go_to_other(client, signup):

@@ -52,6 +52,9 @@ class PurchaseOrder(Base):
     po_number = Column(String, nullable=True)
     approval_status = Column(String, nullable=False, default="pending", server_default="pending")
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    # Optional: the customer work this PO is bought for. Procurement never reads
+    # it; app/services/workpages.py uses it to keep the work's status in step.
+    work_order_id = Column(UUID(as_uuid=True), ForeignKey("work_orders.id"), nullable=True)
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

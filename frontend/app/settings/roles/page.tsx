@@ -29,7 +29,7 @@ type ManagedUser = {
 // module the backend doesn't actually recognize.
 const MODULES = [
   "core", "dashboard", "crm", "sales", "procurement", "inventory",
-  "finance", "hr", "projects", "documents", "reports", "custom_fields", "intelligence",
+  "finance", "hr", "projects", "documents", "reports", "custom_fields", "intelligence", "workpage",
 ];
 const ACTIONS = ["view", "create", "edit", "delete", "approve"] as const;
 // Ask Data only uses two of the five ticks; the other three are meaningless for it, so they are not offered.
@@ -60,6 +60,16 @@ export default function RolesSettingsPage() {
   const [inviteForm, setInviteForm] = useState({ name: "", email: "", role_id: "" });
   const [addUserMode, setAddUserMode] = useState<"invite" | "password">("invite");
   const [resendStatus, setResendStatus] = useState<Record<string, "idle" | "sending" | "sent">>({});
+
+  async function restoreDefaults() {
+    try {
+      const made = await apiRequest<{ departments: number; roles: number; permissions: number }>("/api/core/roles/defaults/restore", { method: "POST", auth: true });
+      showToast(made.roles + made.departments === 0 ? "All standard departments and roles are already there." : `Added ${made.departments} department(s) and ${made.roles} role(s) with their starting permissions.`, "success");
+      loadRoles();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not restore the defaults", "error");
+    }
+  }
 
   function loadRoles() {
     // The tree call also creates any missing access role for departments' job roles, so load it first.
@@ -412,6 +422,8 @@ export default function RolesSettingsPage() {
           </div>
           <p className="text-xs text-slate-500 dark:text-zinc-400 mb-3">
             Every job role added under a department appears here automatically. Pick one to set what it can access.
+            New organizations start with standard departments and roles with sensible starting permissions; all of it can be changed or deleted.
+            {" "}<button type="button" onClick={restoreDefaults} data-testid="restore-defaults" className="underline text-indigo-600 dark:text-indigo-400">Restore any missing standard roles</button>
           </p>
 
           <div data-testid="role-tree" className="space-y-1 mb-4">

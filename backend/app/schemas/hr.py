@@ -1,3 +1,4 @@
+import datetime as _dt
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
@@ -139,6 +140,7 @@ class LeaveRequestCreate(BaseModel):
     leave_type: str = Field(..., min_length=1)
     start_date: date
     end_date: date
+    reason: Optional[str] = Field(None, max_length=500)
 
 
 class LeaveRequestOut(BaseModel):
@@ -148,17 +150,33 @@ class LeaveRequestOut(BaseModel):
     start_date: date
     end_date: date
     status: str
+    days: int = 0
+    reason: Optional[str] = None
+    decision_note: Optional[str] = None
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
 
 class LeaveStatusUpdate(BaseModel):
     status: str = Field(..., pattern="^(pending|approved|rejected)$")
+    note: Optional[str] = Field(None, max_length=200)
 
 
 class AttendanceMark(BaseModel):
     employee_id: UUID
     status: str = Field("present", pattern="^(present|absent|half_day|leave)$")
+    date: Optional[_dt.date] = None      # defaults to today; past days up to 60 back, never the future
+
+
+class AttendanceEntry(BaseModel):
+    employee_id: UUID
+    status: str = Field(..., pattern="^(present|absent|half_day|leave)$")
+
+
+class AttendanceBulk(BaseModel):
+    date: _dt.date
+    entries: list[AttendanceEntry] = Field(..., min_length=1, max_length=1000)
 
 
 class AttendanceOut(BaseModel):

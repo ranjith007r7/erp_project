@@ -50,6 +50,7 @@ class PurchaseOrderItemOut(BaseModel):
 class PurchaseOrderCreate(BaseModel):
     vendor_id: UUID
     items: list[PurchaseOrderItemIn] = Field(..., min_length=1)
+    work_order_id: Optional[UUID] = None   # the customer work this PO is bought for (optional)
 
 
 class ReceiptFileOut(BaseModel):
@@ -82,6 +83,7 @@ class PurchaseOrderOut(BaseModel):
     created_by_email: Optional[str] = None
     approved_by_name: Optional[str] = None
     approved_at: Optional[datetime] = None
+    work_order_id: Optional[UUID] = None
     items: list[PurchaseOrderItemOut] = []
     receipts: list[ReceiptOut] = []
 

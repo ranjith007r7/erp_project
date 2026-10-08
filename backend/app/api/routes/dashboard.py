@@ -5,11 +5,15 @@ module gains real business meaning (e.g. "open opportunities value"),
 this endpoint grows, but the frontend contract (one JSON object of
 summary numbers) stays the same.
 """
-from fastapi import APIRouter, Depends
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_org_id, require_permission
+from app.api.deps import get_current_user, get_org_id, require_permission, user_has_permission
+from app.services import home_stats, home_report
 from app.models.crm import Lead, Opportunity
 from app.models.sales import Quotation, SalesOrder, Invoice, Product
 from app.models.inventory import StockLevel
@@ -64,3 +68,30 @@ def get_summary(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)
         ).filter(ApprovalWorkflow.org_id == org_id, ApprovalRequest.status == "pending").count(),
         "saved_reports": db.query(SavedReport).filter(SavedReport.org_id == org_id).count(),
     }
+
+
+@router.get("/home", dependencies=[Depends(require_permission("dashboard", "view"))])
+def home(period: str = Query("today", pattern="^(today|week|month)$"), on: date | None = None,
+         db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """
+    Live figures for the analytics home page (income, quotes, deals, POs, deliveries, works,
+    tasks...). Computed fresh for the organization's local day / week / month, so "today"
+    starts again at zero every midnight without anything being deleted.
+    """
+    return home_stats.compute(db, current_user, period, on)
+
+
+@router.get("/report")
+def download_report(kind: str = Query("daily", pattern="^(daily|weekly|monthly)$"),
+                    format: str = Query("pdf", pattern="^(pdf|csv)$"), on: date | None = None,
+                    db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Administrators only: the daily, weekly or monthly activity report as PDF or CSV."""
+    if not user_has_permission(db, current_user, "core", "manage_access"):
+        raise HTTPException(403, "Only an administrator can download these reports.")
+    data = home_report.build(db, current_user, kind, on)
+    name = f"{kind}_report_{data['from']}" + (f"_to_{data['to']}" if data["from"] != data["to"] else "")
+    if format == "csv":
+        return Response(home_report.to_csv(data), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.csv"'})
+    return Response(home_report.to_pdf(data), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{name}.pdf"'})

@@ -99,3 +99,9 @@ A working list of everything genuinely worth considering beyond the current buil
 ## How to use this document
 
 Nothing here is prioritized by default — priority should follow whatever a specific client actually asks for, not a generic "best practices" order. A reasonable way to use this list in a client conversation: show them the category headers first, let them point at what matters to *their* business, and only then discuss effort/sequencing for those specific items.
+
+## Added after the TL update (see MANUAL 62.13)
+- Link Workpage payments to Sales invoices (one source of truth for money received); cancel-work step; fixed-amount discounts.
+- Limit Workpage visibility by department for non-admin roles (the Home page already does).
+- Move the status rules (which event moves which status) into per-organization settings if clients want a different workflow.
+- Per-organization editable default role templates (today the standard set is in code).

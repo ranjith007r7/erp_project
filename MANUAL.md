@@ -2939,3 +2939,61 @@ Migration: `838514aec2df` (table `organization_profiles`). Run `alembic upgrade 
 
 Known gaps: the login email itself cannot be changed from My Profile; no profile photo; no approval step before an employee's edit reaches HR (the OTP is the control); the free email sender limits apply to OTP delivery just as they do for invites.
 
+### 62.12 Employee leave filing and admin-only attendance
+Migration: `59eb0d67c2b3` (adds `leave_requests.reason / decided_by / decided_at / decision_note`, `attendance.marked_by`, and a unique rule of one attendance row per employee per day; any older duplicate rows are collapsed to one first). Run `alembic upgrade head`.
+
+**My Leaves** (`/profile/leaves`; "My Leaves" in the dashboard top bar and a banner on My Profile; `GET/POST /api/me/leaves`, `POST /api/me/leaves/{id}/cancel`, `GET /api/me/attendance`)
+- Works for any signed-in person whose login is linked to an HR record; no `hr.*` permission is needed. The employee is found from the login, never from the request (a request naming another employee is refused with 422).
+- Shows a card per leave type with days left, taken and pending, the application form (type, from, to, reason, live day count), the person's own requests with status and approver note, and a month view of their attendance.
+- Rules, checked on the server: the type must be one of the organization's leave types (name or code); end not before start; at most 60 days per request; employees may start at most 30 days in the past (an admin can record older leave); no overlap with another pending or approved request; and, for types with a yearly allowance, pending + approved + requested days must fit the year's balance (a request across New Year is checked per year). Types with no allowance (Compensatory Off, Loss of Pay) have no cap. Days are calendar days, weekends included, the same counting payroll uses.
+- A new request notifies every active administrator and anyone with `hr.approve`. The employee can cancel while it is pending, which returns the days. Approved requests can only be changed by an administrator.
+- Approve or reject stays in HR > Leave Requests (`hr.approve`). The list now shows days and reason; rejecting asks for an optional note the employee sees; the employee is notified of the decision; decisions are audited. A cancelled request can no longer be decided.
+- Approved unpaid leave still feeds the payroll suggestion for unpaid days exactly as before (`lop_days_from_approved_leave`).
+- `POST /api/hr/leave-requests` (hr.create) remains for recording leave on someone's behalf; it now uses the same rules without the 30-day back-dating limit.
+
+**Attendance, administrators only** (`/hr/attendance`; "Attendance" card on the HR page)
+- Marking (`POST /api/hr/attendance`, `POST /api/hr/attendance/bulk`) now requires the administrator capability (`core.manage_access`). Employees, and HR staff who only hold `hr.create`, are refused with 403. Everyone with `hr.view` can read the day sheet and monthly summary.
+- The page shows every active employee for a chosen date, a status each (present, absent, half day, leave), "Mark unmarked as present", and one Save. Dates can be today or the last 60 days; never the future. Re-saving a day updates it, never duplicates.
+- A day an employee is on approved leave shows as Leave until an administrator marks something else; an explicit mark always wins.
+- Employees see their own attendance, read-only, on My Leaves. No check-in or check-out times are stored yet.
+- To let HR staff mark attendance later, change the permission on the two POST routes in `app/api/routes/hr.py` from `core.manage_access` to a role permission of your choice.
+
+**Tests:** 17 in `tests/test_leave_attendance.py` (rules, balances, cancel, decisions and notifications, tenant isolation, admin-only attendance, derived leave days). A real-browser run covered applying, overlap and balance refusals, cancel, HR approval, admin attendance with persistence, employee read-only attendance, and a phone-width dark-mode page.
+
+Known gaps: weekends and public holidays are counted as leave days (no holiday calendar or working-day setting); no half-day leave; all leave types are offered to everyone (for example Maternity to all genders); no carry-forward of unused leave to the next year; a person with approver rights can approve their own request; the employee's leave is not written into attendance, it is only shown as Leave on unmarked days.
+
+
+### 62.13 TL update: sidebar and profile menu, new Home, standard roles, Workpage
+Migrations: `3ccef45d908c` (tables `work_orders`, `work_events`, `work_payments`; column `purchase_orders.work_order_id`) and `2f0646635153` (`organizations.defaults_seeded_at`). Run `alembic upgrade head`. Source: the TL's `updates.pdf`; applies to Admin and Employee sign-ins alike.
+
+**1. App frame (`components/AppShell.tsx`, `ProfileMenu.tsx`)**
+- Mounted once in `app/layout.tsx`; shown on every signed-in page, bare on sign-in / sign-up / reset / verify / invite pages.
+- Left sidebar: Home, CRM, Sales, Workpage, Procurement, Inventory, Finance, HR, Projects, Documents, Reports, Ask Data. Collapses to icons (choice remembered in `localStorage`, optional); a drawer on phones. Items are filtered by the person's permissions: `GET /api/auth/me` now also returns `permissions` (`"module:action"` strings; the Admin role gets all). Until `/me` answers, grey placeholders are shown, never links the person may not have.
+- Top bar: search, theme, notifications, and the right-hand avatar menu: My Profile, My Leaves, Organization, Custom Fields (needs `custom_fields.view`), Roles & Permissions and Audit Log (need `core.view`), Appearance, Danger Zone (admin only), Sign out. The old row of links on the dashboard is gone. Each page keeps its own "Dashboard" back button; it is harmless.
+
+**2. Home (`app/dashboard/page.tsx`, `GET /api/dashboard/home`, `services/home_stats.py`)**
+- Cards: income, quotes processed (and accepted), deals (new works and their value), PO raised (and awaiting approval), deliveries, works (assigned / completed / pending). Charts: income for the last 7 days, works donut, works-by-status donut. Lists: priority tasks, projects with progress, open works. A small "at a glance" row keeps the old counts. Period switch: Today, This week, This month; refreshes every minute and when the tab returns.
+- "Resets daily" is implemented as **counting for the organization's local day** (time zone from Organization Profile, default Asia/Kolkata). Nothing is deleted or stored.
+- Scope: a card is returned only with `view` on its module. Administrators (`core.manage_access`) see organization-wide works and tasks; everyone else sees works of their own department, allocated to them or created by them, and only tasks assigned to them.
+- Reports (`GET /api/dashboard/report?kind=daily|weekly|monthly&format=pdf|csv&on=YYYY-MM-DD`): administrators only (403 otherwise). Summary figures plus the rows behind them (works received / delivered / closed, POs, quotations, payments, all open works). CSV has a byte-order mark so Excel reads it as UTF-8. PDFs print "Rs.".
+
+**3. Standard departments, roles and permissions (`services/default_structure.py`)**
+- 10 departments, 24 job roles (Management, Sales & Marketing, Procurement, Warehouse & Inventory, Finance & Accounts, Human Resources, Operations & Delivery, Projects, IT & Systems, Customer Support), each with a starting permission set. The full table is in the TL playbook (act T2) and in `DEFAULT_STRUCTURE`.
+- Created at sign-up. Older organizations get them once, on first opening Roles & Permissions, only if they have no departments of their own. After that nothing is re-created automatically, even if the admin deletes it; `POST /api/core/roles/defaults/restore` (needs `core.manage_access`, button "Restore any missing standard roles") adds only what is missing and never changes a role that already has permissions. `GET /api/core/roles/defaults` previews the set.
+- Fully editable: they are ordinary departments, positions and roles. Salaries are 0 (HR sets pay). `core.manage_access` is never granted to a default role. Basis: common business-function structure and the role templates of mainstream ERPs; it is a starting point, not a standard to be certified against.
+- Side effect to know: a new organization is no longer empty, so tests and scripts that assume "no departments / only the Admin role" at sign-up had to change (five existing tests were updated for this).
+
+**4. Workpage (`models/workpage.py`, `services/workpages.py`, `routes/workpage.py`, pages `/workpage` and `/workpage/[id]`)**
+- A work has client, domain, quotation amount, vendor amount, client discount %, handling department, optional allocated employee, status, and a history. Derived, never stored: discount amount, net payable, **profit = quotation − discount − vendor**, received, pending.
+- Statuses and colours: Assigned (grey), Allocated (blue), PO raised (amber), Waiting for new PO (red), PO received (indigo), Delivered (teal), Closed (green).
+- Who moves it: people (create, allocate, deliver, record payment, close) and other modules through the service layer, never by importing each other's routes:
+  - Sales: accepting a quotation opens a work ("Deal accepted - moved to the purchase team"), once per quotation; domain comes from the CRM account's industry.
+  - Procurement: a PO can name its work (`work_order_id`; picker "For work" on the Create PO form). PO created → PO raised (and vendor amount is filled from the first PO if empty); approved / rejected, PO emailed or printed, goods received good → PO received (when every live PO for the work is received), goods received bad → Waiting for new PO and the defect notice (email or print) is logged as a send-back; a later PO for the same work supersedes the defective one. A rejected PO with none left returns the work to Allocated / Assigned.
+  - Hooks run in a savepoint and swallow errors: a failure here can never block a PO or quotation (a test proves it).
+- Delivery: from PO received, or from Allocated with "deliver from existing stock". Payments: amount, means (cash, card, GPay, bank transfer, cheque), reference required except for cash and never reused, never more than the pending amount; each posts Debit Cash / Credit Sales Revenue (`WPMT-` reference). **Close needs status Delivered and pending = 0** (`workpage.approve`).
+- History page: tracker, money boxes, handling departments (assigned department, then allocated employee with code, then who raised the PO), client and quotation, every PO with receipts and notices, payments, and an append-only timeline with time and person.
+- New permission module `workpage` (view, create, edit, delete, approve), seeded for new Admin roles; existing Admin roles self-heal on first use. Delete is allowed only for an untouched Assigned work.
+- Reset of an organization clears works (business data); Delete removes them.
+- Tests: `test_workpage.py` (14), `test_default_structure.py` (7), `test_home_stats.py` (6). A real-browser run covered the sidebar, collapse and memory, profile menu, default roles and ticks, creating a work, allocating, a PO raised and received defective then replaced, delivery, part and full payment, close, the history, report downloads, an employee's restricted view and sign-out, and a phone-width drawer.
+
+Known gaps: Workpage payments are not tied to a Sales Invoice, so a deal invoiced in Sales and also paid in Workpage would be double counted in Finance (pick one per deal); no cancel-work step; discount is a percentage only; works are visible to anyone with `workpage.view` (the department filter exists on Home only); standard roles are a reasonable starting point rather than an audited matrix; Home "completed" counts works delivered or closed in the period.

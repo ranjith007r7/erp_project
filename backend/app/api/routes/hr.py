@@ -5,12 +5,13 @@ multiple module effects, one transaction" pattern used by Sales' invoice
 generation and Procurement's goods receipt: it generates a Payslip per
 active Employee AND posts a single Journal Entry to Finance, together.
 """
+import calendar
 import csv
 import io
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
@@ -30,7 +31,7 @@ from app.schemas.hr import (
     EmployeeCreate, EmployeeUpdate, EmployeeOut, CreateLoginIn,
     LeaveTypeOut, LeaveTypeUpdate,
     LeaveRequestCreate, LeaveRequestOut, LeaveStatusUpdate,
-    AttendanceMark, AttendanceOut,
+    AttendanceMark, AttendanceBulk, AttendanceOut,
     PayrollRunCreate, PayrollRunOut,
 )
 from app.services.accounting import post_payroll_journal_entry
@@ -38,6 +39,7 @@ from app.services.payroll import get_leave_types, lop_days_from_approved_leave, 
 from app.services.invites import create_invited_user
 from app.services.notifications import notify_user
 from app.services.audit import log_audit_event
+from app.services import leave as leave_rules
 from app.services.position_roles import ensure_position_role, rename_position_role
 
 router = APIRouter(prefix="/api/hr", tags=["hr"], dependencies=[Depends(get_current_user)])
@@ -411,13 +413,16 @@ async def import_employees_csv(
 
 
 # ---------------- Leave Requests ----------------
+# Employees file their own leave from "My Leaves" (app/api/routes/self_service.py).
+# This route is for an administrator or HR user recording leave on someone's behalf
+# (a phone call, a paper form); it uses the same rules but has no back-dating limit.
 @router.post("/leave-requests", response_model=LeaveRequestOut, status_code=201, dependencies=[Depends(require_permission("hr", "create"))])
-def create_leave_request(payload: LeaveRequestCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+def create_leave_request(payload: LeaveRequestCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     employee = db.query(Employee).filter(Employee.id == payload.employee_id, Employee.org_id == org_id).first()
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
-    leave = LeaveRequest(**payload.model_dump())
-    db.add(leave)
+    leave = leave_rules.create_leave(db, employee, payload.leave_type, payload.start_date, payload.end_date, payload.reason, self_service=False)
+    log_audit_event(db, org_id, current_user.id, "file_leave_for_employee", "LeaveRequest", leave.id)
     db.commit()
     db.refresh(leave)
     return leave
@@ -435,7 +440,7 @@ def list_leave_requests(db: Session = Depends(get_db), org_id: str = Depends(get
 
 
 @router.patch("/leave-requests/{leave_id}/status", response_model=LeaveRequestOut, dependencies=[Depends(require_permission("hr", "approve"))])
-def update_leave_status(leave_id: str, payload: LeaveStatusUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+def update_leave_status(leave_id: str, payload: LeaveStatusUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     leave = (
         db.query(LeaveRequest)
         .join(Employee, Employee.id == LeaveRequest.employee_id)
@@ -444,43 +449,104 @@ def update_leave_status(leave_id: str, payload: LeaveStatusUpdate, db: Session =
     )
     if not leave:
         raise HTTPException(status_code=404, detail="Leave request not found")
+    if leave.status == "cancelled":
+        raise HTTPException(400, "The employee cancelled this request.")
     leave.status = payload.status
+    leave.decided_by, leave.decided_at = (current_user.id, datetime.utcnow()) if payload.status != "pending" else (None, None)
+    leave.decision_note = (payload.note or "").strip() or None
 
     # Notify the employee, if they have a login (user_id is optional on
-    # Employee — plenty of employees never need one). Soft-fail by design:
-    # notify_user() silently no-ops when user_id is None, same as every
-    # other self-healing helper in this codebase.
+    # Employee - plenty of employees never need one). Soft-fail by design:
+    # notify_user() silently no-ops when user_id is None.
     employee = db.query(Employee).filter(Employee.id == leave.employee_id).first()
     if employee:
+        extra = f" Note: {leave.decision_note}" if leave.decision_note else ""
         notify_user(
             db, org_id, employee.user_id,
-            f"Your leave request ({leave.start_date} to {leave.end_date}) was {payload.status}.",
+            f"Your leave request ({leave.start_date} to {leave.end_date}) was {payload.status}.{extra}",
         )
+    log_audit_event(db, org_id, current_user.id, f"leave_{payload.status}", "LeaveRequest", leave.id)
 
     db.commit()
     db.refresh(leave)
     return leave
 
 
-# ---------------- Attendance ----------------
-@router.post("/attendance", response_model=AttendanceOut, status_code=201, dependencies=[Depends(require_permission("hr", "create"))])
-def mark_attendance(payload: AttendanceMark, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+# ---------------- Attendance (marked by an administrator only) ----------------
+ATTENDANCE_BACKDATE_DAYS = 60
+
+
+def _attendance_day(d: date | None) -> date:
+    d = d or date.today()
+    if d > date.today():
+        raise HTTPException(400, "Attendance cannot be marked for a future date.")
+    if d < date.today() - timedelta(days=ATTENDANCE_BACKDATE_DAYS):
+        raise HTTPException(400, f"Attendance can be recorded for the last {ATTENDANCE_BACKDATE_DAYS} days only.")
+    return d
+
+
+def _upsert_attendance(db: Session, employee_id, day: date, status: str, user_id) -> Attendance:
+    row = db.query(Attendance).filter(Attendance.employee_id == employee_id, Attendance.date == day).first()
+    if row:
+        row.status, row.marked_by = status, user_id
+    else:
+        row = Attendance(employee_id=employee_id, date=day, status=status, marked_by=user_id)
+        db.add(row)
+    return row
+
+
+@router.post("/attendance", response_model=AttendanceOut, status_code=201, dependencies=[Depends(require_permission("core", "manage_access"))])
+def mark_attendance(payload: AttendanceMark, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     employee = db.query(Employee).filter(Employee.id == payload.employee_id, Employee.org_id == org_id).first()
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
-
-    existing = db.query(Attendance).filter(Attendance.employee_id == payload.employee_id, Attendance.date == date.today()).first()
-    if existing:
-        existing.status = payload.status
-        db.commit()
-        db.refresh(existing)
-        return existing
-
-    record = Attendance(employee_id=payload.employee_id, status=payload.status, date=date.today())
-    db.add(record)
+    day = _attendance_day(payload.date)
+    row = _upsert_attendance(db, employee.id, day, payload.status, current_user.id)
+    log_audit_event(db, org_id, current_user.id, "mark_attendance", "Attendance", employee.id)
     db.commit()
-    db.refresh(record)
-    return record
+    db.refresh(row)
+    return row
+
+
+@router.post("/attendance/bulk", dependencies=[Depends(require_permission("core", "manage_access"))])
+def mark_attendance_bulk(payload: AttendanceBulk, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    day = _attendance_day(payload.date)
+    ids = {e.employee_id for e in payload.entries}
+    valid = {e.id for e in db.query(Employee).filter(Employee.org_id == org_id, Employee.id.in_(ids)).all()}
+    if ids - valid:
+        raise HTTPException(404, "One or more employees were not found.")
+    for e in payload.entries:
+        _upsert_attendance(db, e.employee_id, day, e.status, current_user.id)
+    log_audit_event(db, org_id, current_user.id, f"mark_attendance_bulk ({len(payload.entries)} employees, {day})", "Attendance", None)
+    db.commit()
+    return {"date": day, "saved": len(payload.entries)}
+
+
+@router.get("/attendance/day", dependencies=[Depends(require_permission("hr", "view"))])
+def attendance_for_day(day: date | None = Query(None, alias="date"), db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+    """Every active employee with their mark for the day (or 'leave' if approved leave covers it and nobody marked them)."""
+    d = day or date.today()
+    emps = db.query(Employee).options(joinedload(Employee.department)).filter(Employee.org_id == org_id, Employee.status == "active").order_by(Employee.name).all()
+    marks = {a.employee_id: a for a in db.query(Attendance).filter(Attendance.date == d, Attendance.employee_id.in_([e.id for e in emps])).all()}
+    on_leave = leave_rules.approved_leave_on(db, [e.id for e in emps], d)
+    rows = []
+    for e in emps:
+        m = marks.get(e.id)
+        rows.append({"employee_id": e.id, "employee_code": e.employee_code, "name": e.name,
+                     "department_name": e.department.name if e.department else None,
+                     "status": m.status if m else None, "marked": m is not None,
+                     "on_approved_leave": e.id in on_leave})
+    return {"date": d, "employees": rows}
+
+
+@router.get("/attendance/summary", dependencies=[Depends(require_permission("hr", "view"))])
+def attendance_summary(month: int = Query(..., ge=1, le=12), year: int = Query(..., ge=2000, le=2100), db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+    first, last = date(year, month, 1), date(year, month, calendar.monthrange(year, month)[1])
+    emps = db.query(Employee).filter(Employee.org_id == org_id, Employee.status == "active").order_by(Employee.name).all()
+    counts: dict = {e.id: {"present": 0, "absent": 0, "half_day": 0, "leave": 0} for e in emps}
+    for a in db.query(Attendance).filter(Attendance.employee_id.in_(list(counts) or [None]), Attendance.date >= first, Attendance.date <= last).all():
+        counts[a.employee_id][a.status] += 1
+    return [{"employee_id": e.id, "employee_code": e.employee_code, "name": e.name, **counts[e.id]} for e in emps]
 
 
 @router.get("/attendance", response_model=list[AttendanceOut], dependencies=[Depends(require_permission("hr", "view"))])

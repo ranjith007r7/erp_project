@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.api.routes import auth, crm, sales, finance, inventory, procurement, hr, projects, documents, dashboard, reports, custom_fields, notifications, roles, scheduled_jobs, audit_log, search, organizations, org_danger, profiles, intelligence
+from app.api.routes import auth, crm, sales, finance, inventory, procurement, hr, projects, documents, dashboard, reports, custom_fields, notifications, roles, scheduled_jobs, audit_log, search, organizations, org_danger, profiles, self_service, intelligence, workpage
 
 # Importing app.models here (even though unused directly) registers every
 # table with Base.metadata - needed so Alembic's autogenerate can see
@@ -45,8 +45,10 @@ app.include_router(search.router)
 app.include_router(organizations.router)
 app.include_router(profiles.org_router)
 app.include_router(profiles.me_router)
+app.include_router(self_service.router)
 app.include_router(org_danger.router)
 app.include_router(intelligence.router)
+app.include_router(workpage.router)
 app.include_router(dashboard.router)
 
 # NOTE: there used to be a startup hook here calling

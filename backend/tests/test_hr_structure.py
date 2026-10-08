@@ -174,7 +174,7 @@ def test_org_isolation_for_structure(client, signup):
     d = dept(client, a)
     p = pos(client, a, d)
     e = client.post("/api/hr/employees", headers=a, json={"name": "A", "department_id": d["id"], "position_id": p["id"]}).json()
-    assert client.get("/api/hr/positions", headers=b).json() == []
+    assert p["id"] not in [x["id"] for x in client.get("/api/hr/positions", headers=b).json()]
     assert client.get(f"/api/hr/employees/{e['id']}", headers=b).status_code == 404
     assert client.patch(f"/api/hr/positions/{p['id']}", headers=b, json={"base_salary": 1}).status_code == 404
     assert client.post("/api/hr/positions", headers=b, json={"department_id": d["id"], "title": "T", "base_salary": 1}).status_code == 404

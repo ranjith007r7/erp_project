@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload, load_only
 from app.core.config import settings
 from app.core.database import get_db
 from app.api.deps import get_current_user, get_org_id, require_permission
+from app.services import workpages
 from app.models.organization import Organization
 from app.models.procurement import (
     Vendor, PurchaseOrder, PurchaseOrderItem, GoodsReceipt, GoodsReceiptFile, ProcurementEmailLog,
@@ -97,7 +98,7 @@ def _out(po: PurchaseOrder) -> dict:
         "created_by_name": po.creator.name if po.creator else None,
         "created_by_email": po.creator.email if po.creator else None,
         "approved_by_name": po.approver.name if po.approver else None,
-        "approved_at": po.approved_at,
+        "approved_at": po.approved_at, "work_order_id": po.work_order_id,
         "items": [{
             "id": i.id, "product_id": i.product_id, "product_name": i.product.name if i.product else None,
             "qty": i.qty, "unit_price": i.unit_price, "line_total": i.qty * i.unit_price,
@@ -130,6 +131,7 @@ def _require_approved(po: PurchaseOrder, what: str):
 def _log_email(db, org_id, po, kind, channel, to_email, subject, status, user, receipt_id=None):
     db.add(ProcurementEmailLog(org_id=org_id, po_id=po.id, receipt_id=receipt_id, kind=kind, channel=channel,
                                to_email=to_email, subject=subject, status=status, created_by=user.id))
+    workpages.safe(db, workpages.on_procurement_notice, po, kind, channel, status, to_email, user)
 
 
 async def _read_proof(upload: UploadFile | None, label: str, allowed: set[str]) -> tuple[str, bytes, str]:
@@ -187,9 +189,14 @@ def create_purchase_order(payload: PurchaseOrderCreate, db: Session = Depends(ge
     if not vendor:
         raise HTTPException(404, "Vendor not found")
 
+    try:
+        work_id = workpages.check_linkable(db, org_id, payload.work_order_id)
+    except workpages.WorkError as e:
+        raise HTTPException(400, str(e))
+
     po = PurchaseOrder(org_id=org_id, vendor_id=payload.vendor_id, order_date=date.today(),
                        created_by=current_user.id, approval_status="pending",
-                       po_number=_next_po_number(db, org_id))
+                       po_number=_next_po_number(db, org_id), work_order_id=work_id)
     total = 0
     for item in payload.items:
         product = db.query(Product).filter(Product.id == item.product_id, Product.org_id == org_id).first()
@@ -201,6 +208,7 @@ def create_purchase_order(payload: PurchaseOrderCreate, db: Session = Depends(ge
     db.add(po)
     db.flush()
     notify_role(db, org_id, "Admin", f"{po.po_number} for {vendor.name} is waiting for your approval.")
+    workpages.safe(db, workpages.on_po_created, po, current_user)
     log_audit_event(db, org_id, current_user.id, "create_purchase_order", "PurchaseOrder", po.id)
     db.commit()
     return _out(_load_po(db, org_id, po.id))
@@ -230,6 +238,7 @@ def approve_purchase_order(po_id: str, db: Session = Depends(get_db), org_id: st
     po.approved_by = current_user.id
     po.approved_at = datetime.utcnow()
     notify_user(db, org_id, po.created_by, f"{po.po_number} was approved by {current_user.name}. You can now send it to the vendor.")
+    workpages.safe(db, workpages.on_po_decision, po, current_user, True)
     log_audit_event(db, org_id, current_user.id, "approve_purchase_order", "PurchaseOrder", po.id)
     db.commit()
     return _out(_load_po(db, org_id, po_id))
@@ -245,6 +254,7 @@ def reject_purchase_order(po_id: str, db: Session = Depends(get_db), org_id: str
     po.approved_by = current_user.id
     po.approved_at = datetime.utcnow()
     notify_user(db, org_id, po.created_by, f"{po.po_number} was rejected by {current_user.name}.")
+    workpages.safe(db, workpages.on_po_decision, po, current_user, False)
     log_audit_event(db, org_id, current_user.id, "reject_purchase_order", "PurchaseOrder", po.id)
     db.commit()
     return _out(_load_po(db, org_id, po_id))
@@ -358,6 +368,7 @@ async def receive_good(
     _save_receipt(db, org_id, po, current_user, "good", notes, [("invoice", *f_inv), ("pod", *f_pod)])
     po.status = "received"
     notify_role(db, org_id, "Admin", f"{po.po_number} from {po.vendor.name if po.vendor else 'a vendor'} was received in good condition - stock updated.")
+    workpages.safe(db, workpages.on_po_received, po, current_user)
     log_audit_event(db, org_id, current_user.id, "receive_purchase_order", "PurchaseOrder", po.id)
     db.commit()
     return _out(_load_po(db, org_id, po_id))
@@ -388,6 +399,7 @@ async def receive_bad(
     _save_receipt(db, org_id, po, current_user, "bad", notes, files)
     po.status = "defective"
     notify_role(db, org_id, "Admin", f"{po.po_number} from {po.vendor.name if po.vendor else 'a vendor'} arrived DEFECTIVE and was not added to stock.")
+    workpages.safe(db, workpages.on_po_defective, po, current_user, (notes or "").strip() or None)
     log_audit_event(db, org_id, current_user.id, "receive_purchase_order_defective", "PurchaseOrder", po.id)
     db.commit()
     return _out(_load_po(db, org_id, po_id))

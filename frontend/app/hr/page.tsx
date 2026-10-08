@@ -17,7 +17,7 @@ type Employee = {
   date_of_birth: string | null; gender: string | null; address: string | null; emergency_contact_name: string | null; emergency_contact_phone: string | null;
   login_status: string | null; login_email: string | null; access_role_name: string | null;
 };
-type LeaveRequest = { id: string; employee_id: string; leave_type: string; start_date: string; end_date: string; status: string };
+type LeaveRequest = { id: string; employee_id: string; leave_type: string; start_date: string; end_date: string; status: string; days?: number; reason?: string | null; decision_note?: string | null };
 type Payslip = {
   employee_id: string; gross: string; deductions: string; net_pay: string; pf_amount: string; insurance_amount: string;
   tds_amount: string; leave_deduction: string; lop_days: string;
@@ -84,7 +84,10 @@ export default function HRPage() {
   }
 
   async function updateLeaveStatus(id: string, status: string) {
-    await apiRequest(`/api/hr/leave-requests/${id}/status`, { method: "PATCH", auth: true, body: { status } }).catch((err) => setError(err.message));
+    // an optional short note goes back to the employee with the decision
+    const note = status === "rejected" ? window.prompt("Reason for rejecting (optional, the employee will see it):") : null;
+    if (status === "rejected" && note === null) return;
+    await apiRequest(`/api/hr/leave-requests/${id}/status`, { method: "PATCH", auth: true, body: { status, note: note || null } }).catch((err) => setError(err.message));
     loadAll();
   }
 
@@ -133,6 +136,10 @@ export default function HRPage() {
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">+ New employee (application form)</h2>
           <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">Pick department and role, fill in the applicant&apos;s details, get an employee code.</p>
         </Link>
+        <Link href="/hr/attendance" className="block bg-white dark:bg-zinc-900 rounded-xl shadow-sm dark:shadow-none dark:border dark:border-zinc-800 p-4 hover:ring-2 hover:ring-slate-300 dark:hover:ring-zinc-600 md:col-span-2" data-testid="attendance-link">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm">Attendance</h2>
+          <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">Mark who was in each day (administrators only) and see the monthly summary.</p>
+        </Link>
       </div>
 
       <div className="grid md:grid-cols-3 gap-6">
@@ -178,7 +185,9 @@ export default function HRPage() {
             {leaves.map((l) => (
               <div key={l.id} className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-3 text-sm">
                 <p className="text-slate-800 dark:text-white font-medium">{employeeName(l.employee_id)}</p>
-                <p className="text-xs text-slate-500 dark:text-zinc-500">{l.leave_type} · {l.start_date} → {l.end_date} · {l.status}</p>
+                <p className="text-xs text-slate-500 dark:text-zinc-500">{l.leave_type} · {l.start_date} → {l.end_date}{l.days ? ` · ${l.days} day${l.days === 1 ? "" : "s"}` : ""} · {l.status}</p>
+                {l.reason && <p className="text-xs text-slate-500 dark:text-zinc-500">Reason: {l.reason}</p>}
+                {l.decision_note && <p className="text-xs text-slate-500 dark:text-zinc-500">Note: {l.decision_note}</p>}
                 {l.status === "pending" && (
                   <div className="flex gap-2 mt-2">
                     <button

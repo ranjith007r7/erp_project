@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { apiRequest } from "@/lib/api";
 import { PageHeader, Button, Card } from "@/components/ui";
 import { useToast } from "@/components/Toast";
@@ -90,6 +91,10 @@ export default function MyProfilePage() {
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
       <PageHeader title="My Profile" description={`${me.organization.name} · ${me.user.role_name ?? "No role"}`} />
+
+      <Link href="/profile/leaves" className="block rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700 hover:bg-indigo-100 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300" data-testid="to-leaves">
+        My Leaves: apply for leave, check balances and see your attendance →
+      </Link>
 
       <Card>
         <h2 className="mb-3 font-semibold text-slate-900 dark:text-white">Your account</h2>

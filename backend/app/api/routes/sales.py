@@ -27,6 +27,7 @@ from app.schemas.sales import (
 from app.services.accounting import post_invoice_journal_entry
 from app.services.inventory import issue_stock
 from app.services.audit import log_audit_event
+from app.services import workpages
 
 router = APIRouter(prefix="/api/sales", tags=["sales"], dependencies=[Depends(get_current_user)])
 
@@ -108,7 +109,7 @@ def update_quotation_status(quotation_id: str, payload: QuotationStatusUpdate, d
 
 
 @router.post("/quotations/{quotation_id}/accept", response_model=SalesOrderOut, status_code=201, dependencies=[Depends(require_permission("sales", "edit"))])
-def accept_quotation(quotation_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+def accept_quotation(quotation_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     """
     Turns an accepted Quotation into a real Sales Order, copying its line
     items across. This is the 'customer said yes' moment.
@@ -136,6 +137,8 @@ def accept_quotation(quotation_id: str, db: Session = Depends(get_db), org_id: s
 
     quotation.status = "accepted"
     db.add(order)
+    db.flush()
+    workpages.safe(db, workpages.on_quotation_accepted, quotation, order, current_user)   # opens a Workpage entry
     db.commit()
     db.refresh(order)
     return order

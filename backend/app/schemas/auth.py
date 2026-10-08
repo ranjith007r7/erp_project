@@ -104,5 +104,7 @@ class UserOut(BaseModel):
     is_admin: bool = False
     role_name: Optional[str] = None
     org_name: Optional[str] = None
+    # "module:action" strings the sidebar / menus use to show only what this person can open.
+    permissions: list[str] = []
 
     model_config = {"from_attributes": True}

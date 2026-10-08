@@ -122,7 +122,9 @@ class Employee(Base):
 
 
 class Attendance(Base):
+    """One row per employee per day, marked by an administrator only (see hr routes)."""
     __tablename__ = "attendance"
+    __table_args__ = (UniqueConstraint("employee_id", "date", name="uq_attendance_employee_date"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     employee_id = Column(UUID(as_uuid=True), ForeignKey("employees.id"), nullable=False)
@@ -130,6 +132,7 @@ class Attendance(Base):
     status = Column(String, default="present")  # present / absent / half_day / leave
     check_in = Column(Time, nullable=True)
     check_out = Column(Time, nullable=True)
+    marked_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
 
 class LeaveRequest(Base):
@@ -140,8 +143,17 @@ class LeaveRequest(Base):
     leave_type = Column(String, nullable=False)   # e.g. "Sick", "Casual", "Earned"
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
-    status = Column(String, default="pending")     # pending / approved / rejected
+    status = Column(String, default="pending")     # pending / approved / rejected / cancelled
     created_at = Column(DateTime, default=datetime.utcnow)
+    reason = Column(Text, nullable=True)
+    decided_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    decided_at = Column(DateTime, nullable=True)
+    decision_note = Column(String, nullable=True)
+
+    @property
+    def days(self) -> int:
+        """Calendar days, both ends included (the same counting payroll uses for unpaid leave)."""
+        return (self.end_date - self.start_date).days + 1
 
 
 class PayrollRun(Base):

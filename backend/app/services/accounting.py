@@ -126,6 +126,23 @@ def post_payment_journal_entry(db: Session, org_id: str, payment_id: str, amount
     return entry
 
 
+def post_work_receipt_journal_entry(db: Session, org_id: str, payment_id: str, amount, note: str | None = None) -> JournalEntry:
+    """
+    Money received straight against a customer work (Workpage), which has no
+    Sales invoice behind it to have raised a receivable first:
+        Debit  Cash             (money has arrived)
+        Credit Sales Revenue    (it is earned income)
+    """
+    cash_account = get_account(db, org_id, "1000")
+    revenue_account = get_account(db, org_id, "4000")
+    entry = JournalEntry(org_id=org_id, entry_number=next_entry_number(db, org_id), reference=f"WPMT-{payment_id}",
+                         description="Work payment received" + (f" ({note})" if note else ""))
+    entry.lines.append(JournalLine(account_id=cash_account.id, debit=amount, credit=0))
+    entry.lines.append(JournalLine(account_id=revenue_account.id, debit=0, credit=amount))
+    db.add(entry)
+    return entry
+
+
 def post_payroll_journal_entry(db: Session, org_id: str, payroll_run_id: str, total_net_pay,
                                total_expense=None, statutory_deductions=0) -> JournalEntry:
     """

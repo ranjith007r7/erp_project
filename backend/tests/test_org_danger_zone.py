@@ -162,7 +162,7 @@ def test_reset_clears_business_data_but_keeps_people_and_structure(client, mailb
     assert client.get("/api/auth/me", headers=h).status_code == 200
     assert login(client, emp, "employee").status_code == 200
     assert client.get("/api/hr/employees", headers=h).json()[0]["employee_code"] == "EMP-0001"
-    assert client.get("/api/hr/positions", headers=h).json()[0]["title"] == "Accounts Manager"
+    assert "Accounts Manager" in [x["title"] for x in client.get("/api/hr/positions", headers=h).json()]
     assert client.get("/api/sales/products", headers=h).json() == []
     product, vendor, po = setup(client, h)
     assert po["po_number"] == "PO-0001"                       # numbering starts again

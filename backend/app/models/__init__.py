@@ -19,6 +19,7 @@ from app.models.hr import Department, Employee, Attendance, LeaveRequest, Payrol
 from app.models.projects import Project, Task, TimeLog
 from app.models.documents import Document, ApprovalWorkflow, ApprovalRequest, ApprovalStep
 from app.models.reports import SavedReport
+from app.models.workpage import WorkOrder, WorkEvent, WorkPayment
 
 __all__ = [
     "Organization",
@@ -67,5 +68,8 @@ __all__ = [
     "ApprovalRequest",
     "ApprovalStep",
     "SavedReport",
+    "WorkOrder",
+    "WorkEvent",
+    "WorkPayment",
 ]
 from app.models.security import SignupAttempt, OrgActionCode

@@ -38,6 +38,8 @@ export default function ProcurementPage() {
 
   const [vendorForm, setVendorForm] = useState({ name: "", email: "" });
   const [poVendor, setPoVendor] = useState("");
+  const [poWork, setPoWork] = useState("");
+  const [openWorks, setOpenWorks] = useState<{ id: string; work_number: string; client_name: string; status_label: string }[]>([]);
   const [lines, setLines] = useState<Line[]>([{ product_id: "", qty: "1", unit_price: "" }]);
 
   const [filterVendor, setFilterVendor] = useState("");
@@ -51,6 +53,7 @@ export default function ProcurementPage() {
     Promise.allSettled([
       apiRequest<Vendor[]>("/api/procurement/vendors", { auth: true }).then(setVendors),
       apiRequest<Product[]>("/api/sales/products", { auth: true }).then(setProducts),
+      apiRequest<typeof openWorks>("/api/workpage/open-works", { auth: true }).then(setOpenWorks).catch(() => setOpenWorks([])),
       apiRequest<PurchaseOrder[]>("/api/procurement/purchase-orders", { auth: true }).then(setOrders).catch((e) => setError(e.message)),
     ]).finally(() => setLoading(false));
   }
@@ -98,9 +101,9 @@ export default function ProcurementPage() {
     try {
       await apiRequest("/api/procurement/purchase-orders", {
         method: "POST", auth: true,
-        body: { vendor_id: poVendor, items: lines.map((l) => ({ product_id: l.product_id, qty: Number(l.qty), unit_price: Number(l.unit_price) })) },
+        body: { vendor_id: poVendor, work_order_id: poWork || undefined, items: lines.map((l) => ({ product_id: l.product_id, qty: Number(l.qty), unit_price: Number(l.unit_price) })) },
       });
-      setPoVendor(""); setLines([{ product_id: "", qty: "1", unit_price: "" }]);
+      setPoVendor(""); setPoWork(""); setLines([{ product_id: "", qty: "1", unit_price: "" }]);
       showToast("Purchase order raised. It now waits for approval.", "success");
       loadAll();
     } catch (err) { fail(err, "Failed to create purchase order"); }
@@ -165,6 +168,12 @@ export default function ProcurementPage() {
                   <option value="">Select vendor...</option>
                   {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                 </Select>
+                {openWorks.length > 0 && (
+                  <Select aria-label="For work" value={poWork} onChange={(e) => setPoWork(e.target.value)}>
+                    <option value="">Not for a specific work</option>
+                    {openWorks.map((w) => <option key={w.id} value={w.id}>{w.work_number} · {w.client_name} ({w.status_label})</option>)}
+                  </Select>
+                )}
                 {lines.map((l, i) => (
                   <div key={i} className="grid grid-cols-12 gap-2 items-center">
                     <Select required aria-label="Product" className="col-span-6" value={l.product_id}

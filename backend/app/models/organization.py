@@ -36,6 +36,11 @@ class Organization(Base):
     # feature.
     branding_storage_key = Column(String, nullable=True)
 
+    # Set once the standard departments / job roles / permission defaults have been
+    # offered to this org (see app/services/default_structure.py). After that they
+    # are never re-created behind the admin's back, even if the admin deleted some.
+    defaults_seeded_at = Column(DateTime, nullable=True)
+
 
 class OrganizationProfile(Base):
     """
