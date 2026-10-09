@@ -263,3 +263,22 @@ def test_reset_and_delete_organization_clear_works(client, signup):
         assert s.query(WorkPayment).filter(WorkPayment.org_id == org_id).count() == 0
     finally:
         s.close()
+
+
+def test_import_accepted_backfills_old_quotes(client, signup):
+    h = signup()
+    cust = client.post("/api/sales/customers", headers=h, json={"name": "Old Client"}).json()
+    prod = client.post("/api/sales/products", headers=h, json={"name": f"Pipe {uuid.uuid4().hex[:4]}", "unit_price": 100}).json()
+    q = client.post("/api/sales/quotations", headers=h, json={"customer_id": cust["id"], "items": [{"product_id": prod["id"], "qty": 2, "unit_price": 100}]}).json()
+    assert client.post(f"/api/sales/quotations/{q['id']}/accept", headers=h).status_code == 201
+    # simulate "accepted before the update": remove the work that the hook made
+    works = client.get(W, headers=h).json()["works"]
+    mine = [w for w in works if w["client_name"] == "Old Client"]
+    assert len(mine) == 1
+    assert client.delete(f"{W}/{mine[0]['id']}", headers=h).status_code == 204
+    r = client.post("/api/workpage/import-accepted", headers=h)
+    assert r.status_code == 200 and r.json()["created"] >= 1
+    again = client.post("/api/workpage/import-accepted", headers=h).json()
+    assert again["created"] == 0
+    works = client.get(W, headers=h).json()["works"]
+    assert any(w["client_name"] == "Old Client" and w["status"] == "assigned" for w in works)

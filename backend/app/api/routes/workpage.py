@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.hr import Department, Employee
 from app.models.procurement import PurchaseOrder
-from app.models.sales import Customer
+from app.models.sales import Customer, Quotation, SalesOrder
 from app.models.workpage import WorkOrder
 from app.schemas.workpage import WorkCreate, WorkUpdate, AllocateIn, DeliverIn, WorkPaymentIn
 from app.services import workpages as svc
@@ -91,6 +91,23 @@ def create_work(payload: WorkCreate, db: Session = Depends(get_db), org_id: str 
     log_audit_event(db, org_id, current_user.id, "create_work", "WorkOrder", w.id)
     db.commit()
     return svc.detail(db, _load(db, org_id, w.id))
+
+
+@router.post("/import-accepted", dependencies=[Depends(require_permission("workpage", "create"))])
+def import_accepted(db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    """One-off catch-up: open a Work for every accepted quotation that has none (accepted before Workpage existed)."""
+    have = {r[0] for r in db.query(WorkOrder.quotation_id).filter(WorkOrder.org_id == org_id, WorkOrder.quotation_id.isnot(None))}
+    quotes = db.query(Quotation).filter(Quotation.org_id == org_id, Quotation.status == "accepted").order_by(Quotation.created_at).all()
+    created = 0
+    for qn in quotes:
+        if qn.id in have:
+            continue
+        order = db.query(SalesOrder).filter(SalesOrder.org_id == org_id, SalesOrder.quotation_id == qn.id).first()
+        if svc.on_quotation_accepted(db, qn, order, current_user):
+            created += 1
+    log_audit_event(db, org_id, current_user.id, "import_accepted_quotations", "WorkOrder", None)
+    db.commit()
+    return {"created": created, "already_had_work": len(quotes) - created}
 
 
 @router.get("/works/{work_id}", dependencies=[Depends(require_permission("workpage", "view"))])

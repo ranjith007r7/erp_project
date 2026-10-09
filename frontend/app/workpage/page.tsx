@@ -55,10 +55,18 @@ export default function WorkpagePage() {
     } catch (err) { showToast(err instanceof Error ? err.message : "Could not create the work", "error"); }
   }
 
+  async function importAccepted() {
+    try {
+      const r = await apiRequest<{ created: number }>("/api/workpage/import-accepted", { method: "POST", auth: true });
+      showToast(r.created ? `${r.created} accepted quotation(s) imported as works.` : "Nothing to import - every accepted quotation already has a work.", "success");
+      load();
+    } catch (err) { showToast(err instanceof Error ? err.message : "Import failed", "error"); }
+  }
+
   return (
     <main className="p-4 sm:p-8">
       <PageHeader title="Workpage" description="Every customer work, its status, money and who is handling it. Statuses move by themselves as Sales, Procurement and Inventory do their part."
-        actions={can("workpage", "create") ? <Button onClick={() => setCreating(true)} data-testid="new-work"><span className="flex items-center gap-1.5"><Plus size={15} /> New work</span></Button> : undefined} />
+        actions={can("workpage", "create") ? <div className="flex gap-2"><Button variant="secondary" onClick={importAccepted} data-testid="import-accepted">Import accepted quotations</Button><Button onClick={() => setCreating(true)} data-testid="new-work"><span className="flex items-center gap-1.5"><Plus size={15} /> New work</span></Button></div> : undefined} />
 
       {error && <p className="text-red-600 mb-3" role="alert">{error}</p>}
 
