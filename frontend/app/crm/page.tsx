@@ -367,7 +367,7 @@ export default function CRMPage() {
               />
             </label>
             <label className="block text-sm text-slate-600 dark:text-zinc-300">
-              Quotation amount (₹): becomes the work's amount
+              Quotation amount (₹): becomes the work&apos;s amount
               <input
                 type="number"
                 min="0"
