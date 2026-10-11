@@ -24,6 +24,8 @@ import { GlobalSearch } from "@/components/GlobalSearch";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ProfileMenu } from "@/components/ProfileMenu";
+import { SidebarNav } from "@/components/SidebarNav";
+import { RouteProgress } from "@/components/RouteProgress";
 
 export type CurrentUser = {
   id: string;
@@ -83,6 +85,28 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
+  // phone gesture: swipe right from the left edge to open the module drawer, swipe left to close it
+  useEffect(() => {
+    let x0 = 0, y0 = 0, tracking = false;
+    const start = (e: TouchEvent) => {
+      const t = e.touches[0];
+      x0 = t.clientX; y0 = t.clientY;
+      tracking = mobileOpen || x0 <= 24;
+    };
+    const end = (e: TouchEvent) => {
+      if (!tracking) return;
+      tracking = false;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - x0, dy = t.clientY - y0;
+      if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 1.5) return;   // a real horizontal swipe only
+      if (dx > 0 && !mobileOpen) setMobileOpen(true);
+      if (dx < 0 && mobileOpen) setMobileOpen(false);
+    };
+    document.addEventListener("touchstart", start, { passive: true });
+    document.addEventListener("touchend", end, { passive: true });
+    return () => { document.removeEventListener("touchstart", start); document.removeEventListener("touchend", end); };
+  }, [mobileOpen]);
+
   useEffect(() => {
     if (publicPage) { setUser(null); setSignedIn(false); return; }
     if (!getToken()) { setSignedIn(false); return; }
@@ -109,33 +133,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isActive = (href: string) => (href === "/dashboard" ? pathname === "/dashboard" : pathname === href || pathname.startsWith(href + "/"));
 
   const sidebar = (compact: boolean) => (
-    <nav aria-label="Modules" className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-      {!user && Array.from({ length: 7 }).map((_, i) => <div key={i} className="h-9 rounded-lg bg-slate-100 dark:bg-zinc-800 animate-pulse" />)}
-      {items.map((n) => {
-        const Icon = n.icon;
-        const active = isActive(n.href);
-        return (
-          <Link
-            key={n.href}
-            href={n.href}
-            title={compact ? n.name : undefined}
-            aria-current={active ? "page" : undefined}
-            className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${compact ? "justify-center px-2" : ""} ${
-              active
-                ? "bg-slate-800 text-white dark:bg-zinc-100 dark:text-zinc-950 font-medium"
-                : "text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 hover:text-slate-900 dark:hover:text-white"
-            }`}
-          >
-            <Icon size={18} className="shrink-0" />
-            {!compact && <span className="truncate">{n.name}</span>}
-          </Link>
-        );
-      })}
-    </nav>
+    <SidebarNav items={items} compact={compact} isActive={isActive} placeholders={!user} />
   );
 
   return (
     <UserContext.Provider value={ctx}>
+      <RouteProgress />
       <div className="min-h-screen flex">
         {/* desktop sidebar */}
         <aside
@@ -161,8 +164,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* mobile drawer */}
         {mobileOpen && (
           <div className="md:hidden fixed inset-0 z-40 flex">
-            <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
-            <aside className="relative w-64 max-w-[80%] flex flex-col bg-white dark:bg-zinc-950 border-r border-slate-200 dark:border-zinc-800">
+            <div className="absolute inset-0 bg-black/50 animate-[toast-in_0.2s_ease-out]" onClick={() => setMobileOpen(false)} />
+            <aside className="relative w-64 max-w-[80%] flex flex-col motion-safe:animate-slide-in-left bg-white dark:bg-zinc-950 border-r border-slate-200 dark:border-zinc-800">
               <div className="h-14 px-4 flex items-center justify-between border-b border-slate-200 dark:border-zinc-800">
                 <span className="font-semibold text-slate-800 dark:text-white">{BRAND.productName}</span>
                 <button onClick={() => setMobileOpen(false)} aria-label="Close menu" className="p-1.5 rounded-lg text-slate-500 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"><X size={18} /></button>

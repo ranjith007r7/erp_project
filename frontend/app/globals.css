@@ -22,3 +22,30 @@ input:-webkit-autofill:focus {
   -webkit-text-fill-color: #ffffff;
   box-shadow: 0 0 0 1000px #18181b inset;
 }
+
+/* ---- page transitions (app/template.tsx) -------------------------------------------------
+   The page itself fades in and rises slightly; the top-level blocks inside a page's <main>
+   then follow with a short stagger. Opacity/transform only, so it never shifts the layout.
+   Capped at 8 steps so a long page does not feel slow. */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes block-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.page-enter { animation: page-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.page-enter main > * { animation: block-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.page-enter main > *:nth-child(1) { animation-delay: 0ms; }
+.page-enter main > *:nth-child(2) { animation-delay: 45ms; }
+.page-enter main > *:nth-child(3) { animation-delay: 90ms; }
+.page-enter main > *:nth-child(4) { animation-delay: 135ms; }
+.page-enter main > *:nth-child(5) { animation-delay: 180ms; }
+.page-enter main > *:nth-child(6) { animation-delay: 225ms; }
+.page-enter main > *:nth-child(7) { animation-delay: 270ms; }
+.page-enter main > *:nth-child(n+8) { animation-delay: 315ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter, .page-enter main > * { animation: none !important; }
+}

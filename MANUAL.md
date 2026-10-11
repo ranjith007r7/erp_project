@@ -3025,3 +3025,10 @@ Alembic head: `5242143a3692`.
 Known gaps: legacy stock has no rates until entered; no cost-of-goods journal on stock issue; Sales-accepted quotes without an opportunity can still open a second work; Workpage payments vs Sales invoices can double count; max discount is a percentage only.
 
 **62.14 fix (Render, 9 Oct):** *Danger Zone → Reset* returned 500 ("Failed to fetch" in the browser; a 500 carries no CORS header). Cause: `services/org_data._org_condition` found a child table's organization through only ONE of its parent links, picked in set order. `tasks` links to `projects` and to `users`; when it picked `users`, tasks with no assignee were never deleted and removing their project broke the foreign key. It now combines every parent path with OR. Regression: `test_org_danger_zone.py` now creates an unassigned task. Separately, with Resend in test mode the confirmation e-mail is only delivered to the Resend account owner's address; the code is printed in the Render log until a sending domain is verified.
+
+### 62.15 Navigation motion
+- `components/SidebarNav.tsx`: one hover highlight that glides between modules (and follows keyboard focus), one active marker with an accent bar that slides to the new module; icon and label nudge on hover.
+- `components/RouteProgress.tsx`: top progress bar from the click on an internal link until the new page arrives.
+- `app/template.tsx` + `.page-enter` in `globals.css`: every navigation re-plays a short fade-and-rise, with the page's top-level blocks staggered (8 steps).
+- `AppShell`: phone gesture, swipe right from the left edge opens the module drawer, swipe left closes it; drawer slides in.
+- All of it is transform/opacity only (no layout shift) and switched off for visitors who ask for reduced motion. No new dependency.
