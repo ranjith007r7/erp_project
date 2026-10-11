@@ -11,12 +11,16 @@ import { StatusPill } from "@/components/StatusPill";
 import { useToast } from "@/components/Toast";
 import { useCurrentUser } from "@/components/AppShell";
 import { formatDateTime } from "@/lib/time";
-import { WorkDetail, WorkMeta, inr, METHOD_LABEL } from "@/lib/workpage";
+import { WorkDetail, WorkMeta, StockCheck, inr, METHOD_LABEL } from "@/lib/workpage";
 
+// Tracker: the purchase steps are skipped when the work was served from inventory.
 const STEPS = [
-  ["assigned", "Assigned"], ["allocated", "Allocated"], ["po_raised", "PO raised"],
-  ["po_received", "PO received"], ["delivered", "Delivered"], ["closed", "Closed"],
+  ["assigned", "Assigned"], ["allocated", "Allocated"], ["po_raised", "PO raised"], ["in_transit", "In transit"],
+  ["po_received", "PO received"], ["delivered", "Delivered"], ["closed", "Work done"],
 ] as const;
+const STEP_OF: Record<string, number> = {
+  assigned: 0, allocated: 1, po_not_raised: 1, po_raised: 2, waiting_new_po: 2, in_transit: 3, po_received: 4, delivered: 5, closed: 6,
+};
 
 type Dialog = null | "allocate" | "deliver" | "payment" | "edit";
 
@@ -35,7 +39,7 @@ export default function WorkDetailPage() {
   useEffect(() => { if (!getToken()) { router.push("/login"); return; } load(); }, [load, router]);
   useEffect(() => { apiRequest<WorkMeta>("/api/workpage/meta", { auth: true }).then(setMeta).catch(() => {}); }, []);
   // the work moves while people elsewhere raise / receive POs: keep the page fresh
-  useEffect(() => { const t = setInterval(load, 30000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { const t = setInterval(load, 15000); return () => clearInterval(t); }, [load]);
 
   async function act(path: string, body?: unknown, ok = "Saved.") {
     setBusy(true);
@@ -49,8 +53,9 @@ export default function WorkDetailPage() {
   if (error && !w) return <main className="p-8"><p className="text-red-600" role="alert">{error}</p><Link href="/workpage" className="underline text-sm">Back to Workpage</Link></main>;
   if (!w) return <main className="p-8"><div className="h-8 w-48 bg-slate-200 dark:bg-zinc-800 rounded animate-pulse" /></main>;
 
-  const stepIndex = Math.max(0, STEPS.findIndex(([k]) => k === (w.status === "waiting_new_po" ? "po_raised" : w.status)));
+  const stepIndex = STEP_OF[w.status] ?? 0;
   const waiting = w.status === "waiting_new_po";
+  const fromStock = w.stock_issues.length > 0;
   const closed = w.status === "closed";
   const canEdit = can("workpage", "edit") && !closed;
   const events = [...w.events].reverse();
@@ -73,20 +78,24 @@ export default function WorkDetailPage() {
       <Card className="p-5 mb-4">
         <ol className="flex items-start" aria-label="Progress" data-testid="tracker">
           {STEPS.map(([k, label], i) => {
-            const done = i < stepIndex || (closed && i <= stepIndex);
+            const skipped = fromStock && i >= 2 && i <= 4;
+            const done = skipped ? false : (i < stepIndex || (closed && i <= stepIndex));
             const current = i === stepIndex && !closed;
+            const short = w.status === "po_not_raised" && k === "po_raised";
             return (
-              <li key={k} className="flex-1 flex flex-col items-center text-center relative">
-                {i > 0 && <span className={`absolute top-3.5 right-1/2 w-full h-0.5 ${i <= stepIndex ? "bg-green-500" : "bg-slate-200 dark:bg-zinc-700"}`} aria-hidden />}
-                <span className={`relative z-10 h-7 w-7 rounded-full grid place-items-center text-xs font-semibold ${done ? "bg-green-500 text-white" : current ? (waiting ? "bg-red-500 text-white" : "bg-indigo-600 text-white") : "bg-slate-200 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400"}`}>
-                  {done ? <Check size={14} /> : i + 1}
+              <li key={k} className="flex-1 flex flex-col items-center text-center relative" data-step={k} data-state={skipped ? "skipped" : done ? "done" : current ? "current" : "todo"}>
+                {i > 0 && <span className={`absolute top-3.5 right-1/2 w-full h-0.5 ${skipped ? "bg-slate-200 dark:bg-zinc-800" : i <= stepIndex ? "bg-green-500" : "bg-slate-200 dark:bg-zinc-700"}`} aria-hidden />}
+                <span className={`relative z-10 h-7 w-7 rounded-full grid place-items-center text-xs font-semibold ${skipped ? "bg-slate-100 dark:bg-zinc-800 text-slate-300 dark:text-zinc-600" : done ? "bg-green-500 text-white" : current ? (waiting ? "bg-red-500 text-white" : "bg-indigo-600 text-white") : short ? "bg-orange-200 text-orange-800 ring-2 ring-orange-400" : "bg-slate-200 dark:bg-zinc-700 text-slate-500 dark:text-zinc-400"}`}>
+                  {skipped ? "–" : done ? <Check size={14} /> : i + 1}
                 </span>
-                <span className={`mt-1.5 text-xs ${current ? "font-semibold text-slate-800 dark:text-white" : "text-slate-500 dark:text-zinc-400"}`}>{label}</span>
+                <span className={`mt-1.5 text-xs ${current ? "font-semibold text-slate-800 dark:text-white" : skipped ? "text-slate-300 dark:text-zinc-600" : "text-slate-500 dark:text-zinc-400"}`}>{label}</span>
               </li>
             );
           })}
         </ol>
-        {waiting && <p className="mt-4 text-sm rounded-lg bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300 px-3 py-2" role="status">The goods arrived defective. This work is waiting for a replacement purchase order — raise it in Procurement for this work.</p>}
+        <p className={`mt-4 text-sm rounded-lg px-3 py-2 ${waiting ? "bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300" : w.status === "po_not_raised" ? "bg-orange-50 dark:bg-orange-950/40 text-orange-800 dark:text-orange-300" : "bg-slate-50 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300"}`} role="status" data-testid="pending-reason">
+          <b>{w.status_label}.</b> {w.pending_reason}
+        </p>
       </Card>
 
       {/* money */}
@@ -104,7 +113,7 @@ export default function WorkDetailPage() {
       {canEdit && (
         <div className="flex flex-wrap gap-2 mb-4" data-testid="actions">
           <Button variant="secondary" onClick={() => setDialog("allocate")}>{w.handling_department ? "Re-allocate" : "Allocate"}</Button>
-          {!["delivered", "closed"].includes(w.status) && <Button variant="secondary" onClick={() => setDialog("deliver")}>Mark delivered</Button>}
+          {w.status === "po_received" && <Button variant="secondary" onClick={() => setDialog("deliver")}>Mark delivered</Button>}
           {Number(w.pending_amount) > 0 && <Button variant="secondary" onClick={() => setDialog("payment")}>Record payment</Button>}
           {w.status === "delivered" && can("workpage", "approve") && (
             <Button onClick={() => act("/close", {}, "Work closed.")} disabled={!w.can_close || busy} title={w.can_close ? "" : "Close is allowed only after the full payment is recorded"}>Close work</Button>
@@ -115,6 +124,10 @@ export default function WorkDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 space-y-4">
+          {(canEdit || w.items.length > 0 || fromStock) && (
+            <InventoryCard w={w} canEdit={canEdit} meta={meta} reload={load} setW={setW} />
+          )}
+
           {/* handling */}
           <Card className="p-5" data-testid="handling">
             <h2 className="font-semibold text-slate-800 dark:text-white mb-3">Handling departments</h2>
@@ -235,18 +248,14 @@ function AllocateDialog({ w, meta, busy, onClose, onSubmit }: { w: WorkDetail; m
   );
 }
 
-function DeliverDialog({ w, busy, onClose, onSubmit }: { w: WorkDetail; busy: boolean; onClose: () => void; onSubmit: (b: unknown) => void }) {
+function DeliverDialog({ busy, onClose, onSubmit }: { w?: WorkDetail; busy: boolean; onClose: () => void; onSubmit: (b: unknown) => void }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
-  const [fromStock, setFromStock] = useState(false);
   return (
     <Modal title="Mark as delivered" onClose={onClose}>
-      <form onSubmit={(e) => { e.preventDefault(); onSubmit({ delivered_on: date, note: note || null, from_stock: fromStock }); }} className="space-y-3">
+      <form onSubmit={(e) => { e.preventDefault(); onSubmit({ delivered_on: date, note: note || null }); }} className="space-y-3">
         <Input label="Delivery date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} />
         <Input label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Courier, receiver name…" />
-        {w.status === "allocated" && (
-          <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-zinc-300"><input type="checkbox" className="mt-1" checked={fromStock} onChange={(e) => setFromStock(e.target.checked)} /> Deliver from existing stock (no purchase order needed)</label>
-        )}
         <Actions onClose={onClose} busy={busy} label="Mark delivered" />
       </form>
     </Modal>
@@ -301,5 +310,101 @@ function EditDialog({ w, onClose, onSaved }: { w: WorkDetail; onClose: () => voi
         <Actions onClose={onClose} busy={busy} label="Save" />
       </form>
     </Modal>
+  );
+}
+
+
+function InventoryCard({ w, canEdit, meta, reload, setW }: { w: WorkDetail; canEdit: boolean; meta: WorkMeta | null; reload: () => void; setW: (d: WorkDetail) => void }) {
+  const { showToast } = useToast();
+  const stage = ["allocated", "po_not_raised"].includes(w.status);
+  const issued = w.stock_issues.length > 0;
+  const [rows, setRows] = useState<{ product_id: string; qty: string }[]>(w.items.length ? w.items.map((i) => ({ product_id: i.product_id, qty: String(i.qty) })) : [{ product_id: "", qty: "1" }]);
+  const [check, setCheck] = useState<StockCheck | null>(null);
+  const [busy, setBusy] = useState(false);
+  const itemKey = w.items.map((i) => `${i.product_id}:${i.qty}`).join(",");
+
+  const runCheck = useCallback(() => {
+    if (!w.items.length || issued) { setCheck(null); return Promise.resolve(); }
+    return apiRequest<StockCheck>(`/api/workpage/works/${w.id}/stock-check`, { auth: true }).then(setCheck).catch(() => {});
+  }, [w.id, w.items.length, issued]);
+  useEffect(() => { runCheck(); }, [runCheck, itemKey, w.status]);
+
+  async function call<T = WorkDetail>(path: string, method: string, body: unknown, ok: string) {
+    setBusy(true);
+    try {
+      const d = await apiRequest<T>(`/api/workpage/works/${w.id}${path}`, { method, auth: true, body });
+      setW(d as unknown as WorkDetail); showToast(ok, "success");
+    } catch (e) { showToast(e instanceof Error ? e.message : "Something went wrong", "error"); reload(); }
+    finally { setBusy(false); }
+  }
+  const saveItems = () => call("/items", "PUT", { items: rows.filter((r) => r.product_id).map((r) => ({ product_id: r.product_id, qty: Number(r.qty) || 1 })) }, "Items saved. Inventory checked.");
+
+  if (issued) {
+    const lim = w.pricing.limits;
+    return (
+      <Card className="p-5" data-testid="inventory-card">
+        <h2 className="font-semibold text-slate-800 dark:text-white mb-1">Taken from inventory</h2>
+        <p className="text-xs text-slate-500 dark:text-zinc-400 mb-3">Rates came from the stock batches; nobody typed an amount. The stock was reduced in Inventory at the same moment.</p>
+        <table className="w-full text-sm"><thead><tr className="text-left text-xs text-slate-500 dark:text-zinc-400"><th className="pb-2 font-medium">Item</th><th className="pb-2 font-medium text-right">Qty</th><th className="pb-2 font-medium text-right">Bought at</th><th className="pb-2 font-medium text-right">MRP</th><th className="pb-2 font-medium text-right">Max discount</th></tr></thead>
+          <tbody>{w.stock_issues.map((i) => (
+            <tr key={i.id} className="border-t border-slate-100 dark:border-zinc-800"><td className="py-2">{i.product_name}<div className="text-xs text-slate-400">{i.batch_vendor}</div></td><td className="text-right">{i.qty}</td><td className="text-right tabular-nums">{inr(i.cost_rate)}</td><td className="text-right tabular-nums">{inr(i.mrp)}</td><td className="text-right">{Number(i.max_discount_percent)}%</td></tr>
+          ))}</tbody></table>
+        {lim && (
+          <p className={`mt-3 text-xs rounded-lg px-3 py-2 ${w.pricing.violations.length ? "bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300" : "bg-green-50 dark:bg-green-950/30 text-green-800 dark:text-green-300"}`} data-testid="pricing-note">
+            Billing limits for this stock: not above MRP total {inr(lim.ceiling)}, and not below {inr(lim.floor)} (MRP less the maximum discount). Net payable now {inr(w.net_payable)}.
+            {w.pricing.violations.length ? ` ${w.pricing.violations.join(" ")}` : " Within limits."}
+          </p>
+        )}
+      </Card>
+    );
+  }
+
+  if (!stage && !w.items.length) return null;
+  const products = meta?.products ?? [];
+  return (
+    <Card className="p-5" data-testid="inventory-card">
+      <h2 className="font-semibold text-slate-800 dark:text-white mb-1">Check inventory</h2>
+      <p className="text-xs text-slate-500 dark:text-zinc-400 mb-3">List what the customer needs. If it is all in stock, take it from inventory: the work is delivered at once and the amounts come from the stock batches. If not, the work waits for a purchase order, with the reason on record.</p>
+      {stage && canEdit ? (
+        <div className="space-y-2 mb-3">
+          {rows.map((r, i) => (
+            <div key={i} className="flex gap-2 items-center">
+              <select aria-label="Product" className="flex-1 border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" value={r.product_id} onChange={(e) => setRows(rows.map((x, j) => j === i ? { ...x, product_id: e.target.value } : x))}>
+                <option value="">Select product…</option>{products.map((p) => <option key={p.id} value={p.id}>{p.name}{p.sku ? ` (${p.sku})` : ""}</option>)}
+              </select>
+              <input aria-label="Quantity" type="number" min={1} className="w-24 border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" value={r.qty} onChange={(e) => setRows(rows.map((x, j) => j === i ? { ...x, qty: e.target.value } : x))} />
+              <button type="button" aria-label="Remove item" disabled={rows.length === 1} onClick={() => setRows(rows.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-600 disabled:opacity-30 px-1">✕</button>
+            </div>
+          ))}
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant="secondary" onClick={() => setRows([...rows, { product_id: "", qty: "1" }])}>+ Add item</Button>
+            <Button type="button" size="sm" onClick={saveItems} disabled={busy || !rows.some((r) => r.product_id)} data-testid="check-inventory">Save &amp; check inventory</Button>
+          </div>
+        </div>
+      ) : null}
+      {check && (
+        <>
+          <table className="w-full text-sm" data-testid="stock-check">
+            <thead><tr className="text-left text-xs text-slate-500 dark:text-zinc-400"><th className="pb-2 font-medium">Item</th><th className="pb-2 font-medium text-right">Needed</th><th className="pb-2 font-medium text-right">In stock</th><th className="pb-2 font-medium text-right">Result</th></tr></thead>
+            <tbody>{check.items.map((i) => (
+              <tr key={i.product_id} className="border-t border-slate-100 dark:border-zinc-800">
+                <td className="py-2">{i.product_name}{i.unpriced > 0 && <div className="text-xs text-amber-600">{i.unpriced} unit(s) have no rates yet; a manager must add them in Stock Intake</div>}</td>
+                <td className="text-right">{i.required}</td><td className="text-right">{i.available}</td>
+                <td className={`text-right font-medium ${i.ok ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>{i.ok ? "Available" : `Short by ${i.short_by}`}</td>
+              </tr>))}</tbody>
+          </table>
+          {check.pricing.violations.length > 0 && <p className="mt-3 text-xs rounded-lg px-3 py-2 bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300" data-testid="pricing-block">{check.pricing.violations.join(" ")} A manager must correct the quotation amount or discount before stock can be taken.</p>}
+          {stage && canEdit && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              <Button onClick={() => call("/take-from-inventory", "POST", {}, "Stock taken from inventory. Delivered; waiting for payment.")} disabled={busy || !check.can_issue} data-testid="take-stock">Take from inventory</Button>
+              {!check.all_available && w.status !== "po_not_raised" && (
+                <Button variant="secondary" onClick={() => call("/stock-short", "POST", {}, "Marked as waiting for a purchase.")} disabled={busy} data-testid="stock-short">Stock not available: move to pending</Button>
+              )}
+              {!check.all_available && <span className="self-center text-xs text-slate-500 dark:text-zinc-400">Raise the purchase order in Procurement and pick this work under &quot;For work&quot;.</span>}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
   );
 }

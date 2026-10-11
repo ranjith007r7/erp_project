@@ -22,7 +22,7 @@ def test_empty_org_home_is_all_zero(client, signup):
     h = signup()
     d = client.get(H, headers=h).json()
     assert d["period"] == "today" and d["scope"] == "organization"
-    assert d["income"]["total"] == 0 and d["works"] == {"assigned": 0, "completed": 0, "pending": 0}
+    assert d["income"]["total"] == 0 and d["works"]["total"] == 0 and d["works"]["assigned"] == 0 and d["works"]["done"] == 0 and d["works"]["pending"]["total"] == 0
     assert d["quotes"]["processed"] == 0 and d["purchase_orders"]["raised"] == 0 and len(d["income_trend"]) == 7
 
 
@@ -39,7 +39,7 @@ def test_figures_move_with_real_activity(client, signup):
     d = client.get(H, headers=h).json()
     assert d["income"]["total"] == 250
     assert d["quotes"] == {"processed": 1, "accepted": 1, "value": 20.0}
-    assert d["deals"]["new"] == 2 and d["works"]["assigned"] == 2 and d["works"]["pending"] == 2 and d["works"]["completed"] == 0
+    assert d["deals"]["new"] == 2 and d["works"]["total"] == 2 and d["works"]["assigned"] == 1 and d["works"]["pending"]["total"] == 1 and d["works"]["done"] == 0
     assert d["purchase_orders"]["raised"] == 1 and d["purchase_orders"]["awaiting_approval"] == 1
     assert {s["key"]: s["count"] for s in d["work_status"]}["po_raised"] == 1
     assert d["income_trend"][-1]["amount"] == 250
@@ -87,7 +87,7 @@ def test_non_admin_sees_only_own_department_works(client, signup):
     s.commit(); s.close()
     h = {"Authorization": f"Bearer {login_any(client, email, 'pass12345').json()['access_token']}"}
     d = client.get(H, headers=h).json()
-    assert d["works"]["pending"] == 1 and [w["client_name"] for w in d["recent_works"]] == ["Mine"]
+    assert d["works"]["total"] == 1 and d["works"]["assigned"] == 1 and [w["client_name"] for w in d["recent_works"]] == ["Mine"]
     assert mine["id"]
 
 

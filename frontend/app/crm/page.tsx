@@ -15,8 +15,12 @@ type Lead = {
   name: string;
   company_name: string | null;
   email: string | null;
+  phone: string | null;
   source: string | null;
   status: string;
+  estimated_amount: string | null;
+  industry: string | null;
+  created_at: string;
 };
 
 type Opportunity = {
@@ -31,7 +35,7 @@ export default function CRMPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [leadsLoading, setLeadsLoading] = useState(true);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
-  const [form, setForm] = useState({ name: "", company_name: "", email: "", source: "" });
+  const [form, setForm] = useState({ name: "", company_name: "", phone: "", estimated_amount: "", industry: "", email: "", source: "" });
   const [error, setError] = useState<string | null>(null);
   const [expandedLeadId, setExpandedLeadId] = useState<string | null>(null);
   const { pageItems: pagedLeads, page: leadPage, totalPages: leadTotalPages, setPage: setLeadPage } = usePagination(leads, 10);
@@ -131,10 +135,13 @@ export default function CRMPage() {
     e.preventDefault();
     setError(null);
     try {
-      await apiRequest("/api/crm/leads", { method: "POST", auth: true, body: form });
-      setForm({ name: "", company_name: "", email: "", source: "" });
+      await apiRequest("/api/crm/leads", {
+        method: "POST", auth: true,
+        body: { ...form, estimated_amount: form.estimated_amount === "" ? null : Number(form.estimated_amount) },
+      });
+      setForm({ name: "", company_name: "", phone: "", estimated_amount: "", industry: "", email: "", source: "" });
       loadAll();
-      showToast("Lead added.", "success");
+      showToast("Quotation entry added. It now counts under Quotations received on Home.", "success");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to add lead";
       setError(message);
@@ -143,7 +150,10 @@ export default function CRMPage() {
   }
 
   function openConvertModal(lead: Lead) {
-    setConvertForm({ opportunity_name: "", value: "0" });
+    setConvertForm({
+      opportunity_name: `${lead.company_name || lead.name}`,
+      value: lead.estimated_amount ? String(Number(lead.estimated_amount)) : "0",
+    });
     setConvertingLead(lead);
   }
 
@@ -151,7 +161,7 @@ export default function CRMPage() {
     e.preventDefault();
     if (!convertingLead) return;
     try {
-      await apiRequest(`/api/crm/leads/${convertingLead.id}/convert`, {
+      const res = await apiRequest<{ work_number: string | null }>(`/api/crm/leads/${convertingLead.id}/convert`, {
         method: "POST",
         auth: true,
         body: {
@@ -161,6 +171,8 @@ export default function CRMPage() {
       });
       setConvertingLead(null);
       loadAll();
+      if (res.work_number) showToast(`Converted. ${res.work_number} opened in Workpage as Assigned.`, "success");
+      else showToast("Converted, but no Work could be opened in Workpage. Use Workpage → Add work, and tell your administrator.", "error");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to convert lead");
     }
@@ -175,22 +187,50 @@ export default function CRMPage() {
       <div className="grid md:grid-cols-2 gap-8">
         {/* Leads */}
         <section>
-          <h2 className="text-lg font-semibold text-slate-700 dark:text-zinc-200 mb-3">Leads</h2>
+          <h2 className="text-lg font-semibold text-slate-700 dark:text-zinc-200 mb-1">Quotations received</h2>
+          <p className="text-xs text-slate-500 dark:text-zinc-500 mb-3">Type each incoming quotation here. It counts on Home the moment you save it; converting it opens the work (status Assigned).</p>
 
           <form onSubmit={handleAddLead} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 mb-4 space-y-2">
             <input
-              placeholder="Name"
+              placeholder="Client contact name"
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
             <input
-              placeholder="Company"
+              placeholder="Client / company name"
               value={form.company_name}
               onChange={(e) => setForm({ ...form, company_name: e.target.value })}
               className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
+            <input
+              placeholder="Client mobile number *"
+              aria-label="Client mobile number"
+              required
+              type="tel"
+              inputMode="tel"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                placeholder="Estimated quotation amount (₹)"
+                aria-label="Estimated quotation amount"
+                type="number" min="0" step="0.01"
+                value={form.estimated_amount}
+                onChange={(e) => setForm({ ...form, estimated_amount: e.target.value })}
+                className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
+              />
+              <input
+                placeholder="Domain / industry"
+                aria-label="Domain"
+                value={form.industry}
+                onChange={(e) => setForm({ ...form, industry: e.target.value })}
+                className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
             <input
               placeholder="Email"
               value={form.email}
@@ -203,7 +243,7 @@ export default function CRMPage() {
               onChange={(e) => setForm({ ...form, source: e.target.value })}
               className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
-            <Button type="submit" className="w-full">Add Lead</Button>
+            <Button type="submit" className="w-full">Add quotation</Button>
           </form>
 
           <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -254,7 +294,8 @@ export default function CRMPage() {
                         <div>
                           <p className="font-medium text-slate-800 dark:text-white">{lead.name}</p>
                           <p className="text-xs text-slate-500 dark:text-zinc-500">
-                            {lead.company_name} · {lead.source} ·{" "}
+                            {lead.company_name} · <span data-testid="lead-mobile">{lead.phone || "no mobile"}</span> ·{" "}
+                            {lead.estimated_amount != null ? `₹${Number(lead.estimated_amount).toLocaleString("en-IN")}` : "no amount"} · {lead.source} ·{" "}
                             <span
                               className={
                                 lead.status === "converted" ? "text-green-600 font-medium" : "text-slate-400 dark:text-zinc-500"
@@ -312,7 +353,7 @@ export default function CRMPage() {
       </div>
 
       {convertingLead && (
-        <Modal title={`Convert "${convertingLead.name}" to an Opportunity`} onClose={() => setConvertingLead(null)}>
+        <Modal title={`Convert "${convertingLead.name}" and open the work`} onClose={() => setConvertingLead(null)}>
           <form onSubmit={handleConvert} className="space-y-3">
             <label className="block text-sm text-slate-600 dark:text-zinc-300">
               Opportunity name
@@ -326,7 +367,7 @@ export default function CRMPage() {
               />
             </label>
             <label className="block text-sm text-slate-600 dark:text-zinc-300">
-              Estimated deal value (₹)
+              Quotation amount (₹): becomes the work's amount
               <input
                 type="number"
                 min="0"

@@ -6,11 +6,13 @@ const COLORS: Record<string, string> = {
   red: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
   indigo: "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300",
   teal: "bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300",
+  orange: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
+  violet: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
   green: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300",
 };
 export const STATUS_DOT: Record<string, string> = {
   slate: "bg-slate-400", blue: "bg-blue-500", amber: "bg-amber-500", red: "bg-red-500",
-  indigo: "bg-indigo-500", teal: "bg-teal-500", green: "bg-green-500",
+  indigo: "bg-indigo-500", orange: "bg-orange-500", violet: "bg-violet-500", teal: "bg-teal-500", green: "bg-green-500",
 };
 
 export function StatusPill({ label, color }: { label: string; color: string }) {

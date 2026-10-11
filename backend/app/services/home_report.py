@@ -18,6 +18,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
 
+from app.models.crm import Lead
 from app.models.finance import Payment
 from app.models.organization import Organization
 from app.models.procurement import PurchaseOrder
@@ -50,6 +51,7 @@ def build(db: Session, user: User, kind: str, on: date | None) -> dict:
     works_closed = db.query(WorkOrder).filter(WorkOrder.org_id == org_id, WorkOrder.closed_at >= lo, WorkOrder.closed_at < hi).all()
     works_pending = db.query(WorkOrder).filter(WorkOrder.org_id == org_id, WorkOrder.status != "closed").order_by(WorkOrder.created_at).all()
     pos = db.query(PurchaseOrder).filter(PurchaseOrder.org_id == org_id, PurchaseOrder.created_at >= lo, PurchaseOrder.created_at < hi).order_by(PurchaseOrder.created_at).all()
+    leads = db.query(Lead).filter(Lead.org_id == org_id, Lead.created_at >= lo, Lead.created_at < hi).order_by(Lead.created_at).all()
     quotes = db.query(Quotation).filter(Quotation.org_id == org_id, Quotation.created_at >= lo, Quotation.created_at < hi).order_by(Quotation.created_at).all()
     cust = {c.id: c.name for c in db.query(Customer).filter(Customer.org_id == org_id)}
     wpay = db.query(WorkPayment).filter(WorkPayment.org_id == org_id, WorkPayment.created_at >= lo, WorkPayment.created_at < hi).order_by(WorkPayment.created_at).all()
@@ -67,16 +69,22 @@ def build(db: Session, user: User, kind: str, on: date | None) -> dict:
         "generated_at": datetime.now(timezone.utc).astimezone(tz).strftime("%d %b %Y %H:%M"),
         "kpis": [
             ("Income received", _m((stats["income"] or {}).get("total"))),
-            ("Quotes processed", str((stats["quotes"] or {}).get("processed", 0))),
-            ("Quotes accepted", str((stats["quotes"] or {}).get("accepted", 0))),
-            ("New deals (works)", str((stats["deals"] or {}).get("new", 0))),
+            ("Quotations received (CRM)", str((stats["quotations"] or {}).get("received", 0))),
+            ("  Converted", str((stats["quotations"] or {}).get("converted", 0))),
+            ("  Not converted", str((stats["quotations"] or {}).get("not_converted", 0))),
+            ("Total works opened", str((stats["works"] or {}).get("total", 0))),
+            ("  Assigned", str((stats["works"] or {}).get("assigned", 0))),
+            ("  Allocated", str((stats["works"] or {}).get("allocated", 0))),
+            ("  Pending (all types)", str(((stats["works"] or {}).get("pending") or {}).get("total", 0))),
+        ] + [(f"      {r['label']}", str(r["count"])) for r in (((stats["works"] or {}).get("pending") or {}).get("breakdown") or [])] + [
+            ("Works completed (work done)", str((stats["completed"] or {}).get("count", 0))),
             ("Purchase orders raised", str((stats["purchase_orders"] or {}).get("raised", 0))),
             ("Deliveries made", str((stats["deliveries"] or {}).get("delivered", 0))),
-            ("Works assigned", str((stats["works"] or {}).get("assigned", 0))),
-            ("Works completed", str((stats["works"] or {}).get("completed", 0))),
-            ("Works pending (all open)", str((stats["works"] or {}).get("pending", 0))),
+            ("All unfinished works right now", str((stats["works"] or {}).get("open_now", 0))),
         ],
         "tables": [
+            ("Quotations received (entered in CRM)", ["Client", "Company", "Mobile", "Estimated amount", "Status"],
+             [[x.name, x.company_name or "", x.phone or "", str(x.estimated_amount if x.estimated_amount is not None else ""), "Converted" if x.status == "converted" else "Not converted"] for x in leads]),
             ("Works received", ["Work", "Client", "Domain", "Status", "Quoted", "Vendor", "Profit", "Department"], [row_w(w) for w in works_new]),
             ("Works delivered", ["Work", "Client", "Domain", "Status", "Quoted", "Vendor", "Profit", "Department"], [row_w(w) for w in works_delivered]),
             ("Works closed", ["Work", "Client", "Domain", "Status", "Quoted", "Vendor", "Profit", "Department"], [row_w(w) for w in works_closed]),
@@ -86,7 +94,8 @@ def build(db: Session, user: User, kind: str, on: date | None) -> dict:
             ("Payments received", ["Source", "Reference", "Method", "Amount"],
              [["Work", wnum.get(p.work_id, ""), p.method, str(p.amount)] for p in wpay]
              + [["Invoice", "", p.method or "", str(p.amount)] for p in fpay]),
-            ("Open works (all pending)", ["Work", "Client", "Domain", "Status", "Quoted", "Vendor", "Profit", "Department"], [row_w(w) for w in works_pending]),
+            ("Open works (all pending)", ["Work", "Client", "Domain", "Status", "Quoted", "Vendor", "Profit", "Department", "Reason"],
+             [row_w(w) + [wp.pending_reason(db, w)] for w in works_pending]),
         ],
     }
 

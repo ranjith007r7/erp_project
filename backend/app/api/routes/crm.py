@@ -7,6 +7,8 @@ CRM module routes. Every route here follows the same shape:
 """
 import csv
 import io
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
@@ -16,12 +18,13 @@ from app.core.database import get_db
 from app.api.deps import get_current_user, get_org_id, require_permission
 from app.models.crm import Account, Contact, Lead, Opportunity
 from app.services.audit import log_audit_event
+from app.services import workpages
 from app.schemas.crm import (
     AccountCreate, AccountOut,
     ContactCreate, ContactOut,
-    LeadCreate, LeadOut, LeadStatusUpdate, ConvertLeadRequest,
+    LeadCreate, LeadOut, LeadUpdate, LeadStatusUpdate, ConvertLeadRequest, ConvertedOut,
     OpportunityCreate, OpportunityOut, OpportunityStageUpdate,
-    BulkDeleteRequest,
+    BulkDeleteRequest, clean_mobile,
 )
 
 router = APIRouter(prefix="/api/crm", tags=["crm"], dependencies=[Depends(get_current_user)])
@@ -70,6 +73,23 @@ def create_lead(payload: LeadCreate, db: Session = Depends(get_db), org_id: str 
 @router.get("/leads", response_model=list[LeadOut], dependencies=[Depends(require_permission("crm", "view"))])
 def list_leads(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return db.query(Lead).filter(Lead.org_id == org_id).order_by(Lead.created_at.desc()).all()
+
+
+@router.patch("/leads/{lead_id}", response_model=LeadOut, dependencies=[Depends(require_permission("crm", "edit"))])
+def update_lead(lead_id: str, payload: LeadUpdate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    lead = db.query(Lead).filter(Lead.id == lead_id, Lead.org_id == org_id).first()
+    if not lead:
+        raise HTTPException(404, "Lead not found")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        if isinstance(v, str):
+            v = v.strip() or None
+        if k == "name" and not v:
+            raise HTTPException(400, "Name cannot be empty.")
+        setattr(lead, k, v)
+    log_audit_event(db, org_id, current_user.id, "update_lead", "Lead", lead.id)
+    db.commit()
+    db.refresh(lead)
+    return lead
 
 
 @router.delete("/leads/{lead_id}", status_code=204, dependencies=[Depends(require_permission("crm", "delete"))])
@@ -128,8 +148,8 @@ def update_lead_status(lead_id: str, payload: LeadStatusUpdate, db: Session = De
     return lead
 
 
-@router.post("/leads/{lead_id}/convert", response_model=OpportunityOut, status_code=201, dependencies=[Depends(require_permission("crm", "edit"))])
-def convert_lead(lead_id: str, payload: ConvertLeadRequest, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+@router.post("/leads/{lead_id}/convert", response_model=ConvertedOut, status_code=201, dependencies=[Depends(require_permission("crm", "edit"))])
+def convert_lead(lead_id: str, payload: ConvertLeadRequest, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     """
     The single most important CRM action: turns a Lead into a real Account
     (+ Contact, if we have a name/email) and an Opportunity ready to be
@@ -144,6 +164,7 @@ def convert_lead(lead_id: str, payload: ConvertLeadRequest, db: Session = Depend
     account = Account(
         org_id=org_id,
         name=lead.company_name or lead.name,
+        industry=lead.industry,
     )
     db.add(account)
     db.flush()
@@ -163,15 +184,23 @@ def convert_lead(lead_id: str, payload: ConvertLeadRequest, db: Session = Depend
         account_id=account.id,
         contact_id=contact.id,
         name=payload.opportunity_name,
-        value=payload.opportunity_value,
+        value=payload.opportunity_value or lead.estimated_amount or 0,
     )
     db.add(opportunity)
 
     lead.status = "converted"
+    lead.converted_at = datetime.utcnow()
+    db.flush()
+    # The converted quotation becomes a Work (status Assigned) for the purchase team.
+    work = workpages.safe(db, workpages.on_lead_converted, lead, opportunity, current_user)
+    log_audit_event(db, org_id, current_user.id, "convert_lead", "Lead", lead.id)
 
     db.commit()
     db.refresh(opportunity)
-    return opportunity
+    out = ConvertedOut.model_validate(opportunity)
+    if work:
+        out.work_id, out.work_number = work.id, work.work_number
+    return out
 
 
 # ---------------- Opportunities ----------------
@@ -208,9 +237,9 @@ def export_leads_csv(db: Session = Depends(get_db), org_id: str = Depends(get_or
 
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["name", "company_name", "email", "source", "status"])
+    writer.writerow(["name", "company_name", "email", "phone", "estimated_amount", "industry", "source", "status"])
     for lead in leads:
-        writer.writerow([lead.name, lead.company_name or "", lead.email or "", lead.source or "", lead.status])
+        writer.writerow([lead.name, lead.company_name or "", lead.email or "", lead.phone or "", lead.estimated_amount if lead.estimated_amount is not None else "", lead.industry or "", lead.source or "", lead.status])
 
     buffer.seek(0)
     return StreamingResponse(
@@ -255,7 +284,7 @@ async def import_leads_csv(
 
     reader = csv.DictReader(io.StringIO(text))
     if reader.fieldnames is None or "name" not in reader.fieldnames:
-        raise HTTPException(400, "CSV must have a 'name' column header. Optional columns: company_name, email, source.")
+        raise HTTPException(400, "CSV must have a 'name' column header. Optional columns: company_name, email, phone, estimated_amount, industry, source.")
 
     rows = list(reader)
     if len(rows) > MAX_IMPORT_ROWS:
@@ -270,11 +299,26 @@ async def import_leads_csv(
         if not name:
             errors.append({"row": i, "reason": "'name' is required and was empty"})
             continue
+        try:
+            phone = clean_mobile(row.get("phone"))
+        except ValueError as e:
+            errors.append({"row": i, "reason": str(e)})
+            continue
+        try:
+            est = Decimal((row.get("estimated_amount") or "").replace(",", "").strip()) if (row.get("estimated_amount") or "").strip() else None
+            if est is not None and est < 0:
+                raise InvalidOperation
+        except InvalidOperation:
+            errors.append({"row": i, "reason": "estimated_amount must be a positive number"})
+            continue
         new_leads.append(Lead(
             org_id=org_id,
             name=name,
             company_name=(row.get("company_name") or "").strip() or None,
             email=(row.get("email") or "").strip() or None,
+            phone=phone,
+            estimated_amount=est,
+            industry=(row.get("industry") or "").strip() or None,
             source=(row.get("source") or "").strip() or None,
         ))
         imported += 1

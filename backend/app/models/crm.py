@@ -59,6 +59,11 @@ class Lead(Base):
     source = Column(String, nullable=True)   # e.g. "Website", "Referral", "Cold Call"
     status = Column(String, default="new")
     assigned_to = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    # A quotation coming in is typed here by hand: client mobile is `phone`,
+    # the rough amount quoted is `estimated_amount`, `industry` becomes the work's domain.
+    estimated_amount = Column(Numeric(12, 2), nullable=True)
+    industry = Column(String, nullable=True)
+    converted_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

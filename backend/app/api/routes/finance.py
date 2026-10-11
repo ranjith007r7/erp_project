@@ -118,6 +118,14 @@ def _pct(v) -> Decimal:
     return Decimal(str(v or 0)).quantize(Decimal("0.01"))
 
 
+@router.get("/pricing-check", dependencies=[Depends(require_permission("finance", "view"))])
+def pricing_check(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+    """MRP / max-discount compliance of works served from inventory: billed price vs the batch's MRP and allowed discount."""
+    from app.services import workpages
+    rows = workpages.pricing_report(db, org_id)
+    return {"checked": len(rows), "violations": sum(1 for r in rows if not r["ok"]), "works": rows}
+
+
 @router.get("/leave-types", response_model=list[LeaveTypeOut], dependencies=[Depends(require_permission("finance", "view"))])
 def finance_leave_types(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """The leave legend (shown next to the LOP field so Finance knows which leave is unpaid)."""

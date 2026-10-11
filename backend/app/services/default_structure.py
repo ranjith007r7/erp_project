@@ -38,10 +38,10 @@ DEFAULT_STRUCTURE: dict[str, list[tuple[str, dict[str, str]]]] = {
     "Management": [
         ("Managing Director", {"dashboard": "v", "crm": "v", "sales": "va", "procurement": "va", "inventory": "v",
                                "finance": "va", "hr": "va", "projects": "va", "documents": "vcea", "reports": "v",
-                               "workpage": "vea", "intelligence": "va", "core": "v"}),
+                               "workpage": "vea", "intelligence": "va", "core": "v", "stockin": "vce"}),
         ("General Manager", {"dashboard": "v", "crm": "v", "sales": "va", "procurement": "va", "inventory": "v",
                              "finance": "v", "hr": "v", "projects": "va", "documents": "vcea", "reports": "v",
-                             "workpage": "vea", "intelligence": "v"}),
+                             "workpage": "vea", "intelligence": "v", "stockin": "vce"}),
     ],
     "Sales & Marketing": [
         ("Sales Manager", {"dashboard": "v", "crm": "vced", "sales": "vcea", "inventory": "v", "workpage": "vcea",
@@ -52,19 +52,19 @@ DEFAULT_STRUCTURE: dict[str, list[tuple[str, dict[str, str]]]] = {
     ],
     "Procurement": [
         ("Procurement Manager", {"dashboard": "v", "procurement": "vcea", "inventory": "v", "finance": "v",
-                                 "workpage": "ve", "documents": "vc", "reports": "v"}),
+                                 "workpage": "ve", "documents": "vc", "reports": "v", "stockin": "vce"}),
         ("Purchase Executive", {"dashboard": "v", "procurement": "vce", "inventory": "v", "workpage": "v",
                                 "documents": "vc"}),
     ],
     "Warehouse & Inventory": [
         ("Warehouse Manager", {"dashboard": "v", "inventory": "vced", "procurement": "vce", "sales": "v",
-                               "workpage": "ve", "documents": "vc", "reports": "v"}),
+                               "workpage": "ve", "documents": "vc", "reports": "v", "stockin": "vced"}),
         ("Store Keeper", {"dashboard": "v", "inventory": "vce", "procurement": "vce", "workpage": "v",
                           "documents": "vc"}),
     ],
     "Finance & Accounts": [
         ("Finance Manager", {"dashboard": "v", "finance": "vcea", "sales": "v", "procurement": "v", "hr": "v",
-                             "workpage": "vea", "documents": "vcea", "reports": "v", "intelligence": "v"}),
+                             "workpage": "vea", "documents": "vcea", "reports": "v", "intelligence": "v", "stockin": "v"}),
         ("Accountant", {"dashboard": "v", "finance": "vce", "sales": "v", "procurement": "v", "workpage": "ve",
                         "documents": "vc", "reports": "v"}),
         ("Accounts Executive", {"dashboard": "v", "finance": "vc", "sales": "v", "workpage": "v", "documents": "vc"}),
@@ -75,7 +75,7 @@ DEFAULT_STRUCTURE: dict[str, list[tuple[str, dict[str, str]]]] = {
     ],
     "Operations & Delivery": [
         ("Operations Manager", {"dashboard": "v", "workpage": "vcea", "projects": "vcea", "inventory": "v",
-                                "procurement": "v", "sales": "v", "documents": "vc", "reports": "v"}),
+                                "procurement": "v", "sales": "v", "documents": "vc", "reports": "v", "stockin": "vce"}),
         ("Operations Executive", {"dashboard": "v", "workpage": "vce", "projects": "vce", "inventory": "v",
                                   "documents": "vc"}),
         ("Delivery Executive", {"dashboard": "v", "workpage": "ve", "inventory": "v", "documents": "vc"}),

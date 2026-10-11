@@ -34,7 +34,7 @@ from app.services.accounting import seed_default_accounts
 from app.services.email import send_password_reset_email, send_verification_email
 
 ALL_MODULES = ["core", "dashboard", "crm", "sales", "procurement", "inventory",
-               "finance", "hr", "projects", "documents", "reports", "custom_fields", "intelligence", "workpage"]
+               "finance", "hr", "projects", "documents", "reports", "custom_fields", "intelligence", "workpage", "stockin"]
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 

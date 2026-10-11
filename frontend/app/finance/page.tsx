@@ -23,6 +23,11 @@ type Method = "cash" | "card" | "gpay";
 const METHOD_LABEL: Record<string, string> = { cash: "Cash", card: "Card", gpay: "GPay", bank_transfer: "Bank transfer" };
 const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
+type PricingRow = {
+  work_id: string; work_number: string; client_name: string; status_label: string; net_payable: number; mrp_total: number;
+  lowest_allowed: number; effective_discount_percent: number; max_discount_percent: number; ok: boolean; violations: string[];
+};
+
 export default function FinancePage() {
   const { showToast } = useToast();
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -35,6 +40,7 @@ export default function FinancePage() {
   const [runId, setRunId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pricing, setPricing] = useState<{ checked: number; violations: number; works: PricingRow[] } | null>(null);
 
   const [payFor, setPayFor] = useState<Invoice | null>(null);
   const [method, setMethod] = useState<Method>("cash");
@@ -53,6 +59,7 @@ export default function FinancePage() {
       apiRequest<JournalEntry[]>("/api/finance/journal-entries", { auth: true }).then(setEntries),
       apiRequest<Invoice[]>("/api/sales/invoices", { auth: true }).then(setInvoices),
       apiRequest<Payment[]>("/api/finance/payments", { auth: true }).then(setPayments),
+      apiRequest<{ checked: number; violations: number; works: PricingRow[] }>("/api/finance/pricing-check", { auth: true }).then(setPricing).catch(() => {}),
       apiRequest<LeaveType[]>("/api/finance/leave-types", { auth: true }).then(setLeaveTypes),
       apiRequest<Run[]>("/api/finance/payroll-runs", { auth: true }).then((r) => {
         setRuns(r);
@@ -138,6 +145,31 @@ export default function FinancePage() {
         <SkeletonList rows={3} />
       ) : (
         <>
+          {pricing && pricing.checked > 0 && (
+            <section className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 mb-6">
+              <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm mb-1">Pricing check - works billed from stock</h2>
+              <p className="text-xs text-slate-500 dark:text-zinc-500 mb-3">
+                Each bill must stay at or under the MRP of the stock taken and within its maximum discount.{" "}
+                {pricing.violations ? <b className="text-red-600">{pricing.violations} work(s) break the rule.</b> : <b className="text-emerald-600">All {pricing.checked} work(s) comply.</b>}
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left text-xs text-slate-500 dark:text-zinc-500 border-b border-slate-200 dark:border-zinc-800"><th className="py-2 pr-3">Work</th><th className="pr-3">Client</th><th className="pr-3">Billed (net)</th><th className="pr-3">MRP total</th><th className="pr-3">Lowest allowed</th><th className="pr-3">Discount given / allowed</th><th>Result</th></tr></thead>
+                  <tbody>
+                    {pricing.works.map((r) => (
+                      <tr key={r.work_id} className="border-b border-slate-100 dark:border-zinc-800 align-top">
+                        <td className="py-2 pr-3">{r.work_number}</td><td className="pr-3">{r.client_name}</td>
+                        <td className="pr-3">{Number(r.net_payable).toLocaleString("en-IN")}</td><td className="pr-3">{Number(r.mrp_total).toLocaleString("en-IN")}</td>
+                        <td className="pr-3">{Number(r.lowest_allowed).toLocaleString("en-IN")}</td>
+                        <td className="pr-3">{r.effective_discount_percent}% / {r.max_discount_percent}%</td>
+                        <td className={r.ok ? "text-emerald-600" : "text-red-600"}>{r.ok ? "OK" : r.violations.join(" ")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
           <div className="grid md:grid-cols-3 gap-6">
             <section>
               <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-1">Chart of Accounts</h2>

@@ -29,7 +29,7 @@ type ManagedUser = {
 // module the backend doesn't actually recognize.
 const MODULES = [
   "core", "dashboard", "crm", "sales", "procurement", "inventory",
-  "finance", "hr", "projects", "documents", "reports", "custom_fields", "intelligence", "workpage",
+  "finance", "hr", "projects", "documents", "reports", "custom_fields", "intelligence", "workpage", "stockin",
 ];
 const ACTIONS = ["view", "create", "edit", "delete", "approve"] as const;
 // Ask Data only uses two of the five ticks; the other three are meaningless for it, so they are not offered.
@@ -554,7 +554,7 @@ export default function RolesSettingsPage() {
                 <tbody>
                   {MODULES.map((module) => (
                     <tr key={module} className="border-t border-slate-100 dark:border-zinc-800">
-                      <td className="py-1.5 pr-2 text-slate-700 dark:text-zinc-200">{module}</td>
+                      <td className="py-1.5 pr-2 text-slate-700 dark:text-zinc-200">{module === "stockin" ? "stockin (Stock Intake)" : module}</td>
                       {ACTIONS.map((action) => (
                         <td key={action} className="py-1.5 px-1 text-center">
                           {module === "intelligence" && !ASK_DATA_ACTIONS.includes(action) ? (

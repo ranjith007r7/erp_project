@@ -16,6 +16,7 @@ class WorkCreate(BaseModel):
     discount_percent: Decimal = Field(default=0, ge=0, le=100)
     department_id: Optional[UUID] = None
     customer_id: Optional[UUID] = None
+    client_mobile: Optional[str] = Field(default=None, max_length=30)
 
 
 class WorkUpdate(BaseModel):
@@ -26,6 +27,20 @@ class WorkUpdate(BaseModel):
     quotation_amount: Optional[Decimal] = Field(default=None, ge=0)
     vendor_amount: Optional[Decimal] = Field(default=None, ge=0)
     discount_percent: Optional[Decimal] = Field(default=None, ge=0, le=100)
+    client_mobile: Optional[str] = Field(default=None, max_length=30)
+
+
+class WorkItemIn(BaseModel):
+    product_id: UUID
+    qty: int = Field(ge=1, le=1000000)
+
+
+class WorkItemsIn(BaseModel):
+    items: list[WorkItemIn] = Field(default_factory=list, max_length=100)
+
+
+class StockShortIn(BaseModel):
+    note: Optional[str] = Field(default=None, max_length=500)
 
 
 class AllocateIn(BaseModel):

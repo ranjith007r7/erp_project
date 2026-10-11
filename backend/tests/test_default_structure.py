@@ -5,7 +5,7 @@ from conftest import login_any
 from app.services.default_structure import DEFAULT_STRUCTURE, ACTION_OF
 
 VALID_MODULES = {"core", "dashboard", "crm", "sales", "procurement", "inventory", "finance", "hr", "projects",
-                 "documents", "reports", "custom_fields", "intelligence", "workpage"}
+                 "documents", "reports", "custom_fields", "intelligence", "workpage", "stockin"}
 
 
 def tree(client, h):

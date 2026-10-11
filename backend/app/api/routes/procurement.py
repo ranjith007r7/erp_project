@@ -36,6 +36,7 @@ from app.schemas.procurement import (
     PurchaseOrderCreate, PurchaseOrderOut, EmailPreviewOut, SendEmailIn, SendEmailOut,
 )
 from app.services.inventory import receive_stock
+from app.services import stock as stock_svc
 from app.services.notifications import notify_role, notify_user
 from app.services.audit import log_audit_event
 from app.services.email import send_email
@@ -365,6 +366,7 @@ async def receive_good(
     for item in po.items:
         receive_stock(db, org_id, product_id=str(item.product_id), qty=item.qty,
                       ref_type="purchase_order", ref_id=str(po.id))
+        stock_svc.batch_from_po(db, org_id, current_user, po, item)   # the priced lot behind these units
     _save_receipt(db, org_id, po, current_user, "good", notes, [("invoice", *f_inv), ("pod", *f_pod)])
     po.status = "received"
     notify_role(db, org_id, "Admin", f"{po.po_number} from {po.vendor.name if po.vendor else 'a vendor'} was received in good condition - stock updated.")

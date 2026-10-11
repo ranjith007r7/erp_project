@@ -40,6 +40,9 @@ def populate(client, h):
     p = client.post("/api/hr/positions", headers=h, json={"department_id": d["id"], "title": "Accounts Manager", "base_salary": 50000}).json()
     e = client.post("/api/hr/employees", headers=h, json={"name": "Meera Rao", "department_id": d["id"], "position_id": p["id"]}).json()
     client.put(f"/api/finance/payroll-deductions/{e['id']}", headers=h, json={"pf_percent": 12, "insurance_percent": 0, "tds_percent": 0})
+    # an UNASSIGNED task (no user link) and a task with a time log: reset must clear both before their project
+    pr = client.post("/api/projects", headers=h, json={"name": "Fitout"}).json()
+    client.post("/api/projects/tasks", headers=h, json={"project_id": pr["id"], "title": "Unassigned job"})
     return {"dept": d, "pos": p, "emp": e}
 
 

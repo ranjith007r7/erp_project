@@ -122,6 +122,14 @@ def test_rejected_po_returns_work_to_assigned(client, signup):
     assert get(client, h, w["id"])["status"] == "assigned"
 
 
+def to_po_received(client, h, w):
+    po = po_for(client, h, w["id"])
+    client.post(f"{PO}/{po['id']}/approve", headers=h)
+    r = client.post(f"{PO}/{po['id']}/receive-good", headers=h, files=files())
+    assert r.status_code == 200, r.text
+    return po
+
+
 def test_deliver_rules(client, signup):
     h = signup()
     d1 = client.post("/api/hr/departments", headers=h, json={"name": "Ops"}).json()
@@ -130,8 +138,10 @@ def test_deliver_rules(client, signup):
     assert client.post(f"{W}/{w['id']}/deliver", headers=h, json={}).status_code == 400          # still assigned
     client.post(f"{W}/{w['id']}/allocate", headers=h, json={"department_id": d1["id"], "employee_id": e["id"]})
     r = client.post(f"{W}/{w['id']}/deliver", headers=h, json={})
-    assert r.status_code == 400 and "from stock" in r.json()["detail"]
-    r = client.post(f"{W}/{w['id']}/deliver", headers=h, json={"from_stock": True, "note": "Hand delivered"})
+    assert r.status_code == 400 and "Nothing to deliver" in r.json()["detail"]
+    assert client.post(f"{W}/{w['id']}/deliver", headers=h, json={"from_stock": True}).status_code == 400   # stock is served via inventory
+    to_po_received(client, h, w)
+    r = client.post(f"{W}/{w['id']}/deliver", headers=h, json={"note": "Hand delivered"})
     assert r.status_code == 200 and r.json()["status"] == "delivered"
 
 
@@ -148,7 +158,8 @@ def test_payments_partial_full_and_closing_gate(client, signup):
     e = client.post("/api/hr/employees", headers=h, json={"name": "Anu", "department_id": d1["id"]}).json()
     w = new_work(client, h)   # net payable 900
     client.post(f"{W}/{w['id']}/allocate", headers=h, json={"department_id": d1["id"], "employee_id": e["id"]})
-    client.post(f"{W}/{w['id']}/deliver", headers=h, json={"from_stock": True})
+    to_po_received(client, h, w)
+    assert client.post(f"{W}/{w['id']}/deliver", headers=h, json={}).status_code == 200
     # cannot close unpaid
     r = client.post(f"{W}/{w['id']}/close", headers=h)
     assert r.status_code == 400 and "900" in r.json()["detail"]
@@ -160,12 +171,13 @@ def test_payments_partial_full_and_closing_gate(client, signup):
     assert client.post(f"{W}/{w['id']}/payments", headers=h, json={"amount": 501, "method": "cash"}).status_code == 400
     assert client.post(f"{W}/{w['id']}/payments", headers=h, json={"amount": 0, "method": "cash"}).status_code == 422
     p2 = client.post(f"{W}/{w['id']}/payments", headers=h, json={"amount": 500, "method": "gpay", "transaction_id": "UPI12345"})
-    assert p2.status_code == 201 and D(p2.json()["pending_amount"]) == 0 and p2.json()["can_close"] is True
+    assert p2.status_code == 201 and D(p2.json()["pending_amount"]) == 0
+    assert get(client, h, w["id"])["status"] == "closed"      # fully paid + delivered closes by itself
     other = new_work(client, h)
     dup = client.post(f"{W}/{other['id']}/payments", headers=h, json={"amount": 10, "method": "gpay", "transaction_id": "UPI12345"})
     assert dup.status_code == 400 and "already" in dup.json()["detail"]
-    closed = client.post(f"{W}/{w['id']}/close", headers=h)
-    assert closed.status_code == 200 and closed.json()["status"] == "closed" and closed.json()["closed_at"]
+    closed = get(client, h, w["id"])
+    assert closed["status"] == "closed" and closed["closed_at"]
     assert client.post(f"{W}/{w['id']}/payments", headers=h, json={"amount": 1, "method": "cash"}).status_code == 400
     assert client.patch(f"{W}/{w['id']}", headers=h, json={"domain": "x"}).status_code == 400
     # money reached the books
@@ -194,7 +206,7 @@ def test_accepting_a_quotation_opens_a_work_once(client, signup):
     works = client.get(W, headers=h).json()["works"]
     assert len(works) == 1 and works[0]["client_name"] == "Globex" and D(works[0]["quotation_amount"]) == 200
     d = get(client, h, works[0]["id"])
-    assert d["quotation"]["id"] == q["id"] and "moved to the purchase team" in d["events"][0]["title"]
+    assert d["quotation"]["id"] == q["id"] and "waiting to be allocated" in d["events"][0]["title"]
 
 
 def test_other_org_cannot_see_or_link_a_work(client, signup):

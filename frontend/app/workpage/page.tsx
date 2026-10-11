@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { apiRequest, getToken } from "@/lib/api";
+import { apiRequest, apiUpload, getToken } from "@/lib/api";
 import { PageHeader, Button, Input, Select, Card } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { StatusPill, STATUS_DOT } from "@/components/StatusPill";
@@ -25,7 +25,7 @@ export default function WorkpagePage() {
   const [q, setQ] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ client_name: "", domain: "", client_details: "", quotation_amount: "", vendor_amount: "", discount_percent: "0", department_id: "" });
+  const [form, setForm] = useState({ client_name: "", client_mobile: "", domain: "", client_details: "", quotation_amount: "", vendor_amount: "", discount_percent: "0", department_id: "" });
 
   const load = useCallback(() => {
     const qs = new URLSearchParams();
@@ -44,7 +44,7 @@ export default function WorkpagePage() {
       const w = await apiRequest<{ id: string }>("/api/workpage/works", {
         method: "POST", auth: true,
         body: {
-          client_name: form.client_name, domain: form.domain || null, client_details: form.client_details || null,
+          client_name: form.client_name, client_mobile: form.client_mobile || null, domain: form.domain || null, client_details: form.client_details || null,
           quotation_amount: Number(form.quotation_amount || 0), vendor_amount: Number(form.vendor_amount || 0),
           discount_percent: Number(form.discount_percent || 0), department_id: form.department_id || null,
         },
@@ -63,10 +63,30 @@ export default function WorkpagePage() {
     } catch (err) { showToast(err instanceof Error ? err.message : "Import failed", "error"); }
   }
 
+  async function importCsv(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      const r = await apiUpload<{ imported: number; failed: number; errors: { row: number; reason: string }[] }>("/api/workpage/works/import", fd);
+      showToast(r.failed ? `Imported ${r.imported}; ${r.failed} row(s) failed (first: row ${r.errors[0].row}, ${r.errors[0].reason}).` : `Imported ${r.imported} work(s) as Assigned.`, r.failed ? "info" : "success");
+      load();
+    } catch (err) { showToast(err instanceof Error ? err.message : "Import failed", "error"); }
+  }
+
   return (
     <main className="p-4 sm:p-8">
-      <PageHeader title="Workpage" description="Every customer work, its status, money and who is handling it. Statuses move by themselves as Sales, Procurement and Inventory do their part."
-        actions={can("workpage", "create") ? <div className="flex gap-2"><Button variant="secondary" onClick={importAccepted} data-testid="import-accepted">Import accepted quotations</Button><Button onClick={() => setCreating(true)} data-testid="new-work"><span className="flex items-center gap-1.5"><Plus size={15} /> New work</span></Button></div> : undefined} />
+      <PageHeader title="Workpage" description="Every customer work, its status, money and who is handling it. A work opens by itself when a quotation is converted in CRM; statuses then move by themselves as the team, Procurement and Inventory do their part. Manual and bulk entry is for quotations received outside CRM."
+        actions={can("workpage", "create") ? (
+          <div className="flex gap-2 flex-wrap">
+            <label className="inline-flex items-center px-3 py-2 rounded-lg text-sm border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 cursor-pointer" title="Columns: client_name, client_mobile, domain, quotation_amount, description">
+              Bulk import CSV<input type="file" accept=".csv" className="hidden" onChange={importCsv} data-testid="bulk-import" />
+            </label>
+            <Button variant="secondary" onClick={importAccepted} data-testid="import-accepted">Import from Sales</Button>
+            <Button onClick={() => setCreating(true)} data-testid="new-work"><span className="flex items-center gap-1.5"><Plus size={15} /> Add work manually</span></Button>
+          </div>) : undefined} />
 
       {error && <p className="text-red-600 mb-3" role="alert">{error}</p>}
 
@@ -81,7 +101,7 @@ export default function WorkpagePage() {
       </div>
 
       {!data ? <SkeletonList rows={5} /> : data.works.length === 0 ? (
-        <Card className="p-8 text-center text-slate-500 dark:text-zinc-400">No works {status || q ? "match this filter" : "yet"}. {can("workpage", "create") && !status && !q ? "Create one, or accept a quotation in Sales and it appears here." : ""}</Card>
+        <Card className="p-8 text-center text-slate-500 dark:text-zinc-400">No works {status || q ? "match this filter" : "yet"}. {can("workpage", "create") && !status && !q ? "Convert a quotation in CRM and it appears here as Assigned." : ""}</Card>
       ) : (
         <Card className="overflow-x-auto">
           <table className="w-full text-sm" data-testid="work-table">
@@ -95,14 +115,14 @@ export default function WorkpagePage() {
             <tbody>
               {data.works.map((w) => (
                 <tr key={w.id} className="border-b last:border-0 border-slate-100 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/50">
-                  <td className="p-3"><Link href={`/workpage/${w.id}`} className="font-medium text-slate-800 dark:text-white hover:underline">{w.client_name}</Link><div className="text-xs text-slate-400 dark:text-zinc-500">{w.work_number}</div></td>
+                  <td className="p-3"><Link href={`/workpage/${w.id}`} className="font-medium text-slate-800 dark:text-white hover:underline">{w.client_name}</Link><div className="text-xs text-slate-400 dark:text-zinc-500">{w.work_number}{w.client_mobile ? ` · ${w.client_mobile}` : ""}</div></td>
                   <td className="p-3 text-slate-600 dark:text-zinc-300">{w.domain || "—"}</td>
-                  <td className="p-3"><StatusPill label={w.status_label} color={w.status_color} /></td>
+                  <td className="p-3 max-w-xs"><StatusPill label={w.status_label} color={w.status_color} /><div className="text-xs text-slate-500 dark:text-zinc-400 mt-1 whitespace-normal" data-testid="work-reason">{w.pending_reason}</div></td>
                   <td className="p-3 text-right tabular-nums text-slate-800 dark:text-white">{inr(w.quotation_amount)}</td>
                   <td className="p-3 text-right tabular-nums text-slate-600 dark:text-zinc-300">{inr(w.vendor_amount)}</td>
                   <td className="p-3 text-right tabular-nums text-slate-600 dark:text-zinc-300">{Number(w.discount_percent)}%</td>
                   <td className={`p-3 text-right tabular-nums font-medium ${Number(w.profit) < 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}>{inr(w.profit)}</td>
-                  <td className="p-3 text-slate-600 dark:text-zinc-300">{w.handling_department || <span className="text-slate-400">Not assigned</span>}</td>
+                  <td className="p-3 text-slate-600 dark:text-zinc-300">{w.handling_department || <span className="text-slate-400">Not assigned</span>}{w.allocated_employee_name && <div className="text-xs text-slate-500 dark:text-zinc-400">{w.allocated_employee_name}</div>}</td>
                 </tr>
               ))}
             </tbody>
@@ -112,9 +132,12 @@ export default function WorkpagePage() {
       <p className="text-xs text-slate-500 dark:text-zinc-500 mt-3">Profit = quotation amount − client discount − vendor amount.</p>
 
       {creating && (
-        <Modal title="New work" onClose={() => setCreating(false)} wide>
+        <Modal title="Add work manually" onClose={() => setCreating(false)} wide>
           <form onSubmit={create} className="space-y-3">
-            <Input label="Client name" required value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} />
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Client name" required value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} />
+              <Input label="Client mobile number" type="tel" value={form.client_mobile} onChange={(e) => setForm({ ...form, client_mobile: e.target.value })} />
+            </div>
             <Input label="Domain (the client's industry)" value={form.domain} onChange={(e) => setForm({ ...form, domain: e.target.value })} placeholder="e.g. Manufacturing, Retail, Education" />
             <div className="grid grid-cols-3 gap-3">
               <Input label="Quotation amount" type="number" min="0" step="0.01" value={form.quotation_amount} onChange={(e) => setForm({ ...form, quotation_amount: e.target.value })} />

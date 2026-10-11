@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date
 
-from sqlalchemy import Column, String, ForeignKey, DateTime, Date, Numeric, Text, UniqueConstraint
+from sqlalchemy import Column, String, ForeignKey, DateTime, Date, Numeric, Text, Integer, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
@@ -19,8 +19,10 @@ class WorkOrder(Base):
     (a PO raised / received in Procurement) through the service layer, so the
     other modules never import this one's routes.
 
-    Statuses: assigned -> allocated -> po_raised -> po_received -> delivered
-    -> closed, plus waiting_new_po when a received PO turned out defective.
+    Statuses: assigned -> allocated -> (stock in inventory: delivered at once) or
+    (stock short: po_not_raised -> po_raised -> in_transit -> po_received -> delivered)
+    -> closed ("work done", automatically once fully paid), plus waiting_new_po when
+    a received PO turned out defective.
     """
     __tablename__ = "work_orders"
     __table_args__ = (UniqueConstraint("org_id", "work_number", name="uq_work_number"),)
@@ -44,6 +46,13 @@ class WorkOrder(Base):
     customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=True)
     quotation_id = Column(UUID(as_uuid=True), ForeignKey("quotations.id"), nullable=True)
     sales_order_id = Column(UUID(as_uuid=True), ForeignKey("sales_orders.id"), nullable=True)
+
+    # Where it came from: a CRM lead converted by the sales team (the normal route).
+    lead_id = Column(UUID(as_uuid=True), ForeignKey("crm_leads.id"), nullable=True)
+    opportunity_id = Column(UUID(as_uuid=True), ForeignKey("crm_opportunities.id"), nullable=True)
+    client_mobile = Column(String, nullable=True)
+    # Why it is waiting when stock was short (free text built by the system).
+    pending_note = Column(Text, nullable=True)
 
     handling_department_id = Column(UUID(as_uuid=True), ForeignKey("departments.id"), nullable=True)
     allocated_employee_id = Column(UUID(as_uuid=True), ForeignKey("employees.id"), nullable=True)
@@ -98,3 +107,32 @@ class WorkPayment(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     work = relationship("WorkOrder", back_populates="payments")
+
+
+class WorkItem(Base):
+    """What the customer needs for a work: a product and a quantity (checked against inventory)."""
+    __tablename__ = "work_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    work_id = Column(UUID(as_uuid=True), ForeignKey("work_orders.id"), nullable=False)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    qty = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WorkStockIssue(Base):
+    """Stock taken from inventory for a work, with the rates of the batch it came from (copied, never re-typed)."""
+    __tablename__ = "work_stock_issues"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    work_id = Column(UUID(as_uuid=True), ForeignKey("work_orders.id"), nullable=False)
+    batch_id = Column(UUID(as_uuid=True), ForeignKey("stock_batches.id"), nullable=False)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    qty = Column(Integer, nullable=False)
+    cost_rate = Column(Numeric(12, 2), nullable=False)
+    mrp = Column(Numeric(12, 2), nullable=False)
+    max_discount_percent = Column(Numeric(5, 2), nullable=False, default=0)
+    issued_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -26,6 +26,7 @@ from app.schemas.sales import (
 )
 from app.services.accounting import post_invoice_journal_entry
 from app.services.inventory import issue_stock
+from app.services import stock as stock_svc
 from app.services.audit import log_audit_event
 from app.services import workpages
 
@@ -193,6 +194,7 @@ def generate_invoice(order_id: str, db: Session = Depends(get_db), org_id: str =
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        stock_svc.consume_best_effort(db, org_id, item.product_id, item.qty)   # keep the priced lots in step with the total
 
     invoice = Invoice(
         org_id=org_id,

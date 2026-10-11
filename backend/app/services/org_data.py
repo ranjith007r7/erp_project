@@ -12,7 +12,7 @@ and the audit log.
 
 delete_organization(): removes everything, including the organization row.
 """
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, or_
 from sqlalchemy.orm import Session
 
 from app.core.database import Base
@@ -31,17 +31,25 @@ GLOBAL_TABLES = {"signup_attempts"}
 
 
 def _org_condition(table, org_id, _seen=()):
-    """SQL condition selecting this table's rows for the organization: directly via org_id, or via a parent table that has one."""
+    """SQL condition selecting this table's rows for the organization: directly via org_id, or via ANY parent table that has one.
+
+    A child table can point at several parents (a task points at its project AND at a user). Using only one of
+    them - which one depended on set ordering - left rows whose other link was empty (e.g. an unassigned task)
+    behind, and the parent delete then failed with a foreign-key error. All parent paths are combined with OR.
+    """
     if "org_id" in table.c:
         return table.c.org_id == org_id
-    for fk in table.foreign_keys:
+    conds = []
+    for fk in sorted(table.foreign_keys, key=lambda f: (f.parent.name, f.column.table.name)):
         parent = fk.column.table
         if parent is table or parent.name in _seen:
             continue
         cond = _org_condition(parent, org_id, _seen + (table.name,))
         if cond is not None:
-            return fk.parent.in_(select(fk.column).where(cond))
-    return None
+            conds.append(fk.parent.in_(select(fk.column).where(cond)))
+    if not conds:
+        return None
+    return conds[0] if len(conds) == 1 else or_(*conds)
 
 
 def _wipe(db: Session, org_id, keep: set[str]) -> dict[str, int]:

@@ -2997,3 +2997,31 @@ Migrations: `3ccef45d908c` (tables `work_orders`, `work_events`, `work_payments`
 - Tests: `test_workpage.py` (14), `test_default_structure.py` (7), `test_home_stats.py` (6). A real-browser run covered the sidebar, collapse and memory, profile menu, default roles and ticks, creating a work, allocating, a PO raised and received defective then replaced, delivery, part and full payment, close, the history, report downloads, an employee's restricted view and sign-out, and a phone-width drawer.
 
 Known gaps: Workpage payments are not tied to a Sales Invoice, so a deal invoiced in Sales and also paid in Workpage would be double counted in Finance (pick one per deal); no cancel-work step; discount is a percentage only; works are visible to anyone with `workpage.view` (the department filter exists on Home only); standard roles are a reasonable starting point rather than an audited matrix; Home "completed" counts works delivered or closed in the period.
+
+### 62.14 Work cycle rebuilt: CRM-first, Home counts, Stock Intake, MRP / discount rule
+
+Alembic head: `5242143a3692`.
+
+**1. The cycle.** Quotation arrives -> entered by hand in **CRM** (new required field: client mobile number, plus estimated amount and domain) -> **Convert** opens a Work in Workpage as **Assigned** with that amount (`WorkOrder.lead_id`, `opportunity_id`, `client_phone`) -> manager allocates (department, employee) -> employee lists items and checks inventory:
+- all in stock -> **Take from inventory** (`POST /api/workpage/works/{id}/take-from-inventory`): FEFO issue from stock batches, `StockLevel` reduced with a movement, rates copied onto the work (`WorkStockIssue`), status **Delivered - payment pending**;
+- short -> `POST .../stock-short`: **Stock short - PO not raised** with the reason; PO events then drive PO raised -> In transit (on approval) -> PO received, or Waiting for new PO.
+- Delivered + fully paid (net payable > 0) **closes automatically** as **Work done** (`closed_at`). Manual close still exists. The old "deliver from existing stock" tick is gone; stock is served only through the inventory action.
+- Manual works and "Import accepted quotations" remain for exceptions. A Sales-accepted quotation attaches to the CRM work when its opportunity already has one; the Sales quote form has no opportunity picker, so otherwise it opens a separate work.
+
+**2. Home (`services/home_stats.py`).** Quotations received = CRM leads created in the period; click opens Converted / Not converted with counts, value and client rows (`quotations` block). **Total works** (replaces "Works pending") = works opened in the period, split Assigned / Allocated / Pending (breakdown by type: Stock short - PO not raised, PO raised, In transit, Waiting for new PO, PO received, Delivered - payment pending) / Work done; `open_now` shows every unfinished work regardless of date. New **Works completed** card = `closed_at` in the period, with money collected. Everything is computed live for the organization's day / week / month, so Home, Workpage and Finance cannot drift apart. Report PDFs/CSVs use the same figures.
+
+**3. Stock Intake (`/stock-intake`, `/api/stockin/*`, permission module `stockin`, managers and admins only).**
+- Batch fields: product, quantity, vendor, **vendor amount** (cost per unit), **MRP**, **max discount %**, inward date (not future), month of manufacture (stored as 1st of month), expiry (not before today), note, `already_in_inventory` (attach rates to units already counted; does not change the stock level), source (manual / csv / purchase_order / priced_existing).
+- Adding a batch raises `StockLevel` and writes a movement. Edit changes rates, dates, vendor, note (never quantity). Undo deletes only an untouched manual/CSV batch and takes its units back out.
+- CSV import with a template download; partial success with per-row reasons. Products must exist (matched by SKU, then name).
+- A good PO receipt also writes a batch (cost = PO rate, MRP = product list price, discount 0%) so nothing sold from it can be discounted until a manager sets real figures.
+- `GET /api/stockin/summary` shows units with and without rates (`unpriced` = stock level minus batch sum) and stock value at cost.
+- Default roles: manager-level roles get `stockin`; executives do not. Admin role self-heals. Existing organizations' manager roles need the box ticked once in Roles & Permissions.
+
+**4. Pricing rule (`services/pricing.py`).** For the stock issued to a work: ceiling = sum(qty x MRP), floor = sum(qty x MRP x (1 - max discount / 100)). The quotation must not exceed the ceiling and net payable must not fall below the floor. Enforced when stock is taken, when amounts are edited, and when a payment is recorded. Finance page has a **Pricing check** panel (`GET /api/finance/pricing-check`).
+
+**Tests.** `test_stock_flow.py` (new, 17 tests: CRM convert, Home split, intake rules, FEFO and expiry, already-in-inventory, stock short and PO flow, pricing rule, permissions, CSV), updated `test_workpage.py` and `test_home_stats.py`. A real-browser run (`v3.test.mjs`) covered CRM entry with mobile, Home dialog 0/2 then 1/1, Assigned work, Stock Intake form, take from inventory (10 -> 6), delivered, payment, Work done, Home split, Finance panel and an executive blocked from Stock Intake.
+
+Known gaps: legacy stock has no rates until entered; no cost-of-goods journal on stock issue; Sales-accepted quotes without an opportunity can still open a second work; Workpage payments vs Sales invoices can double count; max discount is a percentage only.
+
+**62.14 fix (Render, 9 Oct):** *Danger Zone → Reset* returned 500 ("Failed to fetch" in the browser; a 500 carries no CORS header). Cause: `services/org_data._org_condition` found a child table's organization through only ONE of its parent links, picked in set order. `tasks` links to `projects` and to `users`; when it picked `users`, tasks with no assignee were never deleted and removing their project broke the foreign key. It now combines every parent path with OR. Regression: `test_org_danger_zone.py` now creates an unassigned task. Separately, with Resend in test mode the confirmation e-mail is only delivered to the Resend account owner's address; the code is printed in the Render log until a sending domain is verified.

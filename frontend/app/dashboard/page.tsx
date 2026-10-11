@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Download, IndianRupee, FileText, Handshake, Truck, PackageCheck, ClipboardList } from "lucide-react";
+import { Download, IndianRupee, FileText, Truck, PackageCheck, ClipboardList, CheckCircle2 } from "lucide-react";
 import { apiRequest, apiBlob, saveBlob, getToken } from "@/lib/api";
 import { useCurrentUser } from "@/components/AppShell";
 import { useToast } from "@/components/Toast";
@@ -14,18 +14,28 @@ import { StatusPill } from "@/components/StatusPill";
 import { BreakdownPieChart } from "@/components/charts/BreakdownPieChart";
 import { IncomeBars } from "@/components/charts/IncomeBars";
 import { Card } from "@/components/ui";
+import { Modal } from "@/components/Modal";
+
+type QuoteRow = { id: string; name: string; company_name: string | null; phone: string | null; status: string; estimated_amount: number | null; created_at: string };
 
 type Home = {
   period: "today" | "week" | "month";
   from: string; to: string; today: string; scope: "organization" | "mine";
   income: { total: number; payments: number } | null;
-  quotes: { processed: number; accepted: number; value: number } | null;
+  quotations: {
+    received: number; converted: number; not_converted: number; converted_value: number; not_converted_value: number;
+    converted_list: QuoteRow[]; not_converted_list: QuoteRow[];
+  } | null;
   purchase_orders: { raised: number; value: number; awaiting_approval: number } | null;
   deals: { new: number; value: number } | null;
+  completed: { count: number; value: number } | null;
   deliveries: { delivered: number; awaiting_delivery: number } | null;
-  works: { assigned: number; completed: number; pending: number } | null;
+  works: {
+    total: number; assigned: number; allocated: number; done: number; open_now: number; pending_now: number;
+    pending: { total: number; breakdown: { key: string; label: string; color: string; count: number }[] };
+  } | null;
   work_status: { key: string; label: string; color: string; count: number }[];
-  recent_works: { id: string; work_number: string; client_name: string; domain: string | null; status_label: string; status_color: string; quotation_amount: string; handling_department: string | null }[];
+  recent_works: { id: string; work_number: string; client_name: string; domain: string | null; status_label: string; status_color: string; quotation_amount: string; handling_department: string | null; pending_reason: string }[];
   tasks: { todo: number; in_progress: number; done: number } | null;
   priority_tasks: { id: string; title: string; project: string; priority: string; status: string; due_date: string | null }[];
   projects: { id: string; name: string; status: string; end_date: string | null; tasks: number; done: number; progress: number }[];
@@ -54,6 +64,7 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
+  const [quotesOpen, setQuotesOpen] = useState(false);
 
   const load = useCallback((): Promise<void> => {
     return apiRequest<Home>(`/api/dashboard/home?period=${period}`, { auth: true })
@@ -66,10 +77,10 @@ export default function DashboardPage() {
     apiRequest<Summary>("/api/dashboard/summary", { auth: true }).then(setSummary).catch(() => {});
   }, [router]);
 
-  // reload when the period changes, every minute, and when the tab comes back (so "today" is always today)
+  // reload when the period changes, every 15 seconds, and when the tab comes back (so the figures never lag behind the work)
   useEffect(() => {
     load();
-    const t = setInterval(load, 60000);
+    const t = setInterval(load, 15000);
     const vis = () => { if (document.visibilityState === "visible") load(); };
     document.addEventListener("visibilitychange", vis);
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", vis); };
@@ -88,11 +99,7 @@ export default function DashboardPage() {
   if (error && !home) return <p className="p-8 text-red-600" role="alert">{error}</p>;
 
   const firstName = (user?.name || "").split(" ")[0];
-  const workPie = home?.works ? [
-    { label: "Assigned", value: home.works.assigned },
-    { label: "Completed", value: home.works.completed },
-    { label: "Pending", value: home.works.pending },
-  ] : [];
+  const periodWord = period === "today" ? "today" : period === "week" ? "this week" : "this month";
   const statusPie = (home?.work_status ?? []).map((s) => ({ label: s.label, value: s.count }));
 
   return (
@@ -151,11 +158,12 @@ export default function DashboardPage() {
           <>
             <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-6" data-testid="home-stats">
               {home.income && <Stat icon={IndianRupee} label="Income" value={inr(home.income.total)} hint={`${home.income.payments} payment${home.income.payments === 1 ? "" : "s"}`} />}
-              {home.quotes && <Stat icon={FileText} label="Quotes processed" value={String(home.quotes.processed)} hint={`${home.quotes.accepted} accepted`} />}
-              {home.deals && <Stat icon={Handshake} label="Deals" value={String(home.deals.new)} hint={inr(home.deals.value)} />}
+              {home.quotations && <Stat icon={FileText} label="Quotations received" value={String(home.quotations.received)} onClick={() => setQuotesOpen(true)}
+                hint={`${home.quotations.converted} converted · ${home.quotations.not_converted} not · click for details`} />}
+              {home.works && <Stat icon={ClipboardList} label="Total works" value={String(home.works.total)} hint={`${home.works.open_now} unfinished right now`} />}
+              {home.completed && <Stat icon={CheckCircle2} label="Works completed" value={String(home.completed.count)} hint={`${inr(home.completed.value)} collected in full`} />}
               {home.purchase_orders && <Stat icon={Truck} label="PO raised" value={String(home.purchase_orders.raised)} hint={`${home.purchase_orders.awaiting_approval} awaiting approval`} />}
               {home.deliveries && <Stat icon={PackageCheck} label="Deliveries" value={String(home.deliveries.delivered)} hint={`${home.deliveries.awaiting_delivery} ready to deliver`} />}
-              {home.works && <Stat icon={ClipboardList} label="Works pending" value={String(home.works.pending)} hint={`${home.works.assigned} new · ${home.works.completed} done`} />}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
@@ -167,10 +175,19 @@ export default function DashboardPage() {
                 </Card>
               )}
               {home.works && (
-                <Card className="p-5">
-                  <h2 className="font-semibold text-slate-800 dark:text-white mb-1">Works, {period === "today" ? "today" : period === "week" ? "this week" : "this month"}</h2>
-                  <p className="text-xs text-slate-500 dark:text-zinc-400">Assigned · completed · pending</p>
-                  <BreakdownPieChart items={workPie} />
+                <Card className="p-5" data-testid="total-works-card">
+                  <h2 className="font-semibold text-slate-800 dark:text-white">Total works {periodWord}</h2>
+                  <p className="text-xs text-slate-500 dark:text-zinc-400 mb-3">Works opened {periodWord}, by where each stands now.</p>
+                  <ul className="text-sm space-y-1">
+                    <Split label="Assigned" value={home.works.assigned} id="assigned" />
+                    <Split label="Allocated" value={home.works.allocated} id="allocated" />
+                    <Split label="Pending (all types)" value={home.works.pending.total} id="pending" bold />
+                    {home.works.pending.breakdown.map((b) => <Split key={b.key} label={b.label} value={b.count} id={b.key} indent />)}
+                    <Split label="Work done" value={home.works.done} id="done" />
+                    <li className="flex justify-between border-t border-slate-200 dark:border-zinc-700 pt-1 mt-1 font-semibold text-slate-800 dark:text-white">
+                      <span>Total</span><span data-testid="split-total">{home.works.total}</span>
+                    </li>
+                  </ul>
                 </Card>
               )}
             </div>
@@ -241,6 +258,7 @@ export default function DashboardPage() {
                         <Link href={`/workpage/${w.id}`} className="min-w-0 hover:underline">
                           <p className="text-slate-800 dark:text-white truncate">{w.client_name}</p>
                           <p className="text-xs text-slate-500 dark:text-zinc-400 truncate">{w.work_number}{w.handling_department ? ` · ${w.handling_department}` : ""}</p>
+                          <p className="text-xs text-slate-400 dark:text-zinc-500 truncate" title={w.pending_reason}>{w.pending_reason}</p>
                         </Link>
                         <StatusPill label={w.status_label} color={w.status_color} />
                       </li>
@@ -250,6 +268,16 @@ export default function DashboardPage() {
               )}
             </div>
           </>
+        )}
+
+        {quotesOpen && home?.quotations && (
+          <Modal title={`Quotations received ${periodWord}: ${home.quotations.received}`} onClose={() => setQuotesOpen(false)} wide>
+            <div className="grid sm:grid-cols-2 gap-4" data-testid="quotes-dialog">
+              <QuoteBox title="Converted" count={home.quotations.converted} value={home.quotations.converted_value} rows={home.quotations.converted_list} tone="green" />
+              <QuoteBox title="Not converted" count={home.quotations.not_converted} value={home.quotations.not_converted_value} rows={home.quotations.not_converted_list} tone="amber" />
+            </div>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-3">Counted from the CRM entries made {periodWord}. Converting one in CRM moves it from Not converted to Converted here, and opens its work.</p>
+          </Modal>
         )}
 
         {summary && (
@@ -268,9 +296,36 @@ export default function DashboardPage() {
   );
 }
 
-function Stat({ icon: Icon, label, value, hint }: { icon: typeof IndianRupee; label: string; value: string; hint?: string }) {
+function Split({ label, value, id, bold, indent }: { label: string; value: number; id: string; bold?: boolean; indent?: boolean }) {
   return (
-    <Card className="p-4">
+    <li className={`flex justify-between ${indent ? "pl-5 text-slate-500 dark:text-zinc-400" : "text-slate-700 dark:text-zinc-200"} ${bold ? "font-semibold" : ""}`}>
+      <span>{label}</span><span data-testid={`split-${id}`}>{value}</span>
+    </li>
+  );
+}
+
+function QuoteBox({ title, count, value, rows, tone }: { title: string; count: number; value: number; rows: QuoteRow[]; tone: "green" | "amber" }) {
+  return (
+    <div className={`rounded-xl border p-4 ${tone === "green" ? "border-green-200 dark:border-green-900 bg-green-50/50 dark:bg-green-950/30" : "border-amber-200 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-950/30"}`}>
+      <div className="text-xs text-slate-500 dark:text-zinc-400">{title}</div>
+      <div className="text-3xl font-bold text-slate-800 dark:text-white" data-testid={`quotes-${title.toLowerCase().replace(/\s+/g, "-")}`}>{count}</div>
+      <div className="text-xs text-slate-500 dark:text-zinc-400 mb-2">{inr(value)} estimated</div>
+      <ul className="space-y-1 max-h-56 overflow-auto">
+        {rows.map((r) => (
+          <li key={r.id} className="text-sm text-slate-700 dark:text-zinc-200">
+            <span className="font-medium">{r.company_name || r.name}</span>
+            <span className="text-xs text-slate-500 dark:text-zinc-400"> · {r.phone || "no mobile"}{r.estimated_amount != null ? ` · ${inr(r.estimated_amount)}` : ""}</span>
+          </li>
+        ))}
+        {rows.length === 0 && <li className="text-xs text-slate-400 dark:text-zinc-500">None.</li>}
+      </ul>
+    </div>
+  );
+}
+
+function Stat({ icon: Icon, label, value, hint, onClick }: { icon: typeof IndianRupee; label: string; value: string; hint?: string; onClick?: () => void }) {
+  return (
+    <Card className={`p-4 ${onClick ? "cursor-pointer hover:ring-2 hover:ring-indigo-300 dark:hover:ring-indigo-700" : ""}`} {...(onClick ? { onClick, role: "button", tabIndex: 0, onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter") onClick(); } } : {})}>
       <div className="flex items-center justify-between text-slate-500 dark:text-zinc-400"><span className="text-xs">{label}</span><Icon size={15} /></div>
       <div className="text-2xl font-bold text-slate-800 dark:text-white mt-1" data-testid={`stat-${label.toLowerCase().replace(/\s+/g, "-")}`}>{value}</div>
       {hint && <div className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">{hint}</div>}

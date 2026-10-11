@@ -86,7 +86,9 @@ def _my_employee(db, user):
 
 def _visible_works(db: Session, user: User, org_id):
     q = db.query(WorkOrder).filter(WorkOrder.org_id == org_id)
-    if _is_admin(db, user):
+    # Admins and anyone who may approve work (the managers) see every work, so nothing waiting to be
+    # allocated is invisible to the person who has to allocate it.
+    if _is_admin(db, user) or user_has_permission(db, user, "workpage", "approve"):
         return q
     emp = _my_employee(db, user)
     conds = [WorkOrder.created_by == user.id]
@@ -150,7 +152,7 @@ def compute(db: Session, user: User, period: str = "today", on: date | None = No
                                   "awaiting_approval": db.query(PurchaseOrder).filter(PurchaseOrder.org_id == org_id, PurchaseOrder.approval_status == "pending").count()}
 
     # ---- works / deals / deliveries
-    out["works"] = out["deals"] = out["deliveries"] = None
+    out["works"] = out["deals"] = out["deliveries"] = out["completed"] = None
     out["work_status"] = []
     out["recent_works"] = []
     if can_work:
@@ -159,23 +161,51 @@ def compute(db: Session, user: User, period: str = "today", on: date | None = No
         in_w = [w for w in allw if w.created_at and lo <= w.created_at < hi]
         delivered = [w for w in allw if w.delivered_on and first <= w.delivered_on <= last]
         closed = [w for w in allw if w.closed_at and lo <= w.closed_at < hi]
-        pending = [w for w in allw if w.status != "closed"]
+        pending_all = [w for w in allw if w.status in wp.PENDING_KEYS]
         out["deals"] = {"new": len(in_w), "value": _money(sum((w.quotation_amount for w in in_w), Decimal(0)))}
         out["deliveries"] = {"delivered": len(delivered), "awaiting_delivery": sum(1 for w in allw if w.status in ("po_received",))}
-        done_ids = {w.id for w in delivered} | {w.id for w in closed}
-        out["works"] = {"assigned": len(in_w), "completed": len(done_ids), "pending": len(pending)}
+        # Works opened in this period, split by where each one stands right now.
+        cnt = {k: 0 for k in wp.STATUSES}
+        for w in in_w:
+            cnt[w.status] += 1
+        pend_rows = [{"key": k, "label": wp.STATUSES[k]["label"], "color": wp.STATUSES[k]["color"], "count": cnt[k]} for k in wp.PENDING_KEYS]
+        out["works"] = {
+            "total": len(in_w),
+            "assigned": cnt["assigned"], "allocated": cnt["allocated"],
+            "pending": {"total": sum(r["count"] for r in pend_rows), "breakdown": pend_rows},
+            "done": cnt["closed"],
+            "open_now": sum(1 for w in allw if w.status != "closed"),     # every unfinished work, whatever its date
+            "pending_now": len(pending_all),
+        }
+        out["completed"] = {"count": len(closed), "value": _money(sum((wp.net_payable(w) for w in closed), Decimal(0)))}
         counts = {k: 0 for k in wp.STATUSES}
         for w in allw:
             counts[w.status] += 1
         out["work_status"] = [{"key": k, "label": v["label"], "color": v["color"], "count": counts[k]} for k, v in wp.STATUSES.items()]
-        for w in sorted(pending, key=lambda x: x.created_at or datetime.min, reverse=True)[:6]:
+        for w in sorted([x for x in allw if x.status != "closed"], key=lambda x: x.created_at or datetime.min, reverse=True)[:6]:
             r = wp.summary_row(db, w)
-            out["recent_works"].append({k: r[k] for k in ("id", "work_number", "client_name", "domain", "status_label", "status_color", "quotation_amount", "handling_department")})
+            out["recent_works"].append({k: r[k] for k in ("id", "work_number", "client_name", "domain", "status_label", "status_color", "quotation_amount", "handling_department", "pending_reason")})
 
-    # ---- leads
+    # ---- quotations received (entered in the CRM) and what became of them
     out["leads"] = None
+    out["quotations"] = None
     if can_crm:
-        out["leads"] = {"new": db.query(Lead).filter(Lead.org_id == org_id, Lead.created_at >= lo, Lead.created_at < hi).count()} if hasattr(Lead, "created_at") else None
+        ls = (db.query(Lead).filter(Lead.org_id == org_id, Lead.created_at >= lo, Lead.created_at < hi)
+              .order_by(Lead.created_at.desc()).all())
+
+        def _row(x):
+            return {"id": x.id, "name": x.name, "company_name": x.company_name, "phone": x.phone, "status": x.status,
+                    "estimated_amount": _money(x.estimated_amount) if x.estimated_amount is not None else None,
+                    "created_at": x.created_at}
+        conv = [x for x in ls if x.status == "converted"]
+        notc = [x for x in ls if x.status != "converted"]
+        out["quotations"] = {
+            "received": len(ls), "converted": len(conv), "not_converted": len(notc),
+            "converted_value": _money(sum((x.estimated_amount or 0 for x in conv), Decimal(0))),
+            "not_converted_value": _money(sum((x.estimated_amount or 0 for x in notc), Decimal(0))),
+            "converted_list": [_row(x) for x in conv[:100]], "not_converted_list": [_row(x) for x in notc[:100]],
+        }
+        out["leads"] = {"new": len(ls)}
 
     # ---- tasks & projects
     out["tasks"] = None

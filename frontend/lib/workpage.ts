@@ -4,11 +4,26 @@ export type WorkRow = {
   quotation_amount: string; vendor_amount: string; discount_percent: string; discount_amount: string;
   net_payable: string; profit: string; received_amount: string; pending_amount: string;
   handling_department: string | null; handling_department_id: string | null; created_at: string;
+  client_mobile: string | null; is_pending: boolean; pending_reason: string; allocated_employee_name: string | null;
+  delivered_on: string | null; closed_at: string | null;
+};
+
+export type StockCheckItem = {
+  product_id: string; product_name: string; sku: string | null; required: number; available: number; on_hand: number;
+  short_by: number; ok: boolean; unpriced: number;
+  batches: { batch_id: string; take: number; mrp: string; max_discount_percent: string; expiry_date: string | null; inward_date: string; vendor_name?: string; vendor_amount?: string }[];
+};
+export type StockCheck = {
+  items: StockCheckItem[]; has_items: boolean; all_available: boolean; can_issue: boolean; already_issued: boolean;
+  pricing: { limits: { ceiling: string; floor: string; max_discount_percent: string } | null; violations: string[]; ok: boolean };
 };
 
 export type WorkDetail = WorkRow & {
   client_details: string | null; description: string | null; delivered_on: string | null; delivery_note: string | null;
-  closed_at: string | null; can_close: boolean;
+  can_close: boolean; pending_note: string | null;
+  items: { id: string; product_id: string; qty: number; product_name: string | null }[];
+  stock_issues: { id: string; product_id: string; qty: number; cost_rate: string; mrp: string; max_discount_percent: string; product_name: string | null; batch_vendor: string | null }[];
+  pricing: { limits: { ceiling: string; floor: string; max_discount_percent: string } | null; violations: string[] };
   quotation: { id: string; total: string; status: string; created_at: string } | null;
   allocated_employee: { id: string; name: string; employee_code: string | null } | null;
   purchase_orders: {
@@ -24,6 +39,7 @@ export type WorkDetail = WorkRow & {
 export type WorkMeta = {
   statuses: { key: string; label: string; color: string }[];
   payment_methods: string[];
+  products: { id: string; name: string; sku: string | null }[];
   departments: { id: string; name: string }[];
   employees: { id: string; name: string; employee_code: string | null; department_id: string | null }[];
 };

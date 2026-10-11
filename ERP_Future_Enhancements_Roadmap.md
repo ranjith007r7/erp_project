@@ -105,3 +105,10 @@ Nothing here is prioritized by default — priority should follow whatever a spe
 - Limit Workpage visibility by department for non-admin roles (the Home page already does).
 - Move the status rules (which event moves which status) into per-organization settings if clients want a different workflow.
 - Per-organization editable default role templates (today the standard set is in code).
+
+## Added after the CRM-first rebuild (see MANUAL 62.14)
+- Cost-of-goods journal when stock is issued to a work (Debit COGS, Credit Inventory) so Finance shows margin, not just cash.
+- Opportunity picker on the Sales quotation form so a Sales-accepted quote always attaches to its CRM work.
+- Fixed-amount (not only percentage) maximum discount; per-customer price lists.
+- Low-stock / expiry alerts from Stock Intake lots (near-expiry is already flagged on the page).
+- Request-and-approve onboarding (still on hold).
