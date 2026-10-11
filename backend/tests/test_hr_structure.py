@@ -179,3 +179,18 @@ def test_org_isolation_for_structure(client, signup):
     assert client.patch(f"/api/hr/positions/{p['id']}", headers=b, json={"base_salary": 1}).status_code == 404
     assert client.post("/api/hr/positions", headers=b, json={"department_id": d["id"], "title": "T", "base_salary": 1}).status_code == 404
     assert client.post("/api/hr/employees", headers=b, json={"name": "Z", "department_id": d["id"], "position_id": p["id"]}).status_code == 404
+
+
+def test_create_login_with_a_password_is_active_at_once_and_linked(client, signup):
+    from conftest import login_any
+    admin = signup()
+    role = client.post("/api/core/roles", headers=admin, json={"name": "Exec Access"}).json()
+    client.post(f"/api/core/roles/{role['id']}/permissions", headers=admin, json={"module": "workpage", "action": "view"})
+    d = dept(client, admin)
+    p = pos(client, admin, d, "Executive", 30000, access_role_id=role["id"])
+    e = client.post("/api/hr/employees", headers=admin, json={"name": "Ravi", "department_id": d["id"], "position_id": p["id"]}).json()
+    email = f"ravi-{uuid.uuid4().hex[:6]}@co.com"
+    assert client.post(f"/api/hr/employees/{e['id']}/create-login", headers=admin, json={"email": email, "password": "short"}).status_code == 422
+    r = client.post(f"/api/hr/employees/{e['id']}/create-login", headers=admin, json={"email": email, "password": "DemoPass123!"})
+    assert r.status_code == 200 and r.json()["login_status"] == "active" and r.json()["login_email"] == email, r.text
+    assert login_any(client, email, "DemoPass123!").status_code == 200       # can sign in straight away, no e-mail needed

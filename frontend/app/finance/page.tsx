@@ -23,6 +23,11 @@ type Method = "cash" | "card" | "gpay";
 const METHOD_LABEL: Record<string, string> = { cash: "Cash", card: "Card", gpay: "GPay", bank_transfer: "Bank transfer" };
 const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
+const RECON_LABEL: Record<string, string> = { matched: "Matched", mismatch: "Mismatch", awaiting_payment: "Awaiting payment", part_paid: "Part paid", not_started: "Not started", paid_awaiting_delivery: "Paid, awaiting delivery" };
+type ReconRow = {
+  work_id: string; work_number: string; client_name: string; status_label: string; quoted_net: number; received: number;
+  booked_in_finance: number; difference: number; state: string; note: string;
+};
 type PricingRow = {
   work_id: string; work_number: string; client_name: string; status_label: string; net_payable: number; mrp_total: number;
   lowest_allowed: number; effective_discount_percent: number; max_discount_percent: number; ok: boolean; violations: string[];
@@ -40,6 +45,7 @@ export default function FinancePage() {
   const [runId, setRunId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [recon, setRecon] = useState<{ matched: number; mismatch: number; open: number; works: ReconRow[] } | null>(null);
   const [pricing, setPricing] = useState<{ checked: number; violations: number; works: PricingRow[] } | null>(null);
 
   const [payFor, setPayFor] = useState<Invoice | null>(null);
@@ -59,6 +65,7 @@ export default function FinancePage() {
       apiRequest<JournalEntry[]>("/api/finance/journal-entries", { auth: true }).then(setEntries),
       apiRequest<Invoice[]>("/api/sales/invoices", { auth: true }).then(setInvoices),
       apiRequest<Payment[]>("/api/finance/payments", { auth: true }).then(setPayments),
+      apiRequest<{ matched: number; mismatch: number; open: number; works: ReconRow[] }>("/api/finance/work-reconciliation", { auth: true }).then(setRecon).catch(() => {}),
       apiRequest<{ checked: number; violations: number; works: PricingRow[] }>("/api/finance/pricing-check", { auth: true }).then(setPricing).catch(() => {}),
       apiRequest<LeaveType[]>("/api/finance/leave-types", { auth: true }).then(setLeaveTypes),
       apiRequest<Run[]>("/api/finance/payroll-runs", { auth: true }).then((r) => {
@@ -145,6 +152,32 @@ export default function FinancePage() {
         <SkeletonList rows={3} />
       ) : (
         <>
+          {recon && recon.works.length > 0 && (
+            <section className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 mb-6" data-testid="work-reconciliation">
+              <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm mb-1">Work payment reconciliation</h2>
+              <p className="text-xs text-slate-500 dark:text-zinc-500 mb-3">
+                A work becomes <b>Work done</b> only when the amount quoted (net of discount) equals the amount received, and Finance has booked the same amount.{" "}
+                <b className="text-emerald-600">{recon.matched} matched</b> · <b className="text-amber-600">{recon.open} open</b> · <b className={recon.mismatch ? "text-red-600" : ""}>{recon.mismatch} mismatch</b>
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left text-xs text-slate-500 dark:text-zinc-500 border-b border-slate-200 dark:border-zinc-800"><th className="py-2 pr-3">Work</th><th className="pr-3">Client</th><th className="pr-3">Status</th><th className="pr-3 text-right">Quoted (net)</th><th className="pr-3 text-right">Received</th><th className="pr-3 text-right">Booked in Finance</th><th className="pr-3 text-right">Difference</th><th>Result</th></tr></thead>
+                  <tbody>
+                    {recon.works.map((r) => (
+                      <tr key={r.work_id} className="border-b border-slate-100 dark:border-zinc-800 align-top">
+                        <td className="py-2 pr-3">{r.work_number}</td><td className="pr-3">{r.client_name}</td><td className="pr-3">{r.status_label}</td>
+                        <td className="pr-3 text-right tabular-nums">{Number(r.quoted_net).toLocaleString("en-IN")}</td>
+                        <td className="pr-3 text-right tabular-nums">{Number(r.received).toLocaleString("en-IN")}</td>
+                        <td className="pr-3 text-right tabular-nums">{Number(r.booked_in_finance).toLocaleString("en-IN")}</td>
+                        <td className="pr-3 text-right tabular-nums">{Number(r.difference).toLocaleString("en-IN")}</td>
+                        <td className={r.state === "matched" ? "text-emerald-600" : r.state === "mismatch" ? "text-red-600" : "text-amber-600"}><span className="font-semibold">{RECON_LABEL[r.state] ?? r.state}</span>{r.state !== "matched" && <span className="block text-xs">{r.note}</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
           {pricing && pricing.checked > 0 && (
             <section className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 mb-6">
               <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm mb-1">Pricing check - works billed from stock</h2>

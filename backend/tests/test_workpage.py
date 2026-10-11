@@ -294,3 +294,36 @@ def test_import_accepted_backfills_old_quotes(client, signup):
     assert again["created"] == 0
     works = client.get(W, headers=h).json()["works"]
     assert any(w["client_name"] == "Old Client" and w["status"] == "assigned" for w in works)
+
+
+def test_finance_reconciliation_matches_quoted_received_and_booked(client, signup):
+    h = signup()
+    w = new_work(client, h)    # net payable 900
+    d1 = client.post("/api/hr/departments", headers=h, json={"name": "Ops"}).json()
+    e = client.post("/api/hr/employees", headers=h, json={"name": "Anu", "department_id": d1["id"]}).json()
+    client.post(f"{W}/{w['id']}/allocate", headers=h, json={"department_id": d1["id"], "employee_id": e["id"]})
+    R = "/api/finance/work-reconciliation"
+    row = lambda: next(r for r in client.get(R, headers=h).json()["works"] if r["work_id"] == w["id"])
+    assert row()["state"] == "not_started" and D(row()["quoted_net"]) == 900
+    to_po_received(client, h, w)
+    client.post(f"{W}/{w['id']}/deliver", headers=h, json={})
+    assert row()["state"] == "awaiting_payment"
+    client.post(f"{W}/{w['id']}/payments", headers=h, json={"amount": 400, "method": "cash"})
+    r = row()
+    assert r["state"] == "part_paid" and D(r["received"]) == 400 and D(r["booked_in_finance"]) == 400 and D(r["difference"]) == 500
+    assert client.post(f"{W}/{w['id']}/close", headers=h).status_code == 400            # quoted != received: cannot be Work done
+    client.post(f"{W}/{w['id']}/payments", headers=h, json={"amount": 500, "method": "cash"})
+    r = row()
+    assert r["state"] == "matched" and D(r["received"]) == D(r["booked_in_finance"]) == D(r["quoted_net"]) == 900
+    out = client.get(R, headers=h).json()
+    assert out["matched"] == 1 and out["mismatch"] == 0
+
+
+def test_reconciliation_advance_paid_work_is_not_a_mismatch(client, signup):
+    h = signup()
+    w = new_work(client, h)    # net payable 900
+    assert client.post(f"{W}/{w['id']}/payments", headers=h, json={"amount": 900, "method": "cash"}).status_code == 201
+    R = "/api/finance/work-reconciliation"
+    out = client.get(R, headers=h).json()
+    r = next(x for x in out["works"] if x["work_id"] == w["id"])
+    assert r["state"] == "paid_awaiting_delivery" and out["mismatch"] == 0 and out["open"] == 1

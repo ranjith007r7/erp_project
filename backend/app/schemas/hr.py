@@ -114,6 +114,8 @@ class EmployeeOut(BaseModel):
 
 class CreateLoginIn(BaseModel):
     email: str = Field(..., min_length=3, max_length=120, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    # Optional: set the first password now instead of e-mailing an invite (the account is active at once)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
 
 
 class LeaveTypeOut(BaseModel):

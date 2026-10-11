@@ -126,6 +126,16 @@ def pricing_check(db: Session = Depends(get_db), org_id: str = Depends(get_org_i
     return {"checked": len(rows), "violations": sum(1 for r in rows if not r["ok"]), "works": rows}
 
 
+@router.get("/work-reconciliation", dependencies=[Depends(require_permission("finance", "view"))])
+def work_reconciliation(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+    """Quoted vs received vs booked, per work. Only quoted = received = booked lets a work be Work done."""
+    from app.services import workpages
+    rows = workpages.reconciliation_report(db, org_id)
+    count = lambda st: sum(1 for r in rows if r["state"] == st)
+    return {"works": rows, "matched": count("matched"), "mismatch": count("mismatch"),
+            "open": sum(1 for r in rows if r["state"] in ("awaiting_payment", "part_paid", "not_started", "paid_awaiting_delivery"))}
+
+
 @router.get("/leave-types", response_model=list[LeaveTypeOut], dependencies=[Depends(require_permission("finance", "view"))])
 def finance_leave_types(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """The leave legend (shown next to the LOP field so Finance knows which leave is unpaid)."""

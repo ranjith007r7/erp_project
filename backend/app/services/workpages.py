@@ -569,6 +569,47 @@ def on_procurement_notice(db: Session, po: PurchaseOrder, kind: str, channel: st
               f"{po.po_number}. Delivery status: {status}.", user, {"po_number": po.po_number, "channel": channel})
 
 
+def reconciliation_report(db: Session, org_id) -> list[dict]:
+    """Finance view: for every work, what was quoted (net payable) against what was received on the work
+    and what Finance has actually booked (journal entries WPMT-<payment id>, credited to Sales Revenue).
+    A work is only 'matched' when quoted = received = booked and it is closed as Work done."""
+    from app.models.finance import JournalEntry, JournalLine, ChartOfAccounts as Account
+    works = db.query(WorkOrder).filter(WorkOrder.org_id == org_id).order_by(WorkOrder.created_at.desc()).all()
+    refs = {}
+    for w in works:
+        for p in w.payments:
+            refs[f"WPMT-{p.id}"] = w.id
+    booked: dict = {}
+    if refs:
+        rows = (db.query(JournalEntry.reference, func.coalesce(func.sum(JournalLine.credit), 0))
+                .join(JournalLine, JournalLine.journal_entry_id == JournalEntry.id)
+                .join(Account, Account.id == JournalLine.account_id)
+                .filter(JournalEntry.org_id == org_id, JournalEntry.reference.in_(list(refs)), Account.code == "4000")
+                .group_by(JournalEntry.reference).all())
+        for ref, amt in rows:
+            booked[refs[ref]] = booked.get(refs[ref], Decimal(0)) + Decimal(amt)
+    out = []
+    for w in works:
+        quoted, got, books = net_payable(w), received_amount(w), q2(booked.get(w.id, Decimal(0)))
+        if w.status == "closed" and quoted == got == books:
+            state, note = "matched", "Quoted = received = booked in Finance. Work done."
+        elif got != books:
+            state, note = "mismatch", f"Received {got} on the work but Finance has booked {books}."
+        elif w.status == "closed":
+            state, note = "mismatch", f"Closed, but quoted {quoted} differs from received {got}."
+        elif got == 0:
+            state, note = "awaiting_payment" if w.status == "delivered" else "not_started", ("Delivered; no payment yet." if w.status == "delivered" else "Not yet delivered; no payment yet.")
+        elif got < quoted:
+            state, note = "part_paid", f"{q2(quoted - got)} still to receive before the work can close."
+        elif got == quoted:
+            state, note = "paid_awaiting_delivery", "Paid in full in advance; it becomes Work done when delivered."
+        else:
+            state, note = "mismatch", f"Received {got} is above the quoted {quoted}."
+        out.append({"work_id": w.id, "work_number": w.work_number, "client_name": w.client_name, "status_label": STATUSES[w.status]["label"],
+                    "quoted_net": quoted, "received": got, "booked_in_finance": books, "difference": q2(quoted - got), "state": state, "note": note})
+    return out
+
+
 def pricing_report(db: Session, org_id) -> list[dict]:
     """Finance view: every work that took stock from inventory, with the billed price against the MRP rules."""
     ids = [r[0] for r in db.query(WorkStockIssue.work_id).filter(WorkStockIssue.org_id == org_id).distinct()]

@@ -307,7 +307,15 @@ def create_employee_login(employee_id: str, payload: CreateLoginIn, db: Session 
     if db.query(User.id).filter(User.email == payload.email).first():
         raise HTTPException(400, "A user with this email already exists.")
     org = db.query(Organization).filter(Organization.id == org_id).first()
-    user = create_invited_user(db, org_id, org.name, e.name, payload.email, position.access_role_id)
+    if payload.password:
+        # no e-mail needed: the admin hands over the password; the admin vouches for the address, so it is verified
+        from app.core.security import hash_password
+        user = User(org_id=org_id, name=e.name, email=payload.email, password_hash=hash_password(payload.password),
+                    role_id=position.access_role_id, email_verified=True)
+        db.add(user)
+        db.flush()
+    else:
+        user = create_invited_user(db, org_id, org.name, e.name, payload.email, position.access_role_id)
     e.user_id = user.id
     log_audit_event(db, org_id, current_user.id, "create_employee_login", "Employee", e.id)
     db.commit()

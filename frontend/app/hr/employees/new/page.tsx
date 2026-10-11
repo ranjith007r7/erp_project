@@ -31,6 +31,7 @@ export default function NewEmployeePage() {
   const [created, setCreated] = useState<Employee | null>(null);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
+  const [loginPassword, setLoginPassword] = useState("");
 
   useEffect(() => {
     apiRequest<Department[]>("/api/hr/departments", { auth: true }).then(setDepartments).catch(() => {});
@@ -59,9 +60,9 @@ export default function NewEmployeePage() {
     if (!created) return;
     setLoginBusy(true);
     try {
-      const emp = await apiRequest<Employee>(`/api/hr/employees/${created.id}/create-login`, { method: "POST", auth: true, body: { email: loginEmail.trim() } });
+      const emp = await apiRequest<Employee>(`/api/hr/employees/${created.id}/create-login`, { method: "POST", auth: true, body: { email: loginEmail.trim(), password: loginPassword || null } });
       setCreated(emp);
-      showToast("Login created. An invite email was sent.", "success");
+      showToast(loginPassword ? "Login created with the password you set." : "Login created. An invite email was sent.", "success");
     } catch (err) { showToast(err instanceof Error ? err.message : "Could not create login", "error"); }
     setLoginBusy(false);
   }
@@ -87,7 +88,8 @@ export default function NewEmployeePage() {
               <div className="space-y-2">
                 <p className="text-xs text-slate-500 dark:text-zinc-400">Optional. Sends an invite with the access role set on this person&apos;s role. Needs the &quot;Manage Roles &amp; Permissions&quot; permission.</p>
                 <Input aria-label="Login email" type="email" placeholder="work email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} />
-                <Button onClick={createLogin} disabled={loginBusy || !loginEmail.includes("@")}>{loginBusy ? "Creating…" : "Create login & send invite"}</Button>
+                <Input aria-label="Password (optional)" type="password" placeholder="Password (optional, min 8): fill it to skip the invite email" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} />
+                <Button onClick={createLogin} disabled={loginBusy || !loginEmail.includes("@") || (loginPassword.length > 0 && loginPassword.length < 8)}>{loginBusy ? "Creating…" : loginPassword ? "Create login with this password" : "Create login & send invite"}</Button>
               </div>
             )}
           </div>

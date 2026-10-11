@@ -3032,3 +3032,10 @@ Known gaps: legacy stock has no rates until entered; no cost-of-goods journal on
 - `app/template.tsx` + `.page-enter` in `globals.css`: every navigation re-plays a short fade-and-rise, with the page's top-level blocks staggered (8 steps).
 - `AppShell`: phone gesture, swipe right from the left edge opens the module drawer, swipe left closes it; drawer slides in.
 - All of it is transform/opacity only (no layout shift) and switched off for visitors who ask for reduced motion. No new dependency.
+
+### 62.16 Work payment reconciliation and no-email employee logins
+- `GET /api/finance/work-reconciliation` (finance View) and the **Work payment reconciliation** panel on the Finance page compare, per work, **Quoted (net of discount)**, **Received** (Workpage payments) and **Booked in Finance** (the 4000 Sales Revenue credit of each `WPMT-<payment id>` journal entry). States: `matched` (closed and all three equal), `mismatch` (received differs from booked, or closed with quoted != received, or received above quoted), `awaiting_payment`, `part_paid`, `not_started`, `paid_awaiting_delivery` (paid in full in advance; closes when delivered). Rule it reports on: a work becomes Work done only when quoted = received.
+- Found during the playbook dry run: a work paid in full in advance, before delivery, was reported as a mismatch. Now `paid_awaiting_delivery`, counted under `open`. Regression test: `test_reconciliation_advance_paid_work_is_not_a_mismatch`.
+- `POST /api/hr/employees/{id}/create-login` accepts an optional `password` (8-128 chars). With it the user is created active and verified, linked to the employee, no email. Without it, the invite email is sent (cannot deliver while the email service is in test mode). The new-employee screen has the optional password box and the button reads "Create login with this password".
+- Users made through Settings > Roles > Set Password Directly are not linked to employee records.
+- Known gaps unchanged: PO-fed works add stock but do not deduct it at delivery; a work mixing stock and purchased items does not issue its in-stock lines; no cost-of-goods journal on issue.
