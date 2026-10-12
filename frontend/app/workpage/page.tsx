@@ -12,6 +12,7 @@ import { useToast } from "@/components/Toast";
 import { useCurrentUser } from "@/components/AppShell";
 import { SkeletonList } from "@/components/Skeleton";
 import { WorkRow, WorkMeta, inr } from "@/lib/workpage";
+import { tenDigits } from "@/lib/format";
 
 type ListResp = { counts: Record<string, number>; total: number; works: WorkRow[] };
 
@@ -136,7 +137,7 @@ export default function WorkpagePage() {
           <form onSubmit={create} className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <Input label="Client name" required value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} />
-              <Input label="Client mobile number" type="tel" value={form.client_mobile} onChange={(e) => setForm({ ...form, client_mobile: e.target.value })} />
+              <Input label="Client mobile number (10 digits)" type="tel" inputMode="numeric" pattern="[0-9]{10}" value={form.client_mobile} onChange={(e) => setForm({ ...form, client_mobile: tenDigits(e.target.value) })} />
             </div>
             <Input label="Domain (the client's industry)" value={form.domain} onChange={(e) => setForm({ ...form, domain: e.target.value })} placeholder="e.g. Manufacturing, Retail, Education" />
             <div className="grid grid-cols-3 gap-3">

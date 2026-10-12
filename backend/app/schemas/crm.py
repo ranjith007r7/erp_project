@@ -42,15 +42,25 @@ class ContactOut(BaseModel):
 
 
 def clean_mobile(v: Optional[str]) -> Optional[str]:
-    """Client mobile number: digits with an optional leading +, spaces, hyphens or brackets; 7 to 15 digits."""
+    """Client mobile number: exactly 10 digits. Spaces, hyphens and brackets are ignored and a +91 / 91 / 0 prefix is
+    dropped, so '+91 98765-43210' is stored as '9876543210'. Anything else (letters, 9 or 11+ digits) is refused."""
     if v is None:
         return None
-    v = v.strip()
+    v = str(v).strip()
     if not v:
         return None
-    if not re.fullmatch(r"\+?[0-9 ()\-]{7,24}", v) or not (7 <= len(re.sub(r"\D", "", v)) <= 15):
-        raise ValueError("Enter a valid mobile number (7 to 15 digits, for example +91 98765 43210).")
-    return v
+    if not re.fullmatch(r"\+?[0-9 ()\-]+", v):
+        raise ValueError("Enter a 10-digit mobile number (digits only).")
+    digits = re.sub(r"\D", "", v)
+    if v.startswith("+91") and len(digits) == 12:
+        digits = digits[2:]
+    elif len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith("0"):
+        digits = digits[1:]
+    if len(digits) != 10:
+        raise ValueError("Enter a 10-digit mobile number (digits only).")
+    return digits
 
 
 class LeadCreate(BaseModel):

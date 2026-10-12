@@ -7,7 +7,8 @@
  * need as children. This is the "consistent design pass" starting point:
  * one modal implementation instead of three ad-hoc ones.
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 export function Modal({
   title,
@@ -28,13 +29,18 @@ export function Modal({
     return () => document.removeEventListener("keydown", handleEscape);
   }, [onClose]);
 
-  return (
+  // Rendered into <body> so no transformed/animated ancestor can pull the overlay away from the viewport.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50"
       onClick={onClose}
     >
       <div
-        className={`bg-white dark:bg-zinc-900 rounded-xl shadow-lg p-6 w-full ${wide ? "max-w-2xl max-h-[90vh] overflow-y-auto" : "max-w-md"}`}
+        className={`bg-white dark:bg-zinc-900 rounded-xl shadow-lg p-6 w-full max-h-[90vh] overflow-y-auto ${wide ? "max-w-2xl" : "max-w-md"}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-4">
@@ -45,7 +51,8 @@ export function Modal({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

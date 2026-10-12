@@ -9,6 +9,7 @@ import { usePagination, PaginationControls } from "@/components/Pagination";
 import { useToast } from "@/components/Toast";
 import { SkeletonList } from "@/components/Skeleton";
 import { SwipeToDelete } from "@/components/SwipeToDelete";
+import { tenDigits } from "@/lib/format";
 
 type Lead = {
   id: string;
@@ -210,8 +211,10 @@ export default function CRMPage() {
               required
               type="tel"
               inputMode="tel"
+              pattern="[0-9]{10}"
+              title="Exactly 10 digits"
               value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              onChange={(e) => setForm({ ...form, phone: tenDigits(e.target.value) })}
               className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
             <div className="grid grid-cols-2 gap-2">

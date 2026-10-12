@@ -318,6 +318,9 @@ function InventoryCard({ w, canEdit, meta, reload, setW }: { w: WorkDetail; canE
   const { showToast } = useToast();
   const stage = ["allocated", "po_not_raised"].includes(w.status);
   const issued = w.stock_issues.length > 0;
+  // The quantities can be corrected at any point before delivery (not only while checking stock): a wrong quantity
+  // should never force a new quotation.
+  const editable = canEdit && !["delivered", "closed"].includes(w.status);
   const [rows, setRows] = useState<{ product_id: string; qty: string }[]>(w.items.length ? w.items.map((i) => ({ product_id: i.product_id, qty: String(i.qty) })) : [{ product_id: "", qty: "1" }]);
   const [check, setCheck] = useState<StockCheck | null>(null);
   const [busy, setBusy] = useState(false);
@@ -328,6 +331,7 @@ function InventoryCard({ w, canEdit, meta, reload, setW }: { w: WorkDetail; canE
     return apiRequest<StockCheck>(`/api/workpage/works/${w.id}/stock-check`, { auth: true }).then(setCheck).catch(() => {});
   }, [w.id, w.items.length, issued]);
   useEffect(() => { runCheck(); }, [runCheck, itemKey, w.status]);
+  useEffect(() => { setRows(w.items.length ? w.items.map((i) => ({ product_id: i.product_id, qty: String(i.qty) })) : [{ product_id: "", qty: "1" }]); }, [itemKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function call<T = WorkDetail>(path: string, method: string, body: unknown, ok: string) {
     setBusy(true);
@@ -359,13 +363,13 @@ function InventoryCard({ w, canEdit, meta, reload, setW }: { w: WorkDetail; canE
     );
   }
 
-  if (!stage && !w.items.length) return null;
+  if (!editable && !w.items.length) return null;
   const products = meta?.products ?? [];
   return (
     <Card className="p-5" data-testid="inventory-card">
       <h2 className="font-semibold text-slate-800 dark:text-white mb-1">Check inventory</h2>
       <p className="text-xs text-slate-500 dark:text-zinc-400 mb-3">List what the customer needs. If it is all in stock, take it from inventory: the work is delivered at once and the amounts come from the stock batches. If not, the work waits for a purchase order, with the reason on record.</p>
-      {stage && canEdit ? (
+      {editable ? (
         <div className="space-y-2 mb-3">
           {rows.map((r, i) => (
             <div key={i} className="flex gap-2 items-center">
@@ -378,8 +382,9 @@ function InventoryCard({ w, canEdit, meta, reload, setW }: { w: WorkDetail; canE
           ))}
           <div className="flex gap-2">
             <Button type="button" size="sm" variant="secondary" onClick={() => setRows([...rows, { product_id: "", qty: "1" }])}>+ Add item</Button>
-            <Button type="button" size="sm" onClick={saveItems} disabled={busy || !rows.some((r) => r.product_id)} data-testid="check-inventory">Save &amp; check inventory</Button>
+            <Button type="button" size="sm" onClick={saveItems} disabled={busy || !rows.some((r) => r.product_id)} data-testid="check-inventory">{w.items.length ? "Update quantities" : "Save & check inventory"}</Button>
           </div>
+          {!stage && <p className="text-xs text-slate-500 dark:text-zinc-400">Quantities can be changed until the work is delivered. Stock bought for this work leaves Inventory when it is delivered, using these quantities.</p>}
         </div>
       ) : null}
       {check && (

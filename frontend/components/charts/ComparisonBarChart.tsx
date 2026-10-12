@@ -56,7 +56,9 @@ export function ComparisonBarChart({
           width={110}
         />
         <Tooltip
-          contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: 8, fontSize: 13 }}
+          contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: 8, fontSize: 13, color: (theme === "dark" ? "#f4f4f5" : "#0f172a") }}
+          itemStyle={{ color: (theme === "dark" ? "#f4f4f5" : "#0f172a") }}
+          labelStyle={{ color: (theme === "dark" ? "#f4f4f5" : "#0f172a") }}
           cursor={{ fill: theme === "dark" ? "#27272a" : "#f1f5f9" }}
           formatter={(value: number) => [`${valuePrefix}${value.toLocaleString("en-IN")}`, undefined]}
         />

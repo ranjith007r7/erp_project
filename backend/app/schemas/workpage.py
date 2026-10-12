@@ -3,7 +3,9 @@ from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.schemas.crm import clean_mobile
 
 
 class WorkCreate(BaseModel):
@@ -18,6 +20,11 @@ class WorkCreate(BaseModel):
     customer_id: Optional[UUID] = None
     client_mobile: Optional[str] = Field(default=None, max_length=30)
 
+    @field_validator("client_mobile")
+    @classmethod
+    def _mobile(cls, v):
+        return clean_mobile(v)
+
 
 class WorkUpdate(BaseModel):
     client_name: Optional[str] = Field(default=None, min_length=1, max_length=200)
@@ -28,6 +35,11 @@ class WorkUpdate(BaseModel):
     vendor_amount: Optional[Decimal] = Field(default=None, ge=0)
     discount_percent: Optional[Decimal] = Field(default=None, ge=0, le=100)
     client_mobile: Optional[str] = Field(default=None, max_length=30)
+
+    @field_validator("client_mobile")
+    @classmethod
+    def _mobile(cls, v):
+        return clean_mobile(v)
 
 
 class WorkItemIn(BaseModel):

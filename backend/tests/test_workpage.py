@@ -327,3 +327,79 @@ def test_reconciliation_advance_paid_work_is_not_a_mismatch(client, signup):
     out = client.get(R, headers=h).json()
     r = next(x for x in out["works"] if x["work_id"] == w["id"])
     assert r["state"] == "paid_awaiting_delivery" and out["mismatch"] == 0 and out["open"] == 1
+
+
+# ---------------------------------------------------------------- bug-report fixes (11 Oct)
+def _stock(client, h, product_id):
+    rows = client.get("/api/inventory/stock-levels", headers=h).json()
+    return sum(r["quantity"] for r in rows if r["product_id"] == product_id)
+
+
+def _po_work(client, h, buy=3, need=1, list_items=True):
+    """A work whose goods are bought on a PO (bought `buy`, the work needs `need`), received, ready to deliver."""
+    d1 = client.post("/api/hr/departments", headers=h, json={"name": "Ops"}).json()
+    e = client.post("/api/hr/employees", headers=h, json={"name": "Anu", "department_id": d1["id"]}).json()
+    w = new_work(client, h)
+    client.post(f"{W}/{w['id']}/allocate", headers=h, json={"department_id": d1["id"], "employee_id": e["id"]})
+    prod = client.post("/api/sales/products", headers=h, json={"name": f"Kit {uuid.uuid4().hex[:4]}", "unit_price": 100}).json()
+    if list_items:
+        assert client.put(f"{W}/{w['id']}/items", headers=h, json={"items": [{"product_id": prod["id"], "qty": need}]}).status_code == 200
+        assert client.post(f"{W}/{w['id']}/stock-short", headers=h, json={}).status_code == 200
+    vendor = client.post("/api/procurement/vendors", headers=h, json={"name": "Bharath Mounts"}).json()
+    po = client.post(PO, headers=h, json={"vendor_id": vendor["id"], "work_order_id": w["id"],
+                                          "items": [{"product_id": prod["id"], "qty": buy, "unit_price": 60}]}).json()
+    client.post(f"{PO}/{po['id']}/approve", headers=h)
+    assert client.post(f"{PO}/{po['id']}/receive-good", headers=h, files=files()).status_code == 200
+    return w, prod
+
+
+def test_po_fed_work_takes_its_quantity_out_of_inventory_on_delivery(client, signup):
+    h = signup()
+    w, prod = _po_work(client, h, buy=3, need=1)
+    assert _stock(client, h, prod["id"]) == 3                      # received into Inventory
+    assert client.post(f"{W}/{w['id']}/deliver", headers=h, json={}).status_code == 200
+    assert _stock(client, h, prod["id"]) == 2                      # bought 3, the work used 1
+    assert any(e["kind"] == "stock_issued" for e in get(client, h, w["id"])["events"])
+    # the leftover units are real stock for the next work: a second PO-less take sees 2, not 3
+    assert client.get(f"{W}/{w['id']}/stock-check", headers=h).status_code == 200
+
+
+def test_quantity_can_be_edited_after_the_po_arrives_and_delivery_uses_it(client, signup):
+    h = signup()
+    w, prod = _po_work(client, h, buy=3, need=1)
+    # wrong quantity typed: fix it without a new quotation
+    r = client.put(f"{W}/{w['id']}/items", headers=h, json={"items": [{"product_id": prod["id"], "qty": 3}]})
+    assert r.status_code == 200 and get(client, h, w["id"])["items"][0]["qty"] == 3
+    assert client.post(f"{W}/{w['id']}/deliver", headers=h, json={}).status_code == 200
+    assert _stock(client, h, prod["id"]) == 0
+    # once delivered the list is locked
+    assert client.put(f"{W}/{w['id']}/items", headers=h, json={"items": [{"product_id": prod["id"], "qty": 1}]}).status_code == 400
+
+
+def test_po_work_without_item_list_uses_the_po_quantities(client, signup):
+    h = signup()
+    w, prod = _po_work(client, h, buy=2, need=1, list_items=False)
+    assert client.post(f"{W}/{w['id']}/deliver", headers=h, json={}).status_code == 200
+    assert _stock(client, h, prod["id"]) == 0
+
+
+def test_delivery_is_refused_when_the_stock_is_no_longer_there(client, signup):
+    h = signup()
+    w, prod = _po_work(client, h, buy=1, need=1)
+    # someone raises the quantity beyond what is in Inventory
+    client.put(f"{W}/{w['id']}/items", headers=h, json={"items": [{"product_id": prod["id"], "qty": 5}]})
+    r = client.post(f"{W}/{w['id']}/deliver", headers=h, json={})
+    assert r.status_code == 400 and "only 1 is in Inventory" in r.json()["detail"]
+    assert get(client, h, w["id"])["status"] == "po_received" and _stock(client, h, prod["id"]) == 1
+
+
+def test_client_mobile_must_be_exactly_ten_digits(client, signup):
+    h = signup()
+    for bad in ["988409884002202", "12345", "98840 9884A", "98765432101"]:
+        assert client.post("/api/crm/leads", headers=h, json={"name": "A", "phone": bad}).status_code == 422, bad
+        assert client.post(W, headers=h, json={"client_name": "A", "client_mobile": bad}).status_code == 422, bad
+    ok = client.post("/api/crm/leads", headers=h, json={"name": "A", "phone": "+91 98765-43210"})
+    assert ok.status_code == 201 and ok.json()["phone"] == "9876543210"
+    w = client.post(W, headers=h, json={"client_name": "A", "client_mobile": "98765 43210"})
+    assert w.status_code == 201 and w.json()["client_mobile"] == "9876543210"
+    assert client.patch(f"{W}/{w.json()['id']}", headers=h, json={"client_mobile": "1234567"}).status_code == 422

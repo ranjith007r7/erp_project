@@ -83,7 +83,7 @@ def test_lead_mobile_is_validated_and_stored(client, signup):
     short = client.post("/api/crm/leads", headers=h, json={"name": "A", "phone": "12345"})
     assert short.status_code == 422
     ok = client.post("/api/crm/leads", headers=h, json={"name": "A", "phone": "+91 98765-43210", "estimated_amount": 2500.5})
-    assert ok.status_code == 201 and ok.json()["phone"] == "+91 98765-43210" and D(ok.json()["estimated_amount"]) == D("2500.50")
+    assert ok.status_code == 201 and ok.json()["phone"] == "9876543210" and D(ok.json()["estimated_amount"]) == D("2500.50")
     edit = client.patch(f"/api/crm/leads/{ok.json()['id']}", headers=h, json={"phone": "9876543210", "estimated_amount": 3000})
     assert edit.status_code == 200 and edit.json()["phone"] == "9876543210"
     csvp = "name,company_name,phone,estimated_amount\nRaj,Raj Co,9876501234,1500\nBad,Bad Co,12,10\n"
@@ -94,7 +94,7 @@ def test_lead_mobile_is_validated_and_stored(client, signup):
 def test_converting_a_quotation_opens_an_assigned_work_with_the_amount(client, signup):
     h = signup()
     w = crm_work(client, h, amount=174995)
-    assert w["status"] == "assigned" and w["client_name"] == "Konnect Coworking" and w["client_mobile"] == "+91 98765 43210"
+    assert w["status"] == "assigned" and w["client_name"] == "Konnect Coworking" and w["client_mobile"] == "9876543210"
     assert D(w["quotation_amount"]) == D("174995") and w["domain"] == "Coworking" and w["lead_id"]
     assert w["handling_department"] is None                       # a manager allocates it
     assert w["events"][0]["title"].startswith("Quotation converted")

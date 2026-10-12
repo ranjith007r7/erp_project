@@ -21,6 +21,8 @@ from app.schemas.workpage import WorkCreate, WorkUpdate, AllocateIn, DeliverIn, 
 from app.services import workpages as svc
 from app.services.audit import log_audit_event
 
+from app.schemas.crm import clean_mobile
+
 router = APIRouter(prefix="/api/workpage", tags=["workpage"], dependencies=[Depends(get_current_user)])
 
 
@@ -249,7 +251,12 @@ async def import_works(file: UploadFile = File(...), db: Session = Depends(get_d
         except Exception:  # noqa: BLE001
             errors.append({"row": i, "reason": "quotation_amount must be a positive number"})
             continue
-        svc.create_work(db, org_id, current_user, client_name=name, domain=r.get("domain"), client_mobile=r.get("client_mobile"),
+        try:
+            mobile = clean_mobile(r.get("client_mobile"))
+        except ValueError as e:
+            errors.append({"row": i, "reason": str(e)})
+            continue
+        svc.create_work(db, org_id, current_user, client_name=name, domain=r.get("domain"), client_mobile=mobile,
                         description=r.get("description"), quotation_amount=amt, assign_department=False,
                         opened_title="Work imported in bulk")
         made += 1

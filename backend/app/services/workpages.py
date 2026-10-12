@@ -357,6 +357,34 @@ def allocate(db: Session, work: WorkOrder, user: User, department_id, employee_i
     return work
 
 
+def _take_purchased_stock(db: Session, work: WorkOrder, user: User) -> list[str]:
+    """Goods bought for a work are received into Inventory (so the books show them arriving). When the work is delivered
+    they leave again: exactly the quantities the work needs (its item list), or, if no list was kept, what its purchase
+    orders brought in. Only the quantities move; prices are not re-checked because the customer's price was agreed
+    on the quotation, not on a stock lot."""
+    need: dict = {}
+    for it in _items(db, work):
+        need[it.product_id] = need.get(it.product_id, 0) + int(it.qty)
+    if not need:
+        for po in _active_pos(db, work):
+            if po.status == "received":
+                for line in po.items:
+                    need[line.product_id] = need.get(line.product_id, 0) + int(line.qty)
+    done = []
+    for pid, qty in need.items():
+        prod = db.get(Product, pid)
+        name = prod.name if prod else "a product"
+        try:
+            issue_stock(db, work.org_id, str(pid), name, qty, ref_type="work_order", ref_id=str(work.id))
+        except ValueError:
+            have = stock_svc.stock_total(db, work.org_id, pid)
+            raise WorkError(f"Cannot deliver: {name} needs {qty} but only {have} is in Inventory (some of the received stock was used elsewhere). "
+                            "Receive more stock or correct the item quantity on this work first.")
+        stock_svc.consume_best_effort(db, work.org_id, pid, qty)
+        done.append(f"{name} x {qty}")
+    return done
+
+
 def deliver(db: Session, work: WorkOrder, user: User, delivered_on: date | None, note: str | None, from_stock: bool = False):
     """Delivery of goods that arrived through a purchase order. Stock already in inventory is served by issue_stock_for_work."""
     if work.status == "closed":
@@ -369,10 +397,13 @@ def deliver(db: Session, work: WorkOrder, user: User, delivered_on: date | None,
         if work.status in ("assigned", "allocated"):
             raise WorkError("Nothing to deliver yet: check inventory and take the stock, or raise a purchase order and receive the goods.")
         raise WorkError(f"A work in status '{STATUSES[work.status]['label']}' cannot be delivered yet.")
+    taken = _take_purchased_stock(db, work, user)
     work.delivered_on = delivered_on or date.today()
     work.delivery_note = (note or "").strip() or None
     work.pending_note = None
     _set_status(db, work, "delivered")
+    if taken:
+        log_event(db, work, "stock_issued", "Stock taken from inventory", "; ".join(taken) + ". These units came in on this work's purchase order.", user)
     log_event(db, work, "delivered", "Delivered to customer",
               f"Delivered on {work.delivered_on}." + (f" {work.delivery_note}" if work.delivery_note else ""), user)
     maybe_auto_close(db, work, user)

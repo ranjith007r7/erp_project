@@ -16,7 +16,9 @@ export function IncomeBars({ data }: { data: { label: string; amount: number }[]
         <YAxis tick={{ fill: text, fontSize: 12 }} axisLine={false} tickLine={false} width={56} tickFormatter={(v) => Number(v).toLocaleString("en-IN")} />
         <Tooltip
           cursor={{ fill: theme === "dark" ? "#27272a" : "#f1f5f9" }}
-          contentStyle={{ backgroundColor: theme === "dark" ? "#18181b" : "#fff", border: `1px solid ${grid}`, borderRadius: 8, fontSize: 13 }}
+          contentStyle={{ backgroundColor: theme === "dark" ? "#18181b" : "#fff", border: `1px solid ${grid}`, borderRadius: 8, fontSize: 13, color: (theme === "dark" ? "#f4f4f5" : "#0f172a") }}
+          itemStyle={{ color: (theme === "dark" ? "#f4f4f5" : "#0f172a") }}
+          labelStyle={{ color: (theme === "dark" ? "#f4f4f5" : "#0f172a") }}
           formatter={(v: number) => [`₹${v.toLocaleString("en-IN")}`, "Income"]}
         />
         <Bar dataKey="amount" fill={bar} radius={[4, 4, 0, 0]} />

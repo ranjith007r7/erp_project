@@ -47,8 +47,9 @@ export function TrendLineChart({
           width={valuePrefix ? 70 : 40}
         />
         <Tooltip
-          contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: 8, fontSize: 13 }}
-          labelStyle={{ color: textColor }}
+          contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: 8, fontSize: 13, color: (theme === "dark" ? "#f4f4f5" : "#0f172a") }}
+          itemStyle={{ color: (theme === "dark" ? "#f4f4f5" : "#0f172a") }}
+          labelStyle={{ color: (theme === "dark" ? "#f4f4f5" : "#0f172a") }}
           formatter={(value: number) => [`${valuePrefix}${value.toLocaleString("en-IN")}`, undefined]}
         />
         {series.length > 1 && <Legend wrapperStyle={{ fontSize: 12, color: textColor }} />}

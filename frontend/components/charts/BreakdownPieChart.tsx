@@ -17,6 +17,7 @@ export function BreakdownPieChart({ items }: { items: { label: string; value: nu
   const textColor = theme === "dark" ? "#a1a1aa" : "#64748b";
   const tooltipBg = theme === "dark" ? "#18181b" : "#ffffff";
   const tooltipBorder = theme === "dark" ? "#3f3f46" : "#e2e8f0";
+  const tooltipText = theme === "dark" ? "#f4f4f5" : "#0f172a";
 
   const filtered = (items || []).filter((i) => i.value > 0);
   if (filtered.length === 0) {
@@ -41,7 +42,9 @@ export function BreakdownPieChart({ items }: { items: { label: string; value: nu
           ))}
         </Pie>
         <Tooltip
-          contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: 8, fontSize: 13 }}
+          contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: 8, fontSize: 13, color: tooltipText }}
+          itemStyle={{ color: tooltipText }}
+          labelStyle={{ color: tooltipText }}
           formatter={(value: number, name: string) => [value.toLocaleString("en-IN"), name]}
         />
         <Legend wrapperStyle={{ fontSize: 12, color: textColor }} />

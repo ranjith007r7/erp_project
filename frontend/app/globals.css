@@ -23,6 +23,9 @@ input:-webkit-autofill:focus {
   box-shadow: 0 0 0 1000px #18181b inset;
 }
 
+/* NOTE: fill-mode is `backwards` on purpose. `both` would keep a transform on the page wrapper forever, and a
+   transformed ancestor becomes the containing block of every position:fixed child, so pop-ups opened mid-page
+   appeared at the middle of the (scrolled) page instead of the middle of the screen. */
 /* ---- page transitions (app/template.tsx) -------------------------------------------------
    The page itself fades in and rises slightly; the top-level blocks inside a page's <main>
    then follow with a short stagger. Opacity/transform only, so it never shifts the layout.
@@ -35,8 +38,8 @@ input:-webkit-autofill:focus {
   from { opacity: 0; transform: translateY(14px) scale(0.99); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
-.page-enter { animation: page-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-.page-enter main > * { animation: block-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.page-enter { animation: page-in 320ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+.page-enter main > * { animation: block-in 480ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
 .page-enter main > *:nth-child(1) { animation-delay: 0ms; }
 .page-enter main > *:nth-child(2) { animation-delay: 45ms; }
 .page-enter main > *:nth-child(3) { animation-delay: 90ms; }
