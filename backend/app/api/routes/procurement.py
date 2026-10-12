@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload, load_only
 from app.core.config import settings
 from app.core.database import get_db
 from app.api.deps import get_current_user, get_org_id, require_permission
-from app.services import workpages
+from app.services import workpages, po_correction
 from app.models.organization import Organization
 from app.models.procurement import (
     Vendor, PurchaseOrder, PurchaseOrderItem, GoodsReceipt, GoodsReceiptFile, ProcurementEmailLog,
@@ -33,7 +33,7 @@ from app.models.procurement import (
 from app.models.sales import Product
 from app.schemas.procurement import (
     VendorCreate, VendorUpdate, VendorOut,
-    PurchaseOrderCreate, PurchaseOrderOut, EmailPreviewOut, SendEmailIn, SendEmailOut,
+    PurchaseOrderCreate, PurchaseOrderOut, PriceCorrectionIn, EmailPreviewOut, SendEmailIn, SendEmailOut,
 )
 from app.services.inventory import receive_stock
 from app.services import stock as stock_svc
@@ -70,6 +70,7 @@ def _load_po(db: Session, org_id, po_id) -> PurchaseOrder:
             selectinload(PurchaseOrder.items).joinedload(PurchaseOrderItem.product),
             joinedload(PurchaseOrder.vendor), joinedload(PurchaseOrder.creator),
             joinedload(PurchaseOrder.approver),
+            selectinload(PurchaseOrder.corrections),
             selectinload(PurchaseOrder.receipts).selectinload(GoodsReceipt.files).load_only(
                 GoodsReceiptFile.id, GoodsReceiptFile.kind, GoodsReceiptFile.filename,
                 GoodsReceiptFile.content_type, GoodsReceiptFile.size, GoodsReceiptFile.receipt_id,
@@ -104,6 +105,10 @@ def _out(po: PurchaseOrder) -> dict:
             "id": i.id, "product_id": i.product_id, "product_name": i.product.name if i.product else None,
             "qty": i.qty, "unit_price": i.unit_price, "line_total": i.qty * i.unit_price,
         } for i in po.items],
+        "corrections": [{
+            "product_name": c.product.name if c.product else None, "qty": c.qty, "old_price": c.old_price, "new_price": c.new_price,
+            "reason": c.reason, "corrected_by_name": c.corrector.name if c.corrector else None, "created_at": c.created_at,
+        } for c in po.corrections],
         "receipts": [{
             "id": r.id, "condition": r.condition, "notes": r.notes, "received_date": r.received_date,
             "received_by_name": r.receiver.name if r.receiver else None,
@@ -233,6 +238,21 @@ def list_purchase_orders(
         q = q.filter(PurchaseOrder.approval_status == approval)
     ids = [r[0] for r in q.order_by(PurchaseOrder.order_date.desc(), PurchaseOrder.created_at.desc()).all()]
     return [_out(_load_po(db, org_id, i)) for i in ids]
+
+
+@router.post("/purchase-orders/{po_id}/correct-prices", response_model=PurchaseOrderOut,
+             dependencies=[Depends(require_permission("procurement", "correct_price"))])
+def correct_po_prices(po_id: str, payload: PriceCorrectionIn, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    """Amend the unit prices of a RECEIVED purchase order. Needs the separate `correct_price` permission (Admin always has it).
+    Keeps the old price, who, when and why; carries the new price to the PO total, its stock lots, and the works that used them."""
+    po = _load_po(db, org_id, po_id)
+    try:
+        po_correction.correct_prices(db, org_id, po, current_user, [(l.item_id, l.unit_price) for l in payload.items], payload.reason)
+    except po_correction.CorrectionError as e:
+        raise HTTPException(400, str(e))
+    notify_role(db, org_id, "Admin", f"{po.po_number} prices were corrected by {current_user.name}: {payload.reason.strip()}")
+    db.commit()
+    return _out(_load_po(db, org_id, po.id))
 
 
 @router.post("/purchase-orders/{po_id}/approve", response_model=PurchaseOrderOut, dependencies=[Depends(require_permission("procurement", "approve"))])

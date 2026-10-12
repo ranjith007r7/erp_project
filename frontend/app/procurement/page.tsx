@@ -7,6 +7,7 @@ import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { SkeletonList } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
+import { useCurrentUser } from "@/components/AppShell";
 import { EmailPreviewModal } from "@/components/procurement/EmailPreviewModal";
 import { ReceiveModal } from "@/components/procurement/ReceiveModal";
 import { inr, type Product, type PurchaseOrder, type Receipt, type Vendor } from "@/components/procurement/types";
@@ -30,6 +31,8 @@ function Badge({ cls, children }: { cls: string; children: React.ReactNode }) {
 
 export default function ProcurementPage() {
   const { showToast } = useToast();
+  const { can } = useCurrentUser();
+  const [correctFor, setCorrectFor] = useState<PurchaseOrder | null>(null);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
@@ -39,7 +42,7 @@ export default function ProcurementPage() {
   const [vendorForm, setVendorForm] = useState({ name: "", email: "" });
   const [poVendor, setPoVendor] = useState("");
   const [poWork, setPoWork] = useState("");
-  const [openWorks, setOpenWorks] = useState<{ id: string; work_number: string; client_name: string; status_label: string; needs: { product_id: string; product_name: string | null; needed: number; on_pos: number; remaining: number }[] }[]>([]);
+  const [openWorks, setOpenWorks] = useState<{ id: string; work_number: string; client_name: string; status_label: string; needs: { product_id: string; product_name: string | null; needed: number; in_stock: number; on_pos: number; remaining: number }[] }[]>([]);
   const [lines, setLines] = useState<Line[]>([{ product_id: "", qty: "1", unit_price: "" }]);
 
   const [filterVendor, setFilterVendor] = useState("");
@@ -189,8 +192,8 @@ export default function ProcurementPage() {
                 {chosenWork && (
                   <p className="text-xs rounded-lg px-3 py-2 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300" data-testid="po-work-rule">
                     {toOrder.length
-                      ? <>An order for {chosenWork.work_number} must match what the work needs: {toOrder.map((n) => `${n.product_name} × ${n.remaining}`).join(", ")}. For extra stock, raise a separate order and choose &quot;Stock for future&quot;.</>
-                      : <>{chosenWork.work_number} has no item list, or its items are already covered by earlier orders.</>}
+                      ? <>Only the shortfall can be ordered for {chosenWork.work_number}: {toOrder.map((n) => `${n.product_name} × ${n.remaining} (needs ${n.needed}, ${n.in_stock} in stock${n.on_pos ? `, ${n.on_pos} already on order` : ""})`).join("; ")}. For extra stock, raise a separate order and choose &quot;Stock for future&quot;.</>
+                      : <>{chosenWork.work_number} has no item list, or what it needs is already in stock or on order. Nothing more to order for it.</>}
                   </p>
                 )}
                 {lines.map((l, i) => (
@@ -279,6 +282,14 @@ export default function ProcurementPage() {
                       <li className="flex justify-between font-semibold border-t border-slate-200 dark:border-zinc-700 pt-1 mt-1"><span>Total</span><span>{inr(po.total)}</span></li>
                     </ul>
 
+                    {(po.corrections?.length ?? 0) > 0 && (
+                      <div className="mt-2 text-xs rounded-lg p-2 bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-200 space-y-0.5" data-testid="po-corrections">
+                        {po.corrections!.map((c, k) => (
+                          <p key={k}>Price corrected: {c.product_name} {inr(c.old_price)} → {inr(c.new_price)} by {c.corrected_by_name || "-"}{c.created_at ? ` on ${c.created_at.slice(0, 10)}` : ""}. Reason: {c.reason}</p>
+                        ))}
+                      </div>
+                    )}
+
                     {po.receipts.length > 0 && (
                       <div className="mt-2 space-y-1">
                         {po.receipts.map((r) => (
@@ -313,6 +324,9 @@ export default function ProcurementPage() {
                         <Button size="sm" variant="secondary" className="flex items-center gap-1" onClick={() => setEmailTarget({ kind: "po", po })}>
                           <Mail size={13} /> Send to vendor
                         </Button>
+                      )}
+                      {po.status === "received" && can("procurement", "correct_price") && (
+                        <Button size="sm" variant="secondary" onClick={() => setCorrectFor(po)} data-testid="correct-price">Correct price</Button>
                       )}
                       {po.approval_status === "approved" && po.status !== "received" && po.status !== "cancelled" && (
                         <Button size="sm" className="flex items-center gap-1" onClick={() => setReceiveFor(po)}>
@@ -367,6 +381,10 @@ export default function ProcurementPage() {
           }}
         />
       )}
+      {correctFor && (
+        <CorrectPriceModal po={correctFor} onClose={() => setCorrectFor(null)}
+          onDone={() => { setCorrectFor(null); loadAll(); showToast("Price corrected. The lot, the work and the PO are updated, and the change is on record.", "success"); }} />
+      )}
       {editEmail && (
         <Modal title={`Email for ${editEmail.name}`} onClose={() => setEditEmail(null)}>
           <div className="space-y-3">
@@ -379,5 +397,51 @@ export default function ProcurementPage() {
         </Modal>
       )}
     </main>
+  );
+}
+
+
+function CorrectPriceModal({ po, onClose, onDone }: { po: PurchaseOrder; onClose: () => void; onDone: () => void }) {
+  const { showToast } = useToast();
+  const [prices, setPrices] = useState<Record<string, string>>(Object.fromEntries(po.items.map((i) => [i.id, String(Number(i.unit_price))])));
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const changed = po.items.filter((i) => Number(prices[i.id]) !== Number(i.unit_price) && prices[i.id] !== "");
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await apiRequest(`/api/procurement/purchase-orders/${po.id}/correct-prices`, {
+        method: "POST", auth: true,
+        body: { reason, items: changed.map((i) => ({ item_id: i.id, unit_price: Number(prices[i.id]) })) },
+      });
+      onDone();
+    } catch (err) { showToast(err instanceof Error ? err.message : "Could not correct the price", "error"); setBusy(false); }
+  }
+  return (
+    <Modal title={`Correct price · ${po.po_number}`} onClose={onClose}>
+      <form onSubmit={submit} className="space-y-3">
+        <p className="text-xs text-slate-500 dark:text-zinc-400">
+          Use this when the price on this received order was keyed wrongly. The old price stays on record with your name and reason.
+          The new price is carried to the stock lot it created, to any work that used those units, and to that work&apos;s vendor amount and profit. Quantities do not change.
+        </p>
+        {po.items.map((i) => (
+          <label key={i.id} className="block text-sm text-slate-600 dark:text-zinc-300">
+            {i.product_name} × {i.qty}: unit price (was {inr(i.unit_price)})
+            <Input aria-label={`Unit price for ${i.product_name}`} type="number" min={0} step="0.01" required value={prices[i.id]} onChange={(e) => setPrices({ ...prices, [i.id]: e.target.value })} />
+          </label>
+        ))}
+        <label className="block text-sm text-slate-600 dark:text-zinc-300">
+          Reason (required)
+          <textarea aria-label="Reason" required minLength={3} maxLength={500} rows={3} value={reason} onChange={(e) => setReason(e.target.value)}
+            placeholder="e.g. keyed 4000, the vendor invoice says 2500"
+            className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm mt-1" />
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={busy || changed.length === 0 || reason.trim().length < 3}>Correct price</Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

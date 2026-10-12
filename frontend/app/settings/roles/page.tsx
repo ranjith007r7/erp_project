@@ -40,6 +40,8 @@ const SPECIAL_APPROVALS = [
     help: "Decide on cancellations raised by employees. Raising one only needs Work Page edit. Approving returns stock to Inventory." },
   { module: "procurement", action: "approve", label: "Approve or reject purchase orders",
     help: "Approve POs raised for works and stock, and reject them." },
+  { module: "procurement", action: "correct_price", label: "Correct prices on received purchase orders",
+    help: "Amend a wrongly keyed price after goods are received. Needs a reason; the old price stays on record." },
   { module: "workpage", action: "approve", label: "Close works manually",
     help: "Mark a work as done by hand when it cannot close automatically." },
 ];

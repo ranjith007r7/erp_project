@@ -64,6 +64,7 @@ class PurchaseOrder(Base):
     creator = relationship("User", foreign_keys=[created_by])
     approver = relationship("User", foreign_keys=[approved_by])
     receipts = relationship("GoodsReceipt", back_populates="purchase_order", order_by="GoodsReceipt.created_at")
+    corrections = relationship("PoPriceCorrection", order_by="PoPriceCorrection.created_at", cascade="all, delete-orphan")
 
 
 class PurchaseOrderItem(Base):
@@ -150,3 +151,23 @@ class ProcurementEmailLog(Base):
     status = Column(String, nullable=False)     # sent / logged / printed
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PoPriceCorrection(Base):
+    """One corrected unit price on a received purchase order. The original price is never lost: every correction
+    keeps old price, new price, who, when and why (a received PO is amended with a trail, not silently edited)."""
+    __tablename__ = "po_price_corrections"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    po_id = Column(UUID(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=False)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
+    qty = Column(Integer, nullable=False)
+    old_price = Column(Numeric(12, 2), nullable=False)
+    new_price = Column(Numeric(12, 2), nullable=False)
+    reason = Column(Text, nullable=False)
+    corrected_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    product = relationship("Product")
+    corrector = relationship("User", foreign_keys=[corrected_by])

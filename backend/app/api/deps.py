@@ -90,7 +90,8 @@ MANAGE_ACCESS_ACTION = "manage_access"
 # Other standalone capabilities, each with its own checkbox on the Roles page and none of them part of
 # ALL_ACTIONS. The Admin role always holds them (self-healed below); any other role holds one only when ticked.
 #   workpage.cancel_approve - approve or reject a work cancellation raised by an employee
-SPECIAL_ACTIONS = {("workpage", "cancel_approve")}
+#   procurement.correct_price - amend the prices of a received purchase order (with a reason and a trail)
+SPECIAL_ACTIONS = {("workpage", "cancel_approve"), ("procurement", "correct_price")}
 
 
 def require_permission(module: str, action: str):

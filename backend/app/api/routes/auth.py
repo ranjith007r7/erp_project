@@ -357,7 +357,7 @@ def regenerate_recovery_codes(payload: _RegenIn, db: Session = Depends(get_db), 
 def get_me(current_user: User = Depends(get_current_user_unverified_ok), db: Session = Depends(get_db)):
     role = current_user.role
     if role and role.name == "Admin":
-        perms = [f"{m}:{a}" for m in ALL_MODULES for a in ("view", "create", "edit", "delete", "approve")] + ["core:manage_access", "workpage:cancel_approve"]
+        perms = [f"{m}:{a}" for m in ALL_MODULES for a in ("view", "create", "edit", "delete", "approve")] + ["core:manage_access", "workpage:cancel_approve", "procurement:correct_price"]
     elif role:
         perms = sorted({f"{p.module}:{p.action}" for p in db.query(Permission).filter(Permission.role_id == role.id)})
     else:

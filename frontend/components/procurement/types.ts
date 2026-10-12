@@ -11,6 +11,7 @@ export type PurchaseOrder = {
   status: "pending" | "received" | "defective" | "cancelled"; approval_status: "pending" | "approved" | "rejected";
   total: string; created_by_name?: string | null; created_by_email?: string | null; approved_by_name?: string | null;
   items: POItem[]; receipts: Receipt[];
+  corrections?: { product_name?: string | null; qty: number; old_price: string; new_price: string; reason: string; corrected_by_name?: string | null; created_at?: string | null }[];
 };
 export type EmailPreview = {
   from_name: string; to_name: string; to_email?: string | null; subject: string; body: string; attachments: string[];

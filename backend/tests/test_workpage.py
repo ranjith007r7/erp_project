@@ -443,3 +443,43 @@ def test_client_mobile_must_be_exactly_ten_digits(client, signup):
     w = client.post(W, headers=h, json={"client_name": "A", "client_mobile": "98765 43210"})
     assert w.status_code == 201 and w.json()["client_mobile"] == "9876543210"
     assert client.patch(f"{W}/{w.json()['id']}", headers=h, json={"client_mobile": "1234567"}).status_code == 422
+
+
+def test_po_for_a_work_orders_only_the_shortfall_and_vendor_cost_is_the_real_cost(client, signup):
+    """Hold 5 (cost 2500), the work needs 6: only 1 may be ordered; vendor amount = 5 x 2500 + 1 x 4000, before and after delivery."""
+    h = signup()
+    prod = client.post("/api/sales/products", headers=h, json={"name": "Kit", "unit_price": 100}).json()
+    client.post("/api/stockin/batches", headers=h, json={"product_id": prod["id"], "quantity": 5, "vendor_name": "Old", "vendor_amount": 2500, "mrp": 4000, "max_discount_percent": 0})
+    d1 = client.post("/api/hr/departments", headers=h, json={"name": "Ops"}).json()
+    e = client.post("/api/hr/employees", headers=h, json={"name": "Anu", "department_id": d1["id"]}).json()
+    w = new_work(client, h)
+    client.post(f"{W}/{w['id']}/allocate", headers=h, json={"department_id": d1["id"], "employee_id": e["id"]})
+    client.put(f"{W}/{w['id']}/items", headers=h, json={"items": [{"product_id": prod["id"], "qty": 6}]})
+    assert client.post(f"{W}/{w['id']}/stock-short", headers=h, json={}).status_code == 200
+    need = client.get("/api/workpage/open-works", headers=h).json()[0]["needs"][0]
+    assert (need["needed"], need["in_stock"], need["remaining"]) == (6, 5, 1)
+    vendor = client.post("/api/procurement/vendors", headers=h, json={"name": "Bharath"}).json()
+    body = lambda q: {"vendor_id": vendor["id"], "work_order_id": w["id"], "items": [{"product_id": prod["id"], "qty": q, "unit_price": 4000}]}
+    r = client.post(PO, headers=h, json=body(6))
+    assert r.status_code == 400 and "5 already in stock" in r.json()["detail"] and "at most 1" in r.json()["detail"]
+    po = client.post(PO, headers=h, json=body(1)).json()
+    assert float(get(client, h, w["id"])["vendor_amount"]) == 16500          # 5 x 2500 from stock + 1 x 4000 on order
+    client.post(f"{PO}/{po['id']}/approve", headers=h)
+    assert client.post(f"{PO}/{po['id']}/receive-good", headers=h, files=files()).status_code == 200
+    assert float(get(client, h, w["id"])["vendor_amount"]) == 16500
+    # the new lot's cost was keyed wrong (4000, really 3000): correcting the lot flows into the work
+    lot = [b for b in client.get("/api/stockin/batches", headers=h).json() if float(b["vendor_amount"]) == 4000][0]
+    assert client.patch(f"/api/stockin/batches/{lot['id']}", headers=h, json={"vendor_amount": 3000}).status_code == 200
+    assert float(get(client, h, w["id"])["vendor_amount"]) == 15500
+    lots = client.get("/api/stockin/batches", headers=h).json()
+    assert "cost 4000.00 -> 3000.00" in [b for b in lots if b["id"] == lot["id"]][0]["note"]       # trail stays on the lot
+    assert client.post(f"{W}/{w['id']}/deliver", headers=h, json={}).status_code == 200
+    d = get(client, h, w["id"])
+    assert float(d["vendor_amount"]) == 15500 and sum(i["qty"] for i in d["purchased_items"]) == 6
+    assert _stock(client, h, prod["id"]) == 0
+
+
+def test_mrp_message_shows_where_the_ceiling_comes_from():
+    from app.services import pricing
+    msg = pricing.violations(36000, 10, [(5, 4000, 0), (1, 6000, 10)])[0]
+    assert "26000.00 = 5 x 4000.00 + 1 x 6000.00" in msg and "lot's MRP" in msg

@@ -168,21 +168,24 @@ def check_linkable(db: Session, org_id, work_id):
 
 
 def po_needs(db: Session, work: WorkOrder) -> list[dict]:
-    """What the work needs per product, what live POs already cover, and what is left to order."""
+    """Per product: what the work needs, what Inventory already holds, what is already on order, and so what is left to buy.
+    Only the SHORTFALL may be bought for a work (need 6, hold 5 -> order 1). Orders already received are in Inventory
+    (counted in `in_stock`), so only open orders count as `on_order`; a defective one covers nothing."""
     need: dict = {}
     for it in _items(db, work):
         need[it.product_id] = need.get(it.product_id, 0) + int(it.qty)
-    ordered: dict = {}
+    on_order: dict = {}
     for po in _active_pos(db, work):
-        if po.status == "defective":     # arrived damaged: it covers nothing, a replacement is expected
+        if po.status in ("received", "defective"):
             continue
         for line in po.items:
-            ordered[line.product_id] = ordered.get(line.product_id, 0) + int(line.qty)
+            on_order[line.product_id] = on_order.get(line.product_id, 0) + int(line.qty)
     out = []
     for pid, n in need.items():
         prod = db.get(Product, pid)
-        out.append({"product_id": pid, "product_name": prod.name if prod else None, "needed": n,
-                    "on_pos": ordered.get(pid, 0), "remaining": max(n - ordered.get(pid, 0), 0)})
+        held = stock_svc.stock_total(db, work.org_id, pid)
+        out.append({"product_id": pid, "product_name": prod.name if prod else None, "needed": n, "in_stock": held,
+                    "on_pos": on_order.get(pid, 0), "remaining": max(n - held - on_order.get(pid, 0), 0)})
     return out
 
 
@@ -204,23 +207,57 @@ def validate_po_lines(db: Session, org_id, work_id, lines: list[tuple]):
             prod = db.get(Product, pid)
             raise WorkError(f"{prod.name if prod else 'This product'} is not on the item list of {work.work_number}. A purchase order raised for a work can only contain what that work needs." + hint)
         if qty > n["remaining"]:
-            left = f"{n['remaining']} still to order" if n["remaining"] else "already fully covered by earlier purchase orders"
-            raise WorkError(f"{n['product_name']}: {work.work_number} needs {n['needed']} ({left}), but this order has {qty}." + hint)
+            have = f"{n['in_stock']} already in stock" + (f" and {n['on_pos']} already on order" if n["on_pos"] else "")
+            tail = f"so at most {n['remaining']} can be ordered" if n["remaining"] else "so nothing more needs to be ordered"
+            raise WorkError(f"{n['product_name']}: {work.work_number} needs {n['needed']}, {have}, {tail}, but this order has {qty}." + hint)
+
+
+def _estimate_vendor(db: Session, work: WorkOrder) -> Decimal | None:
+    """What the work will cost us: units already in Inventory at their lot cost (oldest first, exactly as delivery will
+    take them) plus the units still to come at the open purchase order's price. None when the work has no item list."""
+    items = _items(db, work)
+    if not items:
+        return None
+    need: dict = {}
+    for it in items:
+        need[it.product_id] = need.get(it.product_id, 0) + int(it.qty)
+    price: dict = {}
+    for po in _active_pos(db, work):
+        if po.status in ("received", "defective"):
+            continue
+        for line in po.items:
+            q, t = price.get(line.product_id, (0, Decimal(0)))
+            price[line.product_id] = (q + int(line.qty), t + Decimal(line.unit_price or 0) * int(line.qty))
+    total = Decimal(0)
+    for pid, qty in need.items():
+        picks, short = stock_svc.plan_issue(db, work.org_id, pid, qty)
+        total += sum((Decimal(b.vendor_amount or 0) * t for b, t in picks), Decimal(0))
+        if short and pid in price and price[pid][0]:
+            total += price[pid][1] / price[pid][0] * short
+    return total
 
 
 def sync_vendor_amount(db: Session, work: WorkOrder):
-    """The vendor amount of a work in its purchase phase is what its live purchase orders cost (quantity x unit price),
-    so it never has to be typed by hand."""
+    """The vendor amount of a work in its purchase phase is what the goods will cost: stock already held at lot cost plus
+    open purchase orders at their price, so it never has to be typed by hand. Without an item list it is the PO totals."""
     if work.status not in PO_PHASE:
         return
     active = _active_pos(db, work)
     if not active:
         return
-    total = q2(sum(Decimal(p.total or 0) for p in active))
+    est = _estimate_vendor(db, work)
+    total = q2(est if est is not None else sum(Decimal(p.total or 0) for p in active))
     if total != q2(work.vendor_amount or 0):
         old = q2(work.vendor_amount or 0)
         work.vendor_amount = total
-        log_event(db, work, "amounts_changed", "Vendor amount updated from purchase orders", f"{old} -> {total}.")
+        log_event(db, work, "amounts_changed", "Vendor amount updated from stock and purchase orders", f"{old} -> {total}.")
+
+
+def resync_vendor_for_product(db: Session, org_id, product_id):
+    """A lot's cost was corrected: works still waiting on goods follow it."""
+    ids = [i for (i,) in db.query(WorkItem.work_id).filter(WorkItem.org_id == org_id, WorkItem.product_id == product_id).distinct()]
+    for w in db.query(WorkOrder).filter(WorkOrder.org_id == org_id, WorkOrder.id.in_(ids), WorkOrder.status.in_(PO_PHASE)).all() if ids else []:
+        sync_vendor_amount(db, w)
 
 
 # ------------------------------------------------------------------ items & stock helpers
@@ -531,6 +568,7 @@ def _take_purchased_stock(db: Session, work: WorkOrder, user: User) -> list[str]
                 for line in po.items:
                     need[line.product_id] = need.get(line.product_id, 0) + int(line.qty)
     done = []
+    cost_total, fully_priced = Decimal(0), True
     for pid, qty in need.items():
         prod = db.get(Product, pid)
         name = prod.name if prod else "a product"
@@ -544,12 +582,17 @@ def _take_purchased_stock(db: Session, work: WorkOrder, user: User) -> list[str]
         covered = 0
         for b, t in picks:
             covered += t
+            cost_total += Decimal(b.vendor_amount or 0) * t
             db.add(WorkStockIssue(org_id=work.org_id, work_id=work.id, batch_id=b.id, product_id=pid, qty=t, source="purchased",
                                   cost_rate=q2(b.vendor_amount), mrp=q2(b.mrp), max_discount_percent=q2(b.max_discount_percent), issued_by=user.id))
+        if covered < qty:
+            fully_priced = False
         if covered < qty:       # units with no priced lot: remembered so a cancellation can still return them
             db.add(WorkStockIssue(org_id=work.org_id, work_id=work.id, batch_id=None, product_id=pid, qty=qty - covered, source="purchased",
                                   cost_rate=0, mrp=0, max_discount_percent=0, issued_by=user.id))
         done.append(f"{name} x {qty}")
+    if need and fully_priced and cost_total:      # the real cost of the units handed over (old stock + bought goods)
+        work.vendor_amount = q2(cost_total)
     return done
 
 
@@ -744,6 +787,7 @@ def on_po_received(db: Session, po: PurchaseOrder, user: User | None):
     log_event(db, work, "po_received", f"{po.po_number} received in good condition",
               f"Goods checked and added to stock by {user.name if user else 'the warehouse'}.", user, {"po_number": po.po_number})
     recompute_from_pos(db, work)
+    sync_vendor_amount(db, work)
 
 
 def on_po_defective(db: Session, po: PurchaseOrder, user: User | None, notes: str | None = None):

@@ -26,6 +26,7 @@ from app.models.stock import StockBatch
 from app.schemas.stockin import StockBatchIn, StockBatchUpdate
 from app.services import stock as svc
 from app.services.audit import log_audit_event
+from app.services import workpages
 
 router = APIRouter(prefix="/api/stockin", tags=["stock-intake"], dependencies=[Depends(get_current_user)])
 
@@ -115,6 +116,7 @@ def update_batch(batch_id: str, payload: StockBatchUpdate, db: Session = Depends
     ch = payload.model_dump(exclude_unset=True)
     if "manufacture_month" in ch:
         ch["manufacture_month"] = _run(db, svc.parse_month, ch["manufacture_month"])
+    before = {"cost": svc.q2(b.vendor_amount), "MRP": svc.q2(b.mrp), "max discount": svc.q2(b.max_discount_percent)}
     new = {"vendor_name": b.vendor_name, "vendor_amount": b.vendor_amount, "mrp": b.mrp, "max_discount_percent": b.max_discount_percent,
            "inward_date": b.inward_date, "manufacture_month": b.manufacture_month, "expiry_date": b.expiry_date}
     new.update({k: v for k, v in ch.items() if k in new})
@@ -124,7 +126,14 @@ def update_batch(batch_id: str, payload: StockBatchUpdate, db: Session = Depends
     if "note" in ch:
         b.note = (ch["note"] or "").strip() or None
     b.updated_at = datetime.utcnow()
-    log_audit_event(db, org_id, current_user.id, "update_stock_batch", "StockBatch", b.id)
+    after = {"cost": svc.q2(b.vendor_amount), "MRP": svc.q2(b.mrp), "max discount": svc.q2(b.max_discount_percent)}
+    diffs = [f"{k} {before[k]} -> {after[k]}" for k in before if before[k] != after[k]]
+    if diffs:      # a rate change leaves a visible trail on the lot itself, so a correction cannot be quietly hidden
+        stamp = f"[{date.today().isoformat()} {current_user.name}: {', '.join(diffs)}]"
+        b.note = (f"{b.note} {stamp}" if b.note else stamp)[:500]
+    log_audit_event(db, org_id, current_user.id, "update_stock_batch: " + ", ".join(diffs) if diffs else "update_stock_batch", "StockBatch", b.id)
+    if "cost" in " ".join(diffs):
+        workpages.safe(db, workpages.resync_vendor_for_product, org_id, b.product_id)
     db.commit()
     return svc.batch_row(db, b)
 

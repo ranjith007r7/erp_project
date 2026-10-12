@@ -70,6 +70,26 @@ class ReceiptOut(BaseModel):
     files: list[ReceiptFileOut] = []
 
 
+class PriceCorrectionLine(BaseModel):
+    item_id: UUID
+    unit_price: Decimal = Field(..., ge=0)
+
+
+class PriceCorrectionIn(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+    items: list[PriceCorrectionLine] = Field(..., min_length=1)
+
+
+class PriceCorrectionOut(BaseModel):
+    product_name: Optional[str] = None
+    qty: int
+    old_price: Decimal
+    new_price: Decimal
+    reason: str
+    corrected_by_name: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
 class PurchaseOrderOut(BaseModel):
     id: UUID
     po_number: Optional[str] = None
@@ -86,6 +106,7 @@ class PurchaseOrderOut(BaseModel):
     work_order_id: Optional[UUID] = None
     items: list[PurchaseOrderItemOut] = []
     receipts: list[ReceiptOut] = []
+    corrections: list[PriceCorrectionOut] = []
 
 
 class EmailPreviewOut(BaseModel):

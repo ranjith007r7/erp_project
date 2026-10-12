@@ -19,7 +19,7 @@ class RoleOut(BaseModel):
 
 class PermissionCreate(BaseModel):
     module: str = Field(..., min_length=1)
-    action: str = Field(..., pattern="^(view|create|edit|delete|approve|manage_access|cancel_approve)$")
+    action: str = Field(..., pattern="^(view|create|edit|delete|approve|manage_access|cancel_approve|correct_price)$")
 
 
 class PermissionOut(BaseModel):
