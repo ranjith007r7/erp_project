@@ -9,10 +9,11 @@ const COLORS: Record<string, string> = {
   orange: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300",
   violet: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
   green: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300",
+  rose: "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300",
 };
 export const STATUS_DOT: Record<string, string> = {
   slate: "bg-slate-400", blue: "bg-blue-500", amber: "bg-amber-500", red: "bg-red-500",
-  indigo: "bg-indigo-500", orange: "bg-orange-500", violet: "bg-violet-500", teal: "bg-teal-500", green: "bg-green-500",
+  indigo: "bg-indigo-500", orange: "bg-orange-500", violet: "bg-violet-500", teal: "bg-teal-500", green: "bg-green-500", rose: "bg-rose-500",
 };
 
 export function StatusPill({ label, color }: { label: string; color: string }) {

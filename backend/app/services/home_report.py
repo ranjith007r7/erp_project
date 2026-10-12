@@ -49,7 +49,7 @@ def build(db: Session, user: User, kind: str, on: date | None) -> dict:
     works_new = db.query(WorkOrder).filter(WorkOrder.org_id == org_id, WorkOrder.created_at >= lo, WorkOrder.created_at < hi).order_by(WorkOrder.created_at).all()
     works_delivered = db.query(WorkOrder).filter(WorkOrder.org_id == org_id, WorkOrder.delivered_on >= first, WorkOrder.delivered_on <= last).all()
     works_closed = db.query(WorkOrder).filter(WorkOrder.org_id == org_id, WorkOrder.closed_at >= lo, WorkOrder.closed_at < hi).all()
-    works_pending = db.query(WorkOrder).filter(WorkOrder.org_id == org_id, WorkOrder.status != "closed").order_by(WorkOrder.created_at).all()
+    works_pending = db.query(WorkOrder).filter(WorkOrder.org_id == org_id, WorkOrder.status.notin_(["closed", "cancelled"])).order_by(WorkOrder.created_at).all()
     pos = db.query(PurchaseOrder).filter(PurchaseOrder.org_id == org_id, PurchaseOrder.created_at >= lo, PurchaseOrder.created_at < hi).order_by(PurchaseOrder.created_at).all()
     leads = db.query(Lead).filter(Lead.org_id == org_id, Lead.created_at >= lo, Lead.created_at < hi).order_by(Lead.created_at).all()
     quotes = db.query(Quotation).filter(Quotation.org_id == org_id, Quotation.created_at >= lo, Quotation.created_at < hi).order_by(Quotation.created_at).all()

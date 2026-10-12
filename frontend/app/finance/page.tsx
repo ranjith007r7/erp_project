@@ -23,7 +23,7 @@ type Method = "cash" | "card" | "gpay";
 const METHOD_LABEL: Record<string, string> = { cash: "Cash", card: "Card", gpay: "GPay", bank_transfer: "Bank transfer" };
 const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
-const RECON_LABEL: Record<string, string> = { matched: "Matched", mismatch: "Mismatch", awaiting_payment: "Awaiting payment", part_paid: "Part paid", not_started: "Not started", paid_awaiting_delivery: "Paid, awaiting delivery" };
+const RECON_LABEL: Record<string, string> = { matched: "Matched", mismatch: "Mismatch", awaiting_payment: "Awaiting payment", part_paid: "Part paid", not_started: "Not started", paid_awaiting_delivery: "Paid, awaiting delivery", cancelled: "Cancelled", cancelled_refund_due: "Cancelled, refund due" };
 type ReconRow = {
   work_id: string; work_number: string; client_name: string; status_label: string; quoted_net: number; received: number;
   booked_in_finance: number; difference: number; state: string; note: string;

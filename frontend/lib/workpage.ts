@@ -20,8 +20,10 @@ export type StockCheck = {
 
 export type WorkDetail = WorkRow & {
   client_details: string | null; description: string | null; delivered_on: string | null; delivery_note: string | null;
-  can_close: boolean; pending_note: string | null;
+  can_close: boolean; pending_note: string | null; can_cancel: boolean;
+  cancellation: { reason: string; remark: string | null; status_before: string | null; status_before_label: string | null; requested_by: string | null; requested_at: string | null; decided_by: string | null; decided_at: string | null; decision_note: string | null } | null;
   items: { id: string; product_id: string; qty: number; product_name: string | null }[];
+  purchased_items: { product_id: string; product_name: string | null; qty: number; cost_rate: string; po_numbers: string }[];
   stock_issues: { id: string; product_id: string; qty: number; cost_rate: string; mrp: string; max_discount_percent: string; product_name: string | null; batch_vendor: string | null }[];
   pricing: { limits: { ceiling: string; floor: string; max_discount_percent: string } | null; violations: string[] };
   quotation: { id: string; total: string; status: string; created_at: string } | null;
@@ -39,6 +41,8 @@ export type WorkDetail = WorkRow & {
 export type WorkMeta = {
   statuses: { key: string; label: string; color: string }[];
   payment_methods: string[];
+  cancel_reasons: string[];
+  other_reason: string;
   products: { id: string; name: string; sku: string | null }[];
   departments: { id: string; name: string }[];
   employees: { id: string; name: string; employee_code: string | null; department_id: string | null }[];

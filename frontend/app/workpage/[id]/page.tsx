@@ -22,7 +22,7 @@ const STEP_OF: Record<string, number> = {
   assigned: 0, allocated: 1, po_not_raised: 1, po_raised: 2, waiting_new_po: 2, in_transit: 3, po_received: 4, delivered: 5, closed: 6,
 };
 
-type Dialog = null | "allocate" | "deliver" | "payment" | "edit";
+type Dialog = null | "allocate" | "deliver" | "payment" | "edit" | "cancel" | "approve_cancel" | "reject_cancel";
 
 export default function WorkDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -53,11 +53,15 @@ export default function WorkDetailPage() {
   if (error && !w) return <main className="p-8"><p className="text-red-600" role="alert">{error}</p><Link href="/workpage" className="underline text-sm">Back to Workpage</Link></main>;
   if (!w) return <main className="p-8"><div className="h-8 w-48 bg-slate-200 dark:bg-zinc-800 rounded animate-pulse" /></main>;
 
-  const stepIndex = STEP_OF[w.status] ?? 0;
+  const pendingCancel = w.status === "cancel_pending";
+  const cancelled = w.status === "cancelled";
+  const frozen = pendingCancel || cancelled;
+  const stepIndex = STEP_OF[pendingCancel ? (w.cancellation?.status_before ?? "assigned") : w.status] ?? 0;
   const waiting = w.status === "waiting_new_po";
   const fromStock = w.stock_issues.length > 0;
   const closed = w.status === "closed";
-  const canEdit = can("workpage", "edit") && !closed;
+  const canEdit = can("workpage", "edit") && !closed && !frozen;
+  const canDecide = can("workpage", "cancel_approve");
   const events = [...w.events].reverse();
 
   return (
@@ -74,8 +78,30 @@ export default function WorkDetailPage() {
         </div>
       </div>
 
+      {/* cancellation notice */}
+      {frozen && w.cancellation && (
+        <Card className={`p-4 mb-4 border-l-4 ${cancelled ? "border-l-rose-500" : "border-l-amber-500"}`} data-testid="cancel-banner">
+          <p className="text-sm font-semibold text-slate-800 dark:text-white">{cancelled ? "This work was cancelled" : "Cancellation raised: waiting for the admin's decision"}</p>
+          <p className="text-sm text-slate-600 dark:text-zinc-300 mt-1">
+            <b>Reason:</b> {w.cancellation.reason}{w.cancellation.remark ? ` — ${w.cancellation.remark}` : ""}
+          </p>
+          <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
+            Raised by {w.cancellation.requested_by ?? "an employee"}{w.cancellation.requested_at ? ` on ${formatDateTime(w.cancellation.requested_at)}` : ""}.
+            {pendingCancel && w.cancellation.status_before_label ? ` It was '${w.cancellation.status_before_label}'; if the cancellation is rejected it goes back there.` : ""}
+            {cancelled && w.cancellation.decided_by ? ` Approved by ${w.cancellation.decided_by}${w.cancellation.decided_at ? ` on ${formatDateTime(w.cancellation.decided_at)}` : ""}${w.cancellation.decision_note ? `: ${w.cancellation.decision_note}` : ""}. Stock that had left Inventory for this work was returned to it.` : ""}
+          </p>
+          {pendingCancel && canDecide && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              <Button variant="danger" onClick={() => setDialog("approve_cancel")} data-testid="approve-cancel">Approve cancellation</Button>
+              <Button variant="secondary" onClick={() => setDialog("reject_cancel")} data-testid="reject-cancel">Reject, return to {w.cancellation.status_before_label ?? "previous status"}</Button>
+            </div>
+          )}
+          {pendingCancel && !canDecide && <p className="text-xs text-slate-500 dark:text-zinc-400 mt-2">Only an admin (or a role given the cancellation-approval permission) can approve or reject this.</p>}
+        </Card>
+      )}
+
       {/* Amazon-style tracker */}
-      <Card className="p-5 mb-4">
+      {!cancelled && <Card className="p-5 mb-4">
         <ol className="flex items-start" aria-label="Progress" data-testid="tracker">
           {STEPS.map(([k, label], i) => {
             const skipped = fromStock && i >= 2 && i <= 4;
@@ -96,7 +122,7 @@ export default function WorkDetailPage() {
         <p className={`mt-4 text-sm rounded-lg px-3 py-2 ${waiting ? "bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300" : w.status === "po_not_raised" ? "bg-orange-50 dark:bg-orange-950/40 text-orange-800 dark:text-orange-300" : "bg-slate-50 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300"}`} role="status" data-testid="pending-reason">
           <b>{w.status_label}.</b> {w.pending_reason}
         </p>
-      </Card>
+      </Card>}
 
       {/* money */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4" data-testid="money">
@@ -118,6 +144,7 @@ export default function WorkDetailPage() {
           {w.status === "delivered" && can("workpage", "approve") && (
             <Button onClick={() => act("/close", {}, "Work closed.")} disabled={!w.can_close || busy} title={w.can_close ? "" : "Close is allowed only after the full payment is recorded"}>Close work</Button>
           )}
+          {w.can_cancel && <Button variant="danger" onClick={() => setDialog("cancel")} data-testid="cancel-work">Cancel work</Button>}
           {w.status === "delivered" && !w.can_close && <span className="self-center text-xs text-slate-500 dark:text-zinc-400">Closing needs the full payment ({inr(w.pending_amount)} pending).</span>}
         </div>
       )}
@@ -214,6 +241,8 @@ export default function WorkDetailPage() {
       {dialog === "allocate" && meta && <AllocateDialog w={w} meta={meta} busy={busy} onClose={() => setDialog(null)} onSubmit={(b) => act("/allocate", b, "Allocated.")} />}
       {dialog === "deliver" && <DeliverDialog w={w} busy={busy} onClose={() => setDialog(null)} onSubmit={(b) => act("/deliver", b, "Marked as delivered.")} />}
       {dialog === "payment" && meta && <PaymentDialog w={w} meta={meta} busy={busy} onClose={() => setDialog(null)} onSubmit={(b) => act("/payments", b, "Payment recorded.")} />}
+      {dialog === "cancel" && meta && <CancelDialog meta={meta} busy={busy} onClose={() => setDialog(null)} onSubmit={(b) => act("/cancel-request", b, "Cancellation raised. The admin will decide.")} />}
+      {(dialog === "approve_cancel" || dialog === "reject_cancel") && <DecisionDialog w={w} approve={dialog === "approve_cancel"} busy={busy} onClose={() => setDialog(null)} onSubmit={(b) => act("/cancel-decision", b, dialog === "approve_cancel" ? "Work cancelled." : "Cancellation rejected.")} />}
       {dialog === "edit" && <EditDialog w={w} onClose={() => setDialog(null)} onSaved={(d) => { setW(d); setDialog(null); showToast("Saved.", "success"); }} />}
     </main>
   );
@@ -243,6 +272,50 @@ function AllocateDialog({ w, meta, busy, onClose, onSubmit }: { w: WorkDetail; m
         </Select>
         <p className="text-xs text-slate-500 dark:text-zinc-400">Picking an employee moves the work to Allocated.</p>
         <Actions onClose={onClose} busy={busy} label="Allocate" />
+      </form>
+    </Modal>
+  );
+}
+
+const TEXTAREA = "w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm";
+
+function CancelDialog({ meta, busy, onClose, onSubmit }: { meta: WorkMeta; busy: boolean; onClose: () => void; onSubmit: (b: unknown) => void }) {
+  const [reason, setReason] = useState("");
+  const [remark, setRemark] = useState("");
+  const other = reason === meta.other_reason;
+  return (
+    <Modal title="Cancel this work" onClose={onClose}>
+      <form onSubmit={(e) => { e.preventDefault(); onSubmit({ reason, remark: remark || null }); }} className="space-y-3">
+        <p className="text-xs text-slate-500 dark:text-zinc-400">This only <b>raises</b> the cancellation. The work freezes as &quot;Cancellation raised&quot; until the admin approves it (it is then Cancelled) or rejects it (it goes back to where it was).</p>
+        <Select label="Reason for cancellation" required value={reason} onChange={(e) => setReason(e.target.value)}>
+          <option value="">Select a reason…</option>{meta.cancel_reasons.map((r) => <option key={r} value={r}>{r}</option>)}
+        </Select>
+        <label className="block text-sm text-slate-600 dark:text-zinc-300">
+          {other ? "Your remark (required)" : "Remark (optional)"}
+          <textarea className={`${TEXTAREA} mt-1`} rows={3} required={other} minLength={other ? 3 : undefined} maxLength={1000} value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Anything the admin should know…" />
+        </label>
+        <Actions onClose={onClose} busy={busy || !reason} label="Raise cancellation" />
+      </form>
+    </Modal>
+  );
+}
+
+function DecisionDialog({ w, approve, busy, onClose, onSubmit }: { w: WorkDetail; approve: boolean; busy: boolean; onClose: () => void; onSubmit: (b: unknown) => void }) {
+  const [note, setNote] = useState("");
+  const hasStock = w.stock_issues.length > 0;
+  return (
+    <Modal title={approve ? "Approve cancellation" : "Reject cancellation"} onClose={onClose}>
+      <form onSubmit={(e) => { e.preventDefault(); onSubmit({ approve, note: note || null }); }} className="space-y-3">
+        {approve ? (
+          <p className="text-sm text-slate-600 dark:text-zinc-300">{w.work_number} becomes <b>Cancelled</b> for good. Any stock that left Inventory for it goes back into Inventory{hasStock ? " (this work had stock taken)" : ""}. Money already received is not refunded automatically: Finance will flag it as refund due. Purchase orders still open must be cancelled in Procurement.</p>
+        ) : (
+          <p className="text-sm text-slate-600 dark:text-zinc-300">{w.work_number} goes back to <b>{w.cancellation?.status_before_label ?? "its previous status"}</b> and carries on.</p>
+        )}
+        <label className="block text-sm text-slate-600 dark:text-zinc-300">
+          Note (optional)
+          <textarea className={`${TEXTAREA} mt-1`} rows={2} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} />
+        </label>
+        <Actions onClose={onClose} busy={busy} label={approve ? "Approve cancellation" : "Reject cancellation"} />
       </form>
     </Modal>
   );
@@ -359,6 +432,23 @@ function InventoryCard({ w, canEdit, meta, reload, setW }: { w: WorkDetail; canE
             {w.pricing.violations.length ? ` ${w.pricing.violations.join(" ")}` : " Within limits."}
           </p>
         )}
+      </Card>
+    );
+  }
+
+  // Delivered / done / cancelled: the stock check is history. Show what was handed over instead of "short by 1".
+  if (["delivered", "closed", "cancelled"].includes(w.status)) {
+    if (!w.purchased_items?.length) return null;
+    return (
+      <Card className="p-5" data-testid="inventory-card">
+        <h2 className="font-semibold text-slate-800 dark:text-white mb-1">Delivered from purchase order</h2>
+        <p className="text-xs text-slate-500 dark:text-zinc-400 mb-3">These goods were bought for this work ({w.purchased_items[0].po_numbers}) and left Inventory when the work was delivered.</p>
+        <table className="w-full text-sm" data-testid="purchased-summary">
+          <thead><tr className="text-left text-xs text-slate-500 dark:text-zinc-400"><th className="pb-2 font-medium">Item</th><th className="pb-2 font-medium text-right">Qty</th><th className="pb-2 font-medium text-right">Bought at</th><th className="pb-2 font-medium text-right">Cost</th></tr></thead>
+          <tbody>{w.purchased_items.map((i) => (
+            <tr key={i.product_id} className="border-t border-slate-100 dark:border-zinc-800"><td className="py-2">{i.product_name}</td><td className="text-right">{i.qty}</td><td className="text-right tabular-nums">{inr(i.cost_rate)}</td><td className="text-right tabular-nums">{inr(Number(i.cost_rate) * i.qty)}</td></tr>
+          ))}</tbody></table>
+        <p className="mt-3 text-xs rounded-lg px-3 py-2 bg-slate-50 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300">Net payable {inr(w.net_payable)} · Vendor amount {inr(w.vendor_amount)} · Profit {inr(w.profit)}.</p>
       </Card>
     );
   }

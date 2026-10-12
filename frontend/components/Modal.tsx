@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { Button } from "@/components/ui";
 
 export function Modal({
   title,
@@ -98,19 +99,8 @@ export function PromptModal({
           />
         </label>
         <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-sm text-slate-500 dark:text-zinc-500 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="text-sm bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 px-4 py-1.5 rounded-lg hover:bg-slate-700 dark:hover:bg-zinc-300"
-          >
-            Confirm
-          </button>
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button type="submit">Confirm</Button>
         </div>
       </form>
     </Modal>
@@ -137,20 +127,8 @@ export function ConfirmModal({
     <Modal title={title} onClose={onClose}>
       <p className="text-sm text-slate-600 dark:text-zinc-300 mb-4">{message}</p>
       <div className="flex justify-end gap-2">
-        <button onClick={onClose} className="text-sm text-slate-500 dark:text-zinc-500 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800">
-          Cancel
-        </button>
-        <button
-          onClick={() => {
-            onConfirm();
-            onClose();
-          }}
-          className={`text-sm text-white dark:text-zinc-900 px-4 py-1.5 rounded-lg ${
-            danger ? "bg-red-600 hover:bg-red-700" : "bg-slate-800 dark:bg-zinc-200 hover:bg-slate-700 dark:hover:bg-zinc-300"
-          }`}
-        >
-          {confirmLabel}
-        </button>
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button variant={danger ? "danger" : "primary"} onClick={() => { onConfirm(); onClose(); }}>{confirmLabel}</Button>
       </div>
     </Modal>
   );

@@ -39,7 +39,7 @@ export default function ProcurementPage() {
   const [vendorForm, setVendorForm] = useState({ name: "", email: "" });
   const [poVendor, setPoVendor] = useState("");
   const [poWork, setPoWork] = useState("");
-  const [openWorks, setOpenWorks] = useState<{ id: string; work_number: string; client_name: string; status_label: string }[]>([]);
+  const [openWorks, setOpenWorks] = useState<{ id: string; work_number: string; client_name: string; status_label: string; needs: { product_id: string; product_name: string | null; needed: number; on_pos: number; remaining: number }[] }[]>([]);
   const [lines, setLines] = useState<Line[]>([{ product_id: "", qty: "1", unit_price: "" }]);
 
   const [filterVendor, setFilterVendor] = useState("");
@@ -93,6 +93,18 @@ export default function ProcurementPage() {
 
   function setLine(i: number, patch: Partial<Line>) {
     setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  }
+  const chosenWork = openWorks.find((w) => w.id === poWork);
+  const toOrder = (chosenWork?.needs ?? []).filter((n) => n.remaining > 0);
+
+  function pickWork(id: string) {
+    setPoWork(id);
+    const w = openWorks.find((x) => x.id === id);
+    const need = (w?.needs ?? []).filter((n) => n.remaining > 0);
+    // Fill the lines from what the work still needs, so the quantity (and so the vendor amount) is right without typing.
+    if (need.length) {
+      setLines(need.map((n) => ({ product_id: n.product_id, qty: String(n.remaining), unit_price: String(Number(products.find((p) => p.id === n.product_id)?.unit_price ?? 0) || "") })));
+    }
   }
   const poTotal = lines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit_price) || 0), 0);
 
@@ -169,10 +181,17 @@ export default function ProcurementPage() {
                   {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                 </Select>
                 {openWorks.length > 0 && (
-                  <Select aria-label="For work" value={poWork} onChange={(e) => setPoWork(e.target.value)}>
-                    <option value="">Not for a specific work</option>
+                  <Select aria-label="For work" value={poWork} onChange={(e) => pickWork(e.target.value)}>
+                    <option value="">Stock for future (not for a specific work)</option>
                     {openWorks.map((w) => <option key={w.id} value={w.id}>{w.work_number} · {w.client_name} ({w.status_label})</option>)}
                   </Select>
+                )}
+                {chosenWork && (
+                  <p className="text-xs rounded-lg px-3 py-2 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300" data-testid="po-work-rule">
+                    {toOrder.length
+                      ? <>An order for {chosenWork.work_number} must match what the work needs: {toOrder.map((n) => `${n.product_name} × ${n.remaining}`).join(", ")}. For extra stock, raise a separate order and choose &quot;Stock for future&quot;.</>
+                      : <>{chosenWork.work_number} has no item list, or its items are already covered by earlier orders.</>}
+                  </p>
                 )}
                 {lines.map((l, i) => (
                   <div key={i} className="grid grid-cols-12 gap-2 items-center">
@@ -184,7 +203,7 @@ export default function ProcurementPage() {
                       <option value="">Product...</option>
                       {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </Select>
-                    <Input aria-label="Qty" className="col-span-2" type="number" min={1} required value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} />
+                    <Input aria-label="Qty" className="col-span-2" type="number" min={1} max={chosenWork ? toOrder.find((n) => n.product_id === l.product_id)?.remaining : undefined} required value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} />
                     <Input aria-label="Unit cost" className="col-span-3" type="number" min={0} step="0.01" required placeholder="Unit cost" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} />
                     <button type="button" aria-label="Remove line" disabled={lines.length === 1}
                       onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))}

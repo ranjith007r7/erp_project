@@ -87,6 +87,11 @@ ADMIN_ROLE_NAME = "Admin"
 MANAGE_ACCESS_MODULE = "core"
 MANAGE_ACCESS_ACTION = "manage_access"
 
+# Other standalone capabilities, each with its own checkbox on the Roles page and none of them part of
+# ALL_ACTIONS. The Admin role always holds them (self-healed below); any other role holds one only when ticked.
+#   workpage.cancel_approve - approve or reject a work cancellation raised by an employee
+SPECIAL_ACTIONS = {("workpage", "cancel_approve")}
+
 
 def require_permission(module: str, action: str):
     """
@@ -140,6 +145,12 @@ def require_permission(module: str, action: str):
                 db.add(Permission(role_id=role.id, module=MANAGE_ACCESS_MODULE, action=MANAGE_ACCESS_ACTION))
                 db.commit()
                 return
+
+        if (module, action) in SPECIAL_ACTIONS and role.name == ADMIN_ROLE_NAME:
+            if not db.query(Permission).filter(Permission.role_id == role.id, Permission.module == module, Permission.action == action).first():
+                db.add(Permission(role_id=role.id, module=module, action=action))
+                db.commit()
+            return
 
         existing_for_module = db.query(Permission).filter(
             Permission.role_id == role.id, Permission.module == module

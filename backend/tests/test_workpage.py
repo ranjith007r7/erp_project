@@ -346,11 +346,51 @@ def _po_work(client, h, buy=3, need=1, list_items=True):
         assert client.put(f"{W}/{w['id']}/items", headers=h, json={"items": [{"product_id": prod["id"], "qty": need}]}).status_code == 200
         assert client.post(f"{W}/{w['id']}/stock-short", headers=h, json={}).status_code == 200
     vendor = client.post("/api/procurement/vendors", headers=h, json={"name": "Bharath Mounts"}).json()
-    po = client.post(PO, headers=h, json={"vendor_id": vendor["id"], "work_order_id": w["id"],
-                                          "items": [{"product_id": prod["id"], "qty": buy, "unit_price": 60}]}).json()
-    client.post(f"{PO}/{po['id']}/approve", headers=h)
-    assert client.post(f"{PO}/{po['id']}/receive-good", headers=h, files=files()).status_code == 200
+    linked = min(buy, need) if list_items else buy        # a PO for a work buys what the work needs; extra stock is its own PO
+    for qty, wid in [(linked, w["id"]), (buy - linked, None)]:
+        if not qty:
+            continue
+        po = client.post(PO, headers=h, json={"vendor_id": vendor["id"], **({"work_order_id": wid} if wid else {}),
+                                              "items": [{"product_id": prod["id"], "qty": qty, "unit_price": 60}]})
+        assert po.status_code == 201, po.text
+        po = po.json()
+        client.post(f"{PO}/{po['id']}/approve", headers=h)
+        assert client.post(f"{PO}/{po['id']}/receive-good", headers=h, files=files()).status_code == 200
     return w, prod
+
+
+def test_po_for_a_work_cannot_order_more_than_the_work_needs(client, signup):
+    h = signup()
+    d1 = client.post("/api/hr/departments", headers=h, json={"name": "Ops"}).json()
+    e = client.post("/api/hr/employees", headers=h, json={"name": "Anu", "department_id": d1["id"]}).json()
+    w = new_work(client, h)
+    client.post(f"{W}/{w['id']}/allocate", headers=h, json={"department_id": d1["id"], "employee_id": e["id"]})
+    prod = client.post("/api/sales/products", headers=h, json={"name": "Kit", "unit_price": 100}).json()
+    other = client.post("/api/sales/products", headers=h, json={"name": "Cable", "unit_price": 10}).json()
+    client.put(f"{W}/{w['id']}/items", headers=h, json={"items": [{"product_id": prod["id"], "qty": 3}]})
+    client.post(f"{W}/{w['id']}/stock-short", headers=h, json={})
+    vendor = client.post("/api/procurement/vendors", headers=h, json={"name": "V"}).json()
+    body = lambda pid, q, wid=w["id"]: {"vendor_id": vendor["id"], "work_order_id": wid, "items": [{"product_id": pid, "qty": q, "unit_price": 2500}]}
+    r = client.post(PO, headers=h, json=body(prod["id"], 5))
+    assert r.status_code == 400 and "needs 3" in r.json()["detail"] and "Stock for future" in r.json()["detail"]
+    assert client.post(PO, headers=h, json=body(other["id"], 1)).status_code == 400          # not on the work's list
+    ow = client.get(f"{W.replace('/works', '')}/open-works", headers=h).json()
+    assert ow[0]["needs"][0]["needed"] == 3 and ow[0]["needs"][0]["remaining"] == 3
+    # exactly what is needed: accepted, and the work's vendor amount follows by itself (3 x 2500)
+    assert client.post(PO, headers=h, json=body(prod["id"], 3)).status_code == 201
+    assert float(get(client, h, w["id"])["vendor_amount"]) == 7500
+    assert client.post(PO, headers=h, json=body(prod["id"], 1)).status_code == 400            # already covered
+    # extra stock for the future is a PO that is not tied to a work
+    assert client.post(PO, headers=h, json=body(prod["id"], 5, None) | {"work_order_id": None}).status_code == 201
+    assert float(get(client, h, w["id"])["vendor_amount"]) == 7500
+
+
+def test_delivered_po_work_exposes_a_bill_summary_of_what_it_used(client, signup):
+    h = signup()
+    w, prod = _po_work(client, h, buy=3, need=2)
+    assert client.post(f"{W}/{w['id']}/deliver", headers=h, json={}).status_code == 200
+    d = get(client, h, w["id"])
+    assert [(i["qty"], float(i["cost_rate"])) for i in d["purchased_items"]] == [(2, 60.0)]
 
 
 def test_po_fed_work_takes_its_quantity_out_of_inventory_on_delivery(client, signup):

@@ -185,6 +185,7 @@ def consume_best_effort(db: Session, org_id, product_id, qty: int):
     for b, take in picks:
         b.quantity_remaining -= take
         b.updated_at = datetime.utcnow()
+    return picks
 
 
 def batch_row(db: Session, b: StockBatch, product: Product | None = None, show_cost: bool = True) -> dict:

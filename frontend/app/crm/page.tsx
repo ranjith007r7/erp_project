@@ -380,16 +380,8 @@ export default function CRMPage() {
               />
             </label>
             <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setConvertingLead(null)}
-                className="text-sm text-slate-500 dark:text-zinc-500 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-zinc-800"
-              >
-                Cancel
-              </button>
-              <button type="submit" className="text-sm bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 px-4 py-1.5 rounded-lg hover:bg-slate-700 dark:hover:bg-zinc-300">
-                Convert
-              </button>
+              <Button type="button" variant="secondary" onClick={() => setConvertingLead(null)}>Cancel</Button>
+              <Button type="submit">Convert</Button>
             </div>
           </form>
         </Modal>

@@ -17,7 +17,7 @@ from app.models.hr import Department, Employee
 from app.models.procurement import PurchaseOrder
 from app.models.sales import Customer, Product, Quotation, SalesOrder
 from app.models.workpage import WorkOrder, WorkItem
-from app.schemas.workpage import WorkCreate, WorkUpdate, AllocateIn, DeliverIn, WorkPaymentIn, WorkItemsIn, StockShortIn
+from app.schemas.workpage import WorkCreate, WorkUpdate, AllocateIn, DeliverIn, WorkPaymentIn, WorkItemsIn, StockShortIn, CancelRequestIn, CancelDecisionIn
 from app.services import workpages as svc
 from app.services.audit import log_audit_event
 
@@ -51,6 +51,8 @@ def meta(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     return {
         "statuses": [{"key": k, "label": v["label"], "color": v["color"]} for k, v in svc.STATUSES.items()],
         "payment_methods": list(svc.PAYMENT_METHODS),
+        "cancel_reasons": list(svc.CANCEL_REASONS),
+        "other_reason": svc.OTHER_REASON,
         "products": [{"id": p.id, "name": p.name, "sku": p.sku} for p in db.query(Product).filter(Product.org_id == org_id).order_by(Product.name).limit(1000)],
         "departments": [{"id": d.id, "name": d.name} for d in db.query(Department).filter(Department.org_id == org_id).order_by(Department.name)],
         "employees": [{"id": e.id, "name": e.name, "employee_code": e.employee_code, "department_id": e.department_id}
@@ -78,8 +80,9 @@ def list_works(status: str | None = None, q: str | None = None, db: Session = De
 @router.get("/open-works", dependencies=[Depends(require_permission("procurement", "view"))])
 def open_works(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     """For the 'which work is this PO for?' picker on Procurement; needs only procurement.view."""
-    rows = db.query(WorkOrder).filter(WorkOrder.org_id == org_id, WorkOrder.status.notin_(["delivered", "closed"])).order_by(WorkOrder.created_at.desc()).all()
-    return [{"id": w.id, "work_number": w.work_number, "client_name": w.client_name, "status_label": svc.STATUSES[w.status]["label"]} for w in rows]
+    rows = db.query(WorkOrder).filter(WorkOrder.org_id == org_id, WorkOrder.status.notin_(["delivered", "closed", "cancel_pending", "cancelled"])).order_by(WorkOrder.created_at.desc()).all()
+    return [{"id": w.id, "work_number": w.work_number, "client_name": w.client_name, "status_label": svc.STATUSES[w.status]["label"],
+             "needs": svc.po_needs(db, w)} for w in rows]
 
 
 @router.post("/works", status_code=201, dependencies=[Depends(require_permission("workpage", "create"))])
@@ -126,6 +129,10 @@ def update_work(work_id: str, payload: WorkUpdate, db: Session = Depends(get_db)
     w = _load(db, org_id, work_id)
     if w.status == "closed":
         raise HTTPException(400, "A closed work cannot be edited.")
+    try:
+        svc._ensure_live(w)
+    except svc.WorkError as e:
+        raise HTTPException(400, str(e))
     changes = payload.model_dump(exclude_unset=True)
     if "vendor_amount" in changes and svc._issues(db, w) and svc.q2(changes["vendor_amount"]) != svc.q2(w.vendor_amount):
         raise HTTPException(400, "The vendor amount comes from the stock batches taken from inventory and cannot be typed over.")
@@ -264,6 +271,42 @@ async def import_works(file: UploadFile = File(...), db: Session = Depends(get_d
         log_audit_event(db, org_id, current_user.id, f"bulk_import_works ({made})", "WorkOrder", None)
     db.commit()
     return {"imported": made, "failed": len(errors), "errors": errors}
+
+
+def _approvers(db: Session, org_id):
+    """Users who may decide a cancellation: the Admin role plus any role ticked with workpage.cancel_approve."""
+    from app.models.role import Permission, Role
+    from app.models.user import User
+    ids = {r.id for r in db.query(Role).filter(Role.org_id == org_id, Role.name == "Admin")}
+    ids |= {p.role_id for p in db.query(Permission).filter(Permission.module == "workpage", Permission.action == "cancel_approve")}
+    return db.query(User).filter(User.org_id == org_id, User.status == "active", User.role_id.in_(ids)).all() if ids else []
+
+
+@router.post("/works/{work_id}/cancel-request", dependencies=[Depends(require_permission("workpage", "edit"))])
+def cancel_request(work_id: str, payload: CancelRequestIn, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    """Any employee who can edit works may RAISE a cancellation; it only takes effect when an approver agrees."""
+    from app.services.notifications import notify_user
+    w = _load(db, org_id, work_id)
+    _run(db, svc.request_cancellation, w, current_user, payload.reason, payload.remark)
+    for u in _approvers(db, org_id):
+        notify_user(db, org_id, u.id, f"{current_user.name} raised a cancellation for {w.work_number} ({w.client_name}): {payload.reason}. Your decision is needed.")
+    log_audit_event(db, org_id, current_user.id, "cancel_work_requested", "WorkOrder", w.id)
+    db.commit()
+    return svc.detail(db, _load(db, org_id, work_id))
+
+
+@router.post("/works/{work_id}/cancel-decision", dependencies=[Depends(require_permission("workpage", "cancel_approve"))])
+def cancel_decision(work_id: str, payload: CancelDecisionIn, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    """Approve (the work becomes Cancelled and its stock returns to Inventory) or reject (it goes back to where it was)."""
+    from app.services.notifications import notify_user
+    w = _load(db, org_id, work_id)
+    requester = w.cancel_requested_by
+    _run(db, svc.decide_cancellation, w, current_user, payload.approve, payload.note)
+    verdict = "approved" if payload.approve else "rejected"
+    notify_user(db, org_id, requester, f"Your cancellation request for {w.work_number} ({w.client_name}) was {verdict} by {current_user.name}.")
+    log_audit_event(db, org_id, current_user.id, f"cancel_work_{verdict}", "WorkOrder", w.id)
+    db.commit()
+    return svc.detail(db, _load(db, org_id, work_id))
 
 
 @router.post("/works/{work_id}/close", dependencies=[Depends(require_permission("workpage", "approve"))])

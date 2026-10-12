@@ -72,3 +72,13 @@ class WorkPaymentIn(BaseModel):
     transaction_id: Optional[str] = Field(default=None, max_length=64)
     note: Optional[str] = Field(default=None, max_length=300)
     paid_on: Optional[date] = None
+
+
+class CancelRequestIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=120)
+    remark: Optional[str] = Field(default=None, max_length=1000)
+
+
+class CancelDecisionIn(BaseModel):
+    approve: bool
+    note: Optional[str] = Field(default=None, max_length=1000)

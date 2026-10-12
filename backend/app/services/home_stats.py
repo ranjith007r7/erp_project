@@ -174,7 +174,8 @@ def compute(db: Session, user: User, period: str = "today", on: date | None = No
             "assigned": cnt["assigned"], "allocated": cnt["allocated"],
             "pending": {"total": sum(r["count"] for r in pend_rows), "breakdown": pend_rows},
             "done": cnt["closed"],
-            "open_now": sum(1 for w in allw if w.status != "closed"),     # every unfinished work, whatever its date
+            "cancelled": cnt["cancelled"],
+            "open_now": sum(1 for w in allw if w.status not in ("closed", "cancelled")),     # every unfinished work, whatever its date
             "pending_now": len(pending_all),
         }
         out["completed"] = {"count": len(closed), "value": _money(sum((wp.net_payable(w) for w in closed), Decimal(0)))}
@@ -182,7 +183,7 @@ def compute(db: Session, user: User, period: str = "today", on: date | None = No
         for w in allw:
             counts[w.status] += 1
         out["work_status"] = [{"key": k, "label": v["label"], "color": v["color"], "count": counts[k]} for k, v in wp.STATUSES.items()]
-        for w in sorted([x for x in allw if x.status != "closed"], key=lambda x: x.created_at or datetime.min, reverse=True)[:6]:
+        for w in sorted([x for x in allw if x.status not in ("closed", "cancelled")], key=lambda x: x.created_at or datetime.min, reverse=True)[:6]:
             r = wp.summary_row(db, w)
             out["recent_works"].append({k: r[k] for k in ("id", "work_number", "client_name", "domain", "status_label", "status_color", "quotation_amount", "handling_department", "pending_reason")})
 

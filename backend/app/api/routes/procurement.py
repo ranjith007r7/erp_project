@@ -195,6 +195,11 @@ def create_purchase_order(payload: PurchaseOrderCreate, db: Session = Depends(ge
     except workpages.WorkError as e:
         raise HTTPException(400, str(e))
 
+    try:
+        workpages.validate_po_lines(db, org_id, work_id, [(i.product_id, i.qty) for i in payload.items])
+    except workpages.WorkError as e:
+        raise HTTPException(400, str(e))
+
     po = PurchaseOrder(org_id=org_id, vendor_id=payload.vendor_id, order_date=date.today(),
                        created_by=current_user.id, approval_status="pending",
                        po_number=_next_po_number(db, org_id), work_order_id=work_id)

@@ -35,6 +35,15 @@ const ACTIONS = ["view", "create", "edit", "delete", "approve"] as const;
 // Ask Data only uses two of the five ticks; the other three are meaningless for it, so they are not offered.
 const ASK_DATA_ACTIONS: readonly string[] = ["view", "approve"];
 
+const SPECIAL_APPROVALS = [
+  { module: "workpage", action: "cancel_approve", label: "Approve or reject work cancellations",
+    help: "Decide on cancellations raised by employees. Raising one only needs Work Page edit. Approving returns stock to Inventory." },
+  { module: "procurement", action: "approve", label: "Approve or reject purchase orders",
+    help: "Approve POs raised for works and stock, and reject them." },
+  { module: "workpage", action: "approve", label: "Close works manually",
+    help: "Mark a work as done by hand when it cannot close automatically." },
+];
+
 export default function RolesSettingsPage() {
   const { showToast } = useToast();
   const [roles, setRoles] = useState<Role[]>([]);
@@ -537,6 +546,36 @@ export default function RolesSettingsPage() {
               >
                 {hasManageAccess() ? "Revoke" : "Grant"}
               </Button>
+            </div>
+          )}
+
+          {selectedRole && !permissionsLoading && (
+            <div
+              className="mb-4 p-3 rounded-lg border border-slate-200 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800"
+              data-testid="special-approvals"
+            >
+              <p className="text-sm font-semibold text-slate-800 dark:text-white">Special approvals</p>
+              <p className="text-xs text-slate-600 dark:text-zinc-300 mt-0.5 mb-2 max-w-md">
+                Decisions that normally belong to Admin only. Tick one to let this role take that decision too, for
+                example to share the workload with a Secondary Admin. Admin always has all of them.
+              </p>
+              <div className="space-y-2">
+                {SPECIAL_APPROVALS.map((a) => (
+                  <label key={`${a.module}:${a.action}`} className="flex items-start gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      data-testid={`special-${a.module}-${a.action}`}
+                      checked={isChecked(permissions, draft, a.module, a.action)}
+                      onChange={() => stagePermission(a.module, a.action)}
+                    />
+                    <span>
+                      <span className="font-medium text-slate-800 dark:text-zinc-100">{a.label}</span>
+                      <span className="block text-xs text-slate-500 dark:text-zinc-400">{a.help}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
           )}
 

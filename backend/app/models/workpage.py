@@ -61,6 +61,17 @@ class WorkOrder(Base):
     delivery_note = Column(Text, nullable=True)
     closed_at = Column(DateTime, nullable=True)
 
+    # Cancellation: an employee raises it (status -> cancel_pending); only a user holding workpage.cancel_approve decides.
+    # Rejected: the work returns to status_before_cancel. Approved: status -> cancelled and its stock goes back to Inventory.
+    status_before_cancel = Column(String, nullable=True)
+    cancel_reason = Column(String, nullable=True)
+    cancel_remark = Column(Text, nullable=True)
+    cancel_requested_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    cancel_requested_at = Column(DateTime, nullable=True)
+    cancel_decided_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    cancel_decided_at = Column(DateTime, nullable=True)
+    cancel_decision_note = Column(Text, nullable=True)
+
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
@@ -128,9 +139,12 @@ class WorkStockIssue(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     work_id = Column(UUID(as_uuid=True), ForeignKey("work_orders.id"), nullable=False)
-    batch_id = Column(UUID(as_uuid=True), ForeignKey("stock_batches.id"), nullable=False)
+    batch_id = Column(UUID(as_uuid=True), ForeignKey("stock_batches.id"), nullable=True)   # null: units that had no priced lot
     product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
     qty = Column(Integer, nullable=False)
+    # "inventory": taken through Take from inventory (counts for the MRP / discount rule).
+    # "purchased": goods bought on the work's PO, released at delivery (quantity only, no price rule). Both go back on cancel.
+    source = Column(String, nullable=False, default="inventory", server_default="inventory")
     cost_rate = Column(Numeric(12, 2), nullable=False)
     mrp = Column(Numeric(12, 2), nullable=False)
     max_discount_percent = Column(Numeric(5, 2), nullable=False, default=0)

@@ -31,7 +31,7 @@ type Home = {
   completed: { count: number; value: number } | null;
   deliveries: { delivered: number; awaiting_delivery: number } | null;
   works: {
-    total: number; assigned: number; allocated: number; done: number; open_now: number; pending_now: number;
+    total: number; assigned: number; allocated: number; done: number; cancelled?: number; open_now: number; pending_now: number;
     pending: { total: number; breakdown: { key: string; label: string; color: string; count: number }[] };
   } | null;
   work_status: { key: string; label: string; color: string; count: number }[];
@@ -184,6 +184,7 @@ export default function DashboardPage() {
                     <Split label="Pending (all types)" value={home.works.pending.total} id="pending" bold />
                     {home.works.pending.breakdown.map((b) => <Split key={b.key} label={b.label} value={b.count} id={b.key} indent />)}
                     <Split label="Work done" value={home.works.done} id="done" />
+                    <Split label="Cancelled" value={home.works.cancelled ?? 0} id="cancelled" />
                     <li className="flex justify-between border-t border-slate-200 dark:border-zinc-700 pt-1 mt-1 font-semibold text-slate-800 dark:text-white">
                       <span>Total</span><span data-testid="split-total">{home.works.total}</span>
                     </li>

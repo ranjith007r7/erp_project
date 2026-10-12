@@ -133,7 +133,7 @@ def work_reconciliation(db: Session = Depends(get_db), org_id: str = Depends(get
     rows = workpages.reconciliation_report(db, org_id)
     count = lambda st: sum(1 for r in rows if r["state"] == st)
     return {"works": rows, "matched": count("matched"), "mismatch": count("mismatch"),
-            "open": sum(1 for r in rows if r["state"] in ("awaiting_payment", "part_paid", "not_started", "paid_awaiting_delivery"))}
+            "open": sum(1 for r in rows if r["state"] in ("awaiting_payment", "part_paid", "not_started", "paid_awaiting_delivery", "cancelled_refund_due"))}
 
 
 @router.get("/leave-types", response_model=list[LeaveTypeOut], dependencies=[Depends(require_permission("finance", "view"))])

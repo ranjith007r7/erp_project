@@ -37,7 +37,7 @@ from app.models.sales import Product
 from app.models.workpage import WorkOrder, WorkEvent, WorkPayment, WorkItem, WorkStockIssue
 from app.services import pricing, stock as stock_svc
 from app.services.accounting import post_work_receipt_journal_entry
-from app.services.inventory import issue_stock
+from app.services.inventory import issue_stock, receive_stock
 
 log = logging.getLogger("workpages")
 
@@ -51,9 +51,22 @@ STATUSES = {
     "po_received":    {"label": "PO received",               "color": "indigo"},
     "delivered":      {"label": "Delivered - payment pending", "color": "teal"},
     "closed":         {"label": "Work done",                 "color": "green"},
+    "cancel_pending": {"label": "Cancellation raised",       "color": "amber"},
+    "cancelled":      {"label": "Cancelled",                 "color": "rose"},
 }
+# What the person raising a cancellation can pick from (the last one needs their own words).
+CANCEL_REASONS = (
+    "Customer cancelled the order",
+    "Customer found a better price elsewhere",
+    "Delivery was delayed too long",
+    "Product or stock not available",
+    "Customer could not arrange the payment",
+    "Other (write your own remark)",
+)
+OTHER_REASON = CANCEL_REASONS[-1]
+CANCEL_APPROVE = ("workpage", "cancel_approve")
 # Everything between "an employee has it" and "work done" that is still waiting on something.
-PENDING_KEYS = ("po_not_raised", "po_raised", "in_transit", "waiting_new_po", "po_received", "delivered")
+PENDING_KEYS = ("po_not_raised", "po_raised", "in_transit", "waiting_new_po", "po_received", "delivered", "cancel_pending")
 # While a work is in one of these, its status follows its purchase orders.
 PO_PHASE = ("assigned", "allocated", "po_not_raised", "po_raised", "in_transit", "waiting_new_po", "po_received")
 PAYMENT_METHODS = ("cash", "card", "gpay", "bank_transfer", "cheque")
@@ -147,11 +160,67 @@ def check_linkable(db: Session, org_id, work_id):
     work = _get_work(db, org_id, work_id)
     if not work:
         raise WorkError("Work not found.")
-    if work.status in ("delivered", "closed"):
-        raise WorkError(f"{work.work_number} is already {STATUSES[work.status]['label'].lower()}; a purchase order cannot be raised for it.")
+    if work.status in ("delivered", "closed", "cancel_pending", "cancelled"):
+        raise WorkError(f"{work.work_number} is {STATUSES[work.status]['label'].lower()}; a purchase order cannot be raised for it.")
     if _issues(db, work):
         raise WorkError(f"{work.work_number} was served from inventory; no purchase order is needed.")
     return work.id
+
+
+def po_needs(db: Session, work: WorkOrder) -> list[dict]:
+    """What the work needs per product, what live POs already cover, and what is left to order."""
+    need: dict = {}
+    for it in _items(db, work):
+        need[it.product_id] = need.get(it.product_id, 0) + int(it.qty)
+    ordered: dict = {}
+    for po in _active_pos(db, work):
+        if po.status == "defective":     # arrived damaged: it covers nothing, a replacement is expected
+            continue
+        for line in po.items:
+            ordered[line.product_id] = ordered.get(line.product_id, 0) + int(line.qty)
+    out = []
+    for pid, n in need.items():
+        prod = db.get(Product, pid)
+        out.append({"product_id": pid, "product_name": prod.name if prod else None, "needed": n,
+                    "on_pos": ordered.get(pid, 0), "remaining": max(n - ordered.get(pid, 0), 0)})
+    return out
+
+
+def validate_po_lines(db: Session, org_id, work_id, lines: list[tuple]):
+    """A PO raised for a work may only buy what the work needs. Extra stock is a separate PO that is not tied to a work."""
+    if not work_id:
+        return
+    work = _get_work(db, org_id, work_id)
+    needs = {n["product_id"]: n for n in po_needs(db, work)}
+    if not needs:                       # no item list yet: nothing to compare against
+        return
+    asked: dict = {}
+    for pid, qty in lines:
+        asked[pid] = asked.get(pid, 0) + int(qty)
+    hint = " For extra stock, raise a separate purchase order and choose 'Stock for future (not for a specific work)'."
+    for pid, qty in asked.items():
+        n = needs.get(pid)
+        if not n:
+            prod = db.get(Product, pid)
+            raise WorkError(f"{prod.name if prod else 'This product'} is not on the item list of {work.work_number}. A purchase order raised for a work can only contain what that work needs." + hint)
+        if qty > n["remaining"]:
+            left = f"{n['remaining']} still to order" if n["remaining"] else "already fully covered by earlier purchase orders"
+            raise WorkError(f"{n['product_name']}: {work.work_number} needs {n['needed']} ({left}), but this order has {qty}." + hint)
+
+
+def sync_vendor_amount(db: Session, work: WorkOrder):
+    """The vendor amount of a work in its purchase phase is what its live purchase orders cost (quantity x unit price),
+    so it never has to be typed by hand."""
+    if work.status not in PO_PHASE:
+        return
+    active = _active_pos(db, work)
+    if not active:
+        return
+    total = q2(sum(Decimal(p.total or 0) for p in active))
+    if total != q2(work.vendor_amount or 0):
+        old = q2(work.vendor_amount or 0)
+        work.vendor_amount = total
+        log_event(db, work, "amounts_changed", "Vendor amount updated from purchase orders", f"{old} -> {total}.")
 
 
 # ------------------------------------------------------------------ items & stock helpers
@@ -160,8 +229,22 @@ def _items(db: Session, work: WorkOrder) -> list[WorkItem]:
 
 
 def _issues(db: Session, work: WorkOrder) -> list[WorkStockIssue]:
+    """Stock taken through 'Take from inventory' (the rows the MRP / discount rule looks at)."""
+    return (db.query(WorkStockIssue).filter(WorkStockIssue.work_id == work.id, WorkStockIssue.source == "inventory")
+            .order_by(WorkStockIssue.created_at, WorkStockIssue.id).all())
+
+
+def _all_issues(db: Session, work: WorkOrder) -> list[WorkStockIssue]:
+    """Every unit that left Inventory for this work, from either route; what a cancellation must put back."""
     return db.query(WorkStockIssue).filter(WorkStockIssue.work_id == work.id).order_by(WorkStockIssue.created_at, WorkStockIssue.id).all()
 
+
+def _ensure_live(work: WorkOrder):
+    """No edits while a cancellation waits for the admin, and none after it is cancelled."""
+    if work.status == "cancel_pending":
+        raise WorkError("A cancellation has been raised for this work and is waiting for the admin's decision; nothing can change until then.")
+    if work.status == "cancelled":
+        raise WorkError("This work is cancelled; it can no longer be changed.")
 
 def issued_lines(db: Session, work: WorkOrder):
     return [(i.qty, i.mrp, i.max_discount_percent) for i in _issues(db, work)]
@@ -176,6 +259,7 @@ def pricing_violations(db: Session, work: WorkOrder, quotation_amount=None, disc
 
 def set_items(db: Session, work: WorkOrder, user: User, items: list[tuple]) -> list[WorkItem]:
     """Replace the list of what the customer needs (product, qty). Allowed until stock has been taken."""
+    _ensure_live(work)
     if work.status in ("delivered", "closed"):
         raise WorkError(f"This work is already {STATUSES[work.status]['label'].lower()}.")
     if _issues(db, work):
@@ -298,6 +382,81 @@ def issue_stock_for_work(db: Session, work: WorkOrder, user: User) -> WorkOrder:
     return work
 
 
+# ------------------------------------------------------------ cancellation
+def request_cancellation(db: Session, work: WorkOrder, user: User, reason: str, remark: str | None = None) -> WorkOrder:
+    """An employee raises a cancellation. The work freezes as 'Cancellation raised' until an approver decides."""
+    if work.status == "cancel_pending":
+        raise WorkError("A cancellation has already been raised for this work.")
+    if work.status == "cancelled":
+        raise WorkError("This work is already cancelled.")
+    if work.status == "closed":
+        raise WorkError("This work is done (delivered and fully paid) and can no longer be cancelled.")
+    if reason not in CANCEL_REASONS:
+        raise WorkError("Pick one of the listed reasons for the cancellation.")
+    remark = (remark or "").strip() or None
+    if reason == OTHER_REASON and (not remark or len(remark) < 3):
+        raise WorkError("Write your own remark explaining why this work is being cancelled.")
+    work.status_before_cancel = work.status
+    work.cancel_reason, work.cancel_remark = reason, remark
+    work.cancel_requested_by, work.cancel_requested_at = user.id, datetime.utcnow()
+    work.cancel_decided_by = work.cancel_decided_at = work.cancel_decision_note = None
+    _set_status(db, work, "cancel_pending")
+    log_event(db, work, "cancel_raised", "Cancellation raised",
+              f"Reason: {reason}." + (f" Remark: {remark}" if remark else "") + f" Was '{STATUSES[work.status_before_cancel]['label']}'. Waiting for the admin to approve or reject.",
+              user, {"reason": reason, "from": work.status_before_cancel})
+    return work
+
+
+def _return_stock(db: Session, work: WorkOrder) -> list[str]:
+    """Put every unit that left Inventory for this work back: the stock levels, and the priced lots they came from."""
+    rows = _all_issues(db, work)
+    per_product: dict = {}
+    for r in rows:
+        per_product[r.product_id] = per_product.get(r.product_id, 0) + int(r.qty)
+        if r.batch_id:
+            b = db.get(stock_svc.StockBatch, r.batch_id)
+            if b:
+                b.quantity_remaining = min(int(b.quantity_in), int(b.quantity_remaining) + int(r.qty))
+                b.updated_at = datetime.utcnow()
+    lines = []
+    for pid, qty in per_product.items():
+        prod = db.get(Product, pid)
+        receive_stock(db, work.org_id, str(pid), qty, ref_type="work_cancelled", ref_id=str(work.id))
+        lines.append(f"{prod.name if prod else 'a product'} x {qty}")
+    for r in rows:
+        db.delete(r)
+    return lines
+
+
+def decide_cancellation(db: Session, work: WorkOrder, user: User, approve: bool, note: str | None = None) -> WorkOrder:
+    """The approver's decision. Approve: Cancelled, stock returns to Inventory. Reject: back to where the work was."""
+    if work.status != "cancel_pending":
+        raise WorkError("There is no cancellation waiting for a decision on this work.")
+    note = (note or "").strip() or None
+    work.cancel_decided_by, work.cancel_decided_at, work.cancel_decision_note = user.id, datetime.utcnow(), note
+    if not approve:
+        back = work.status_before_cancel or "assigned"
+        _set_status(db, work, back)
+        if back in PO_PHASE:
+            recompute_from_pos(db, work)       # a PO may have moved while the request was waiting
+        log_event(db, work, "cancel_rejected", "Cancellation rejected",
+                  f"Rejected by {user.name}." + (f" {note}" if note else "") + f" The work is back to '{STATUSES[work.status]['label']}'.", user)
+        return work
+    returned = _return_stock(db, work)
+    open_pos = [p.po_number or "a PO" for p in _active_pos(db, work) if p.status == "pending"]
+    _set_status(db, work, "cancelled")
+    detail = f"Approved by {user.name}." + (f" {note}" if note else "")
+    if returned:
+        detail += " Returned to Inventory: " + "; ".join(returned) + "."
+    paid = received_amount(work)
+    if paid > 0:
+        detail += f" {paid} had already been received from the customer: it must be refunded outside the system (Finance shows it as 'refund due')."
+    if open_pos:
+        detail += f" Purchase order(s) still open: {', '.join(open_pos)}; cancel or reject them in Procurement if the goods are no longer needed."
+    log_event(db, work, "cancelled", "Work cancelled", detail, user, {"returned": returned})
+    return work
+
+
 def maybe_auto_close(db: Session, work: WorkOrder, user: User | None):
     """Delivered and fully paid = work done. Nobody has to remember to close it."""
     if work.status == "delivered" and net_payable(work) > 0 and pending_amount(work) == 0:
@@ -333,6 +492,7 @@ def create_work(db: Session, org_id, user: User | None, *, client_name: str, dom
 
 
 def allocate(db: Session, work: WorkOrder, user: User, department_id, employee_id=None) -> WorkOrder:
+    _ensure_live(work)
     if work.status in ("delivered", "closed"):
         raise WorkError(f"This work is already {STATUSES[work.status]['label'].lower()}.")
     dept = db.query(Department).filter(Department.id == department_id, Department.org_id == work.org_id).first()
@@ -380,7 +540,15 @@ def _take_purchased_stock(db: Session, work: WorkOrder, user: User) -> list[str]
             have = stock_svc.stock_total(db, work.org_id, pid)
             raise WorkError(f"Cannot deliver: {name} needs {qty} but only {have} is in Inventory (some of the received stock was used elsewhere). "
                             "Receive more stock or correct the item quantity on this work first.")
-        stock_svc.consume_best_effort(db, work.org_id, pid, qty)
+        picks = stock_svc.consume_best_effort(db, work.org_id, pid, qty)
+        covered = 0
+        for b, t in picks:
+            covered += t
+            db.add(WorkStockIssue(org_id=work.org_id, work_id=work.id, batch_id=b.id, product_id=pid, qty=t, source="purchased",
+                                  cost_rate=q2(b.vendor_amount), mrp=q2(b.mrp), max_discount_percent=q2(b.max_discount_percent), issued_by=user.id))
+        if covered < qty:       # units with no priced lot: remembered so a cancellation can still return them
+            db.add(WorkStockIssue(org_id=work.org_id, work_id=work.id, batch_id=None, product_id=pid, qty=qty - covered, source="purchased",
+                                  cost_rate=0, mrp=0, max_discount_percent=0, issued_by=user.id))
         done.append(f"{name} x {qty}")
     return done
 
@@ -414,6 +582,7 @@ def record_payment(db: Session, work: WorkOrder, user: User, amount, method: str
                    note=None, paid_on: date | None = None) -> WorkPayment:
     if work.status == "closed":
         raise WorkError("This work is closed; no more payments can be recorded.")
+    _ensure_live(work)
     amount = q2(amount)
     if amount <= 0:
         raise WorkError("The amount must be more than zero.")
@@ -549,13 +718,11 @@ def on_po_created(db: Session, po: PurchaseOrder, user: User | None):
     work = _get_work(db, po.org_id, po.work_order_id)
     if not work:
         return
-    first = db.query(PurchaseOrder.id).filter(PurchaseOrder.work_order_id == work.id, PurchaseOrder.id != po.id).first() is None
-    if first and not Decimal(work.vendor_amount or 0):
-        work.vendor_amount = q2(po.total)
     log_event(db, work, "po_raised", f"{po.po_number} raised",
               f"Raised by {user.name if user else 'a buyer'} for {q2(po.total)}; waiting for approval.", user,
               {"po_id": str(po.id), "po_number": po.po_number})
     recompute_from_pos(db, work)
+    sync_vendor_amount(db, work)
 
 
 def on_po_decision(db: Session, po: PurchaseOrder, user: User | None, approved: bool):
@@ -567,6 +734,7 @@ def on_po_decision(db: Session, po: PurchaseOrder, user: User | None, approved: 
     else:
         log_event(db, work, "po_rejected", f"{po.po_number} rejected", f"Rejected by {user.name if user else 'an approver'}.", user)
     recompute_from_pos(db, work)
+    sync_vendor_amount(db, work)
 
 
 def on_po_received(db: Session, po: PurchaseOrder, user: User | None):
@@ -622,7 +790,14 @@ def reconciliation_report(db: Session, org_id) -> list[dict]:
     out = []
     for w in works:
         quoted, got, books = net_payable(w), received_amount(w), q2(booked.get(w.id, Decimal(0)))
-        if w.status == "closed" and quoted == got == books:
+        if w.status == "cancelled":
+            if got != books:
+                state, note = "mismatch", f"Received {got} on the work but Finance has booked {books}."
+            elif got > 0:
+                state, note = "cancelled_refund_due", f"Cancelled, but {got} was received from the customer and is still to be refunded."
+            else:
+                state, note = "cancelled", "Cancelled; nothing was received."
+        elif w.status == "closed" and quoted == got == books:
             state, note = "matched", "Quoted = received = booked in Finance. Work done."
         elif got != books:
             state, note = "mismatch", f"Received {got} on the work but Finance has booked {books}."
@@ -668,6 +843,12 @@ def pending_reason(db: Session, w: WorkOrder) -> str:
     st = w.status
     if st == "closed":
         return "Work done: delivered and fully paid."
+    if st == "cancel_pending":
+        who = db.get(User, w.cancel_requested_by)
+        return (f"{who.name if who else 'An employee'} raised a cancellation ({w.cancel_reason}). Waiting for the admin to approve or reject it; "
+                f"if rejected the work returns to '{STATUSES.get(w.status_before_cancel or 'assigned', STATUSES['assigned'])['label']}'.")
+    if st == "cancelled":
+        return f"Cancelled: {w.cancel_reason}." + (f" {w.cancel_remark}" if w.cancel_remark else "")
     if st == "assigned":
         return "Waiting for a manager to allocate it to a department and an employee."
     if st == "allocated":
@@ -711,6 +892,24 @@ def summary_row(db: Session, w: WorkOrder) -> dict:
     }
 
 
+def _purchased_items(db: Session, w: WorkOrder) -> list[dict]:
+    """Goods that were bought on a PO for this work and handed over at delivery (shown as the work's bill summary)."""
+    agg: dict = {}
+    for i in _all_issues(db, w):
+        if i.source != "purchased":
+            continue
+        a = agg.setdefault(i.product_id, {"qty": 0, "cost": Decimal(0)})
+        a["qty"] += int(i.qty)
+        a["cost"] += Decimal(i.cost_rate or 0) * int(i.qty)
+    pos = ", ".join(p.po_number for p in _active_pos(db, w))
+    out = []
+    for pid, a in agg.items():
+        prod = db.get(Product, pid)
+        out.append({"product_id": pid, "product_name": prod.name if prod else None, "qty": a["qty"],
+                    "cost_rate": q2(a["cost"] / a["qty"]) if a["qty"] else q2(0), "po_numbers": pos})
+    return out
+
+
 def detail(db: Session, w: WorkOrder) -> dict:
     d = summary_row(db, w)
     emp = w.allocated_employee
@@ -735,8 +934,19 @@ def detail(db: Session, w: WorkOrder) -> dict:
                           "product_name": (db.get(Product, i.product_id).name if db.get(Product, i.product_id) else None),
                           "batch_vendor": (db.get(stock_svc.StockBatch, i.batch_id).vendor_name if db.get(stock_svc.StockBatch, i.batch_id) else None)}
                          for i in _issues(db, w)],
+        "purchased_items": _purchased_items(db, w),
         "pricing": {"limits": pricing.limits(issued_lines(db, w)), "violations": pricing_violations(db, w)},
         "pending_note": w.pending_note,
+        "can_cancel": w.status not in ("closed", "cancelled", "cancel_pending"),
+        "cancellation": ({
+            "reason": w.cancel_reason, "remark": w.cancel_remark,
+            "status_before": w.status_before_cancel,
+            "status_before_label": STATUSES[w.status_before_cancel]["label"] if w.status_before_cancel in STATUSES else None,
+            "requested_by": _name(db.get(User, w.cancel_requested_by)) if w.cancel_requested_by else None,
+            "requested_at": w.cancel_requested_at,
+            "decided_by": _name(db.get(User, w.cancel_decided_by)) if w.cancel_decided_by else None,
+            "decided_at": w.cancel_decided_at, "decision_note": w.cancel_decision_note,
+        } if w.cancel_reason else None),
         "purchase_orders": [{
             "id": p.id, "po_number": p.po_number, "vendor_name": p.vendor.name if p.vendor else None,
             "total": p.total, "approval_status": p.approval_status, "status": p.status,
