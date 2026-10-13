@@ -241,23 +241,26 @@ def sync_vendor_amount(db: Session, work: WorkOrder):
     """The vendor amount of a work in its purchase phase is what the goods will cost: stock already held at lot cost plus
     open purchase orders at their price, so it never has to be typed by hand. Without an item list it is the PO totals."""
     if work.status not in PO_PHASE:
-        return
+        return False
     active = _active_pos(db, work)
     if not active:
-        return
+        return False
     est = _estimate_vendor(db, work)
     total = q2(est if est is not None else sum(Decimal(p.total or 0) for p in active))
     if total != q2(work.vendor_amount or 0):
         old = q2(work.vendor_amount or 0)
         work.vendor_amount = total
         log_event(db, work, "amounts_changed", "Vendor amount updated from stock and purchase orders", f"{old} -> {total}.")
+        return True
+    return False
 
 
-def resync_vendor_for_product(db: Session, org_id, product_id):
-    """A lot's cost was corrected: works still waiting on goods follow it."""
+def resync_vendor_for_product(db: Session, org_id, product_id, exclude=None):
+    """A lot's cost changed or stock moved: works still waiting on goods follow it."""
     ids = [i for (i,) in db.query(WorkItem.work_id).filter(WorkItem.org_id == org_id, WorkItem.product_id == product_id).distinct()]
     for w in db.query(WorkOrder).filter(WorkOrder.org_id == org_id, WorkOrder.id.in_(ids), WorkOrder.status.in_(PO_PHASE)).all() if ids else []:
-        sync_vendor_amount(db, w)
+        if exclude is None or w.id != exclude:
+            sync_vendor_amount(db, w)
 
 
 # ------------------------------------------------------------------ items & stock helpers
@@ -593,6 +596,8 @@ def _take_purchased_stock(db: Session, work: WorkOrder, user: User) -> list[str]
         done.append(f"{name} x {qty}")
     if need and fully_priced and cost_total:      # the real cost of the units handed over (old stock + bought goods)
         work.vendor_amount = q2(cost_total)
+    for pid in need:                              # other works still waiting on goods now see different lots
+        resync_vendor_for_product(db, work.org_id, pid, exclude=work.id)
     return done
 
 
@@ -955,6 +960,11 @@ def _purchased_items(db: Session, w: WorkOrder) -> list[dict]:
 
 
 def detail(db: Session, w: WorkOrder) -> dict:
+    # A work still waiting on goods follows the current lot costs, whatever changed them (a corrected PO, an edited
+    # lot, another work using up older stock), so its vendor amount and profit are never stale when it is opened.
+    if sync_vendor_amount(db, w):
+        db.commit()
+        db.refresh(w)
     d = summary_row(db, w)
     emp = w.allocated_employee
     pos = (db.query(PurchaseOrder).filter(PurchaseOrder.org_id == w.org_id, PurchaseOrder.work_order_id == w.id)

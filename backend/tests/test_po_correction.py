@@ -111,3 +111,27 @@ def test_correct_price_is_its_own_permission(client, signup):
     assert client.post(f"{PO}/{po['id']}/correct-prices", headers=ticked, json=body).status_code == 200
     me = client.get("/api/auth/me", headers=admin).json()
     assert "procurement:correct_price" in me["permissions"]
+
+
+def test_waiting_work_vendor_amount_follows_a_corrected_older_lot(client, signup):
+    """Hold 5 older units bought at 4000, work needs 8, PO for 3 at 2500: 5x4000 + 3x2500 = 27500. The older PO's price
+    is then corrected to 2500: the waiting work must show 8 x 2500 = 20000 without anyone editing it."""
+    h = signup()
+    old_po, prod, _ = _received_po_for_work(client, h, qty=5, price=4000, with_work=False)
+    d = client.post("/api/hr/departments", headers=h, json={"name": "Ops2"}).json()
+    e = client.post("/api/hr/employees", headers=h, json={"name": "Raj", "department_id": d["id"]}).json()
+    w = client.post(W, headers=h, json={"client_name": "Lakeview", "quotation_amount": 32000}).json()
+    client.post(f"{W}/{w['id']}/allocate", headers=h, json={"department_id": d["id"], "employee_id": e["id"]})
+    client.put(f"{W}/{w['id']}/items", headers=h, json={"items": [{"product_id": prod["id"], "qty": 8}]})
+    assert client.post(f"{W}/{w['id']}/stock-short", headers=h, json={}).status_code == 200
+    vendor = client.post("/api/procurement/vendors", headers=h, json={"name": "V"}).json()
+    po = client.post(PO, headers=h, json={"vendor_id": vendor["id"], "work_order_id": w["id"],
+                                          "items": [{"product_id": prod["id"], "qty": 3, "unit_price": 2500}]}).json()
+    client.post(f"{PO}/{po['id']}/approve", headers=h)
+    assert client.post(f"{PO}/{po['id']}/receive-good", headers=h, files=_files()).status_code == 200
+    assert float(client.get(f"{W}/{w['id']}", headers=h).json()["vendor_amount"]) == 27500
+    assert _fix(client, h, old_po, 2500).status_code == 200
+    assert float(client.get(f"{W}/{w['id']}", headers=h).json()["vendor_amount"]) == 20000
+    # delivery keeps it: 8 units x 2500
+    assert client.post(f"{W}/{w['id']}/deliver", headers=h, json={}).status_code == 200
+    assert float(client.get(f"{W}/{w['id']}", headers=h).json()["vendor_amount"]) == 20000

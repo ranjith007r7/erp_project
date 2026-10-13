@@ -81,6 +81,8 @@ def correct_prices(db: Session, org_id, po: PurchaseOrder, user: User, changes: 
     if po.work_order_id:
         works[po.work_order_id] = True
     db.flush()
+    for pid in {item.product_id for item, _ in todo}:        # works still waiting on this product follow the new cost
+        workpages.resync_vendor_for_product(db, org_id, pid)
 
     for wid in works:
         w = db.get(WorkOrder, wid)
