@@ -9,7 +9,7 @@ import { usePagination, PaginationControls } from "@/components/Pagination";
 import { SkeletonList } from "@/components/Skeleton";
 
 type Category = { id: string; name: string };
-type Product = { id: string; name: string; sku: string | null; unit_price: string; reorder_level: number };
+type Product = { id: string; name: string; sku: string | null; unit_price: string; reorder_level: number; cgst_percent: string; sgst_percent: string; hsn_code: string | null };
 type StockLevel = { product_id: string; quantity: number };
 type Movement = { id: string; product_id: string; movement_type: string; qty: number; ref_type: string | null; date: string };
 
@@ -22,7 +22,7 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
 
   const [categoryForm, setCategoryForm] = useState({ name: "" });
-  const [productForm, setProductForm] = useState({ name: "", sku: "", unit_price: "", reorder_level: "0", category_id: "" });
+  const [productForm, setProductForm] = useState({ name: "", sku: "", unit_price: "", reorder_level: "0", category_id: "", cgst_percent: "0", sgst_percent: "0", hsn_code: "" });
   const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
   const { pageItems: pagedProducts, page: productPage, totalPages: productTotalPages, setPage: setProductPage } =
     usePagination(products, 10);
@@ -62,9 +62,11 @@ export default function InventoryPage() {
           unit_price: Number(productForm.unit_price),
           reorder_level: Number(productForm.reorder_level),
           category_id: productForm.category_id || null,
+          cgst_percent: Number(productForm.cgst_percent || 0), sgst_percent: Number(productForm.sgst_percent || 0),
+          hsn_code: productForm.hsn_code.trim() || null,
         },
       });
-      setProductForm({ name: "", sku: "", unit_price: "", reorder_level: "0", category_id: "" });
+      setProductForm({ name: "", sku: "", unit_price: "", reorder_level: "0", category_id: "", cgst_percent: "0", sgst_percent: "0", hsn_code: "" });
       loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add product");
@@ -113,8 +115,9 @@ export default function InventoryPage() {
               className="border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
             <input
-              placeholder="Unit price"
+              placeholder="Unit price (excl. GST)"
               type="number"
+              step="0.01"
               required
               value={productForm.unit_price}
               onChange={(e) => setProductForm({ ...productForm, unit_price: e.target.value })}
@@ -127,6 +130,17 @@ export default function InventoryPage() {
               onChange={(e) => setProductForm({ ...productForm, reorder_level: e.target.value })}
               className="border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <label className="text-xs text-slate-500 dark:text-zinc-500">CGST %
+              <input type="number" min="0" max="50" step="0.01" data-testid="inv-cgst" value={productForm.cgst_percent} onChange={(e) => setProductForm({ ...productForm, cgst_percent: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+            </label>
+            <label className="text-xs text-slate-500 dark:text-zinc-500">SGST %
+              <input type="number" min="0" max="50" step="0.01" data-testid="inv-sgst" value={productForm.sgst_percent} onChange={(e) => setProductForm({ ...productForm, sgst_percent: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+            </label>
+            <label className="text-xs text-slate-500 dark:text-zinc-500">HSN / SAC
+              <input value={productForm.hsn_code} onChange={(e) => setProductForm({ ...productForm, hsn_code: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+            </label>
           </div>
           <select
             value={productForm.category_id}
@@ -157,7 +171,7 @@ export default function InventoryPage() {
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-slate-800 dark:text-white font-medium">{p.name}</p>
-                      <p className="text-xs text-slate-500 dark:text-zinc-500">{p.sku || "no SKU"} · ₹{p.unit_price}</p>
+                      <p className="text-xs text-slate-500 dark:text-zinc-500">{p.sku || "no SKU"} · ₹{p.unit_price} + GST {Number(p.cgst_percent)}% CGST / {Number(p.sgst_percent)}% SGST</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <span className={low ? "text-red-600 font-semibold text-xs" : "text-slate-500 dark:text-zinc-500 text-xs"}>

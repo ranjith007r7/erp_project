@@ -40,7 +40,7 @@ from app.services import stock as stock_svc
 from app.services.notifications import notify_role, notify_user
 from app.services.audit import log_audit_event
 from app.services.email import send_email
-from app.services import procurement_docs as docs
+from app.services import procurement_docs as docs, gst
 
 router = APIRouter(prefix="/api/procurement", tags=["procurement"], dependencies=[Depends(get_current_user)])
 
@@ -96,7 +96,7 @@ def _out(po: PurchaseOrder) -> dict:
         "id": po.id, "po_number": po.po_number, "vendor_id": po.vendor_id,
         "vendor_name": po.vendor.name if po.vendor else None,
         "order_date": po.order_date, "status": po.status, "approval_status": po.approval_status,
-        "total": po.total,
+        "total": po.total, "cgst_amount": po.cgst_amount, "sgst_amount": po.sgst_amount, "grand_total": po.grand_total,
         "created_by_name": po.creator.name if po.creator else None,
         "created_by_email": po.creator.email if po.creator else None,
         "approved_by_name": po.approver.name if po.approver else None,
@@ -104,6 +104,9 @@ def _out(po: PurchaseOrder) -> dict:
         "items": [{
             "id": i.id, "product_id": i.product_id, "product_name": i.product.name if i.product else None,
             "qty": i.qty, "unit_price": i.unit_price, "line_total": i.qty * i.unit_price,
+            "cgst_percent": i.cgst_percent, "sgst_percent": i.sgst_percent,
+            "cgst_amount": gst.line_tax(i.qty, i.unit_price, i.cgst_percent, i.sgst_percent)[1],
+            "sgst_amount": gst.line_tax(i.qty, i.unit_price, i.cgst_percent, i.sgst_percent)[2],
         } for i in po.items],
         "corrections": [{
             "product_name": c.product.name if c.product else None, "qty": c.qty, "old_price": c.old_price, "new_price": c.new_price,
@@ -208,14 +211,15 @@ def create_purchase_order(payload: PurchaseOrderCreate, db: Session = Depends(ge
     po = PurchaseOrder(org_id=org_id, vendor_id=payload.vendor_id, order_date=date.today(),
                        created_by=current_user.id, approval_status="pending",
                        po_number=_next_po_number(db, org_id), work_order_id=work_id)
-    total = 0
     for item in payload.items:
         product = db.query(Product).filter(Product.id == item.product_id, Product.org_id == org_id).first()
         if not product:
             raise HTTPException(404, f"Product {item.product_id} not found")
-        total += item.qty * item.unit_price
-        po.items.append(PurchaseOrderItem(product_id=item.product_id, qty=item.qty, unit_price=item.unit_price))
-    po.total = total
+        cg = product.cgst_percent if item.cgst_percent is None else item.cgst_percent
+        sg = product.sgst_percent if item.sgst_percent is None else item.sgst_percent
+        po.items.append(PurchaseOrderItem(product_id=item.product_id, qty=item.qty, unit_price=item.unit_price,
+                                          cgst_percent=cg, sgst_percent=sg))
+    gst.set_po_totals(po)
     db.add(po)
     db.flush()
     notify_role(db, org_id, "Admin", f"{po.po_number} for {vendor.name} is waiting for your approval.")

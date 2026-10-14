@@ -14,8 +14,11 @@ a quotation or a conversion - it only means the work's history misses a line.
 
 Money rules (all derived, none stored):
     discount_amount = quotation_amount * discount_percent / 100
-    net_payable     = quotation_amount - discount_amount
-    profit          = net_payable - vendor_amount
+    taxable_net     = quotation_amount - discount_amount          (amounts typed on a work exclude GST)
+    cgst / sgst     = taxable_net * rate / 100
+    net_payable     = taxable_net + cgst + sgst                   (what the customer pays)
+    profit          = taxable_net - vendor_amount                 (GST is the government's, never profit)
+A direct Sales order takes all of these from its Sales order / invoice instead.
 A work can be closed only when delivered AND received >= net_payable.
 """
 from __future__ import annotations
@@ -25,13 +28,14 @@ from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.models.crm import Account
 from app.models.hr import Department, Employee
 from app.models.organization import Organization
 from app.models.procurement import PurchaseOrder, ProcurementEmailLog
-from app.models.sales import Customer, Quotation
+from app.models.sales import Customer, Quotation, Invoice, SalesOrder
+from app.models.finance import Payment
 from app.models.user import User
 from app.models.sales import Product
 from app.models.workpage import WorkOrder, WorkEvent, WorkPayment, WorkItem, WorkStockIssue
@@ -87,15 +91,66 @@ def discount_amount(w: WorkOrder) -> Decimal:
     return q2(Decimal(w.quotation_amount or 0) * Decimal(w.discount_percent or 0) / 100)
 
 
+def _so_money(w: WorkOrder):
+    """(taxable, cgst, sgst, gross) of a direct Sales order: from its invoice once there is one, else from the order."""
+    if w.work_type != "sales_order":
+        return None
+    db = object_session(w)
+    if db is None:
+        return None
+    src = sales_invoice(db, w) or (db.get(SalesOrder, w.sales_order_id) if w.sales_order_id else None)
+    if src is None:
+        return None
+    gross = q2(getattr(src, "amount", None) if hasattr(src, "amount") else src.total)
+    return q2(src.subtotal), q2(src.cgst_amount), q2(src.sgst_amount), gross
+
+
+def taxable_net(w: WorkOrder) -> Decimal:
+    so = _so_money(w)
+    return so[0] if so else q2(Decimal(w.quotation_amount or 0) - discount_amount(w))
+
+
+def gst_amounts(w: WorkOrder) -> tuple[Decimal, Decimal]:
+    so = _so_money(w)
+    if so:
+        return so[1], so[2]
+    base = taxable_net(w)
+    return q2(base * Decimal(w.cgst_percent or 0) / 100), q2(base * Decimal(w.sgst_percent or 0) / 100)
+
+
 def net_payable(w: WorkOrder) -> Decimal:
-    return q2(Decimal(w.quotation_amount or 0) - discount_amount(w))
+    so = _so_money(w)
+    if so:
+        return so[3]
+    c, s_ = gst_amounts(w)
+    return q2(taxable_net(w) + c + s_)
 
 
 def profit(w: WorkOrder) -> Decimal:
-    return q2(net_payable(w) - Decimal(w.vendor_amount or 0))
+    return q2(taxable_net(w) - Decimal(w.vendor_amount or 0))
+
+
+def is_sales_order(w: WorkOrder) -> bool:
+    return w.work_type == "sales_order"
+
+
+def sales_invoice(db: Session, w: WorkOrder):
+    """The Sales invoice behind a direct-sale work (None until Sales generates it)."""
+    if not w.sales_order_id:
+        return None
+    return db.query(Invoice).filter(Invoice.org_id == w.org_id, Invoice.order_id == w.sales_order_id).first()
+
+
+def invoice_payments(db: Session, invoice) -> list:
+    return db.query(Payment).filter(Payment.invoice_id == invoice.id).order_by(Payment.created_at).all() if invoice else []
 
 
 def received_amount(w: WorkOrder) -> Decimal:
+    if is_sales_order(w):
+        # A direct sale is paid against its Sales invoice in Finance; that is the only money there is.
+        db = object_session(w)
+        inv = sales_invoice(db, w) if db is not None else None
+        return q2(sum((Decimal(p.amount) for p in invoice_payments(db, inv)), Decimal(0)))
     return q2(sum((Decimal(p.amount) for p in w.payments), Decimal(0)))
 
 
@@ -292,7 +347,9 @@ def issued_lines(db: Session, work: WorkOrder):
 
 def pricing_violations(db: Session, work: WorkOrder, quotation_amount=None, discount_percent=None) -> list[str]:
     """The MRP / max-discount rule for stock this work took from inventory (see app/services/pricing.py)."""
-    return pricing.violations(work.quotation_amount if quotation_amount is None else quotation_amount,
+    # MRP includes GST by law, so the bill is compared with it GST-inclusive.
+    factor = 1 + (Decimal(work.cgst_percent or 0) + Decimal(work.sgst_percent or 0)) / 100
+    return pricing.violations(Decimal(work.quotation_amount if quotation_amount is None else quotation_amount) * factor,
                               work.discount_percent if discount_percent is None else discount_percent,
                               issued_lines(db, work))
 
@@ -355,6 +412,8 @@ def stock_check(db: Session, work: WorkOrder, show_cost: bool = False) -> dict:
 
 
 def mark_stock_short(db: Session, work: WorkOrder, user: User, note: str | None = None) -> WorkOrder:
+    if is_sales_order(work):
+        raise WorkError("This is a Sales order: Sales checks and issues the stock when it generates the invoice.")
     """The employee checked inventory and it cannot serve the work: it waits for a purchase, with the reason on record."""
     if work.status not in ("allocated", "po_not_raised"):
         raise WorkError("Only an allocated work can be marked as waiting for stock.")
@@ -375,6 +434,8 @@ def mark_stock_short(db: Session, work: WorkOrder, user: User, note: str | None 
 
 def issue_stock_for_work(db: Session, work: WorkOrder, user: User) -> WorkOrder:
     """Take the needed stock out of inventory: rates come from the batch, never typed. The work is delivered at once."""
+    if is_sales_order(work):
+        raise WorkError("This is a Sales order: Sales issues the stock when it generates the invoice.")
     if work.status not in ("allocated", "po_not_raised"):
         raise WorkError("Allocate the work to an employee before taking stock from inventory." if work.status == "assigned"
                         else f"A work in status '{STATUSES[work.status]['label']}' cannot take stock from inventory.")
@@ -431,6 +492,9 @@ def request_cancellation(db: Session, work: WorkOrder, user: User, reason: str, 
         raise WorkError("This work is already cancelled.")
     if work.status == "closed":
         raise WorkError("This work is done (delivered and fully paid) and can no longer be cancelled.")
+    if is_sales_order(work) and sales_invoice(db, work) is not None:
+        raise WorkError("An invoice has already been issued for this sales order, so the stock has left Inventory and the sale is booked in Finance. "
+                        "It cannot be cancelled from here.")
     if reason not in CANCEL_REASONS:
         raise WorkError("Pick one of the listed reasons for the cancellation.")
     remark = (remark or "").strip() or None
@@ -512,7 +576,7 @@ def create_work(db: Session, org_id, user: User | None, *, client_name: str, dom
                 description=None, quotation_amount=0, vendor_amount=0, discount_percent=0,
                 customer_id=None, quotation_id=None, sales_order_id=None, department_id=None,
                 opened_title="Work received", lead_id=None, opportunity_id=None, client_mobile=None,
-                assign_department=True) -> WorkOrder:
+                assign_department=True, work_type="project", cgst_percent=0, sgst_percent=0) -> WorkOrder:
     if department_id is None and assign_department:
         department_id = _user_department(db, user)
     work = WorkOrder(org_id=org_id, work_number=next_work_number(db, org_id), client_name=client_name.strip(),
@@ -521,7 +585,8 @@ def create_work(db: Session, org_id, user: User | None, *, client_name: str, dom
                      discount_percent=q2(discount_percent), customer_id=customer_id, quotation_id=quotation_id,
                      sales_order_id=sales_order_id, handling_department_id=department_id,
                      lead_id=lead_id, opportunity_id=opportunity_id, client_mobile=(client_mobile or "").strip() or None,
-                     created_by=user.id if user else None, status="assigned")
+                     created_by=user.id if user else None, status="assigned", work_type=work_type,
+                     cgst_percent=cgst_percent, sgst_percent=sgst_percent)
     db.add(work)
     db.flush()
     dept = db.get(Department, department_id) if department_id else None
@@ -603,6 +668,8 @@ def _take_purchased_stock(db: Session, work: WorkOrder, user: User) -> list[str]
 
 def deliver(db: Session, work: WorkOrder, user: User, delivered_on: date | None, note: str | None, from_stock: bool = False):
     """Delivery of goods that arrived through a purchase order. Stock already in inventory is served by issue_stock_for_work."""
+    if is_sales_order(work):
+        raise WorkError("This is a Sales order: it is delivered when its invoice is generated in Sales.")
     if work.status == "closed":
         raise WorkError("This work is closed.")
     if work.status == "delivered":
@@ -628,6 +695,8 @@ def deliver(db: Session, work: WorkOrder, user: User, delivered_on: date | None,
 
 def record_payment(db: Session, work: WorkOrder, user: User, amount, method: str, transaction_id=None,
                    note=None, paid_on: date | None = None) -> WorkPayment:
+    if is_sales_order(work):
+        raise WorkError("This is a Sales order: its payment is recorded against the invoice in Finance (Finance > Payments), and shows here by itself.")
     if work.status == "closed":
         raise WorkError("This work is closed; no more payments can be recorded.")
     _ensure_live(work)
@@ -657,7 +726,8 @@ def record_payment(db: Session, work: WorkOrder, user: User, amount, method: str
     db.flush()
     db.expire(work, ["payments"])
     label = {"cash": "Cash", "card": "Card", "gpay": "GPay", "bank_transfer": "Bank transfer", "cheque": "Cheque"}[method]
-    post_work_receipt_journal_entry(db, work.org_id, str(pay.id), amount, note=f"{work.work_number}, {label}" + (f", {txn}" if txn else ""))
+    post_work_receipt_journal_entry(db, work.org_id, str(pay.id), amount, note=f"{work.work_number}, {label}" + (f", {txn}" if txn else ""),
+                                    cgst_percent=work.cgst_percent, sgst_percent=work.sgst_percent)
     left = pending_amount(work)
     log_event(db, work, "payment", f"Payment received: {amount}",
               f"By {label}" + (f" (ref {txn})" if txn else "") + f". Received so far {received_amount(work)}; "
@@ -668,6 +738,8 @@ def record_payment(db: Session, work: WorkOrder, user: User, amount, method: str
 
 
 def close(db: Session, work: WorkOrder, user: User) -> WorkOrder:
+    if is_sales_order(work):
+        raise WorkError("This is a Sales order: it closes by itself when its invoice is paid in Finance.")
     if work.status == "closed":
         raise WorkError("This work is already closed.")
     if work.status != "delivered":
@@ -723,8 +795,52 @@ def on_quotation_accepted(db: Session, quotation: Quotation, order, user: User |
                        domain=industry, client_details=(customer.billing_address if customer else None),
                        quotation_amount=quotation.total or 0, customer_id=quotation.customer_id,
                        quotation_id=quotation.id, sales_order_id=order.id if order else None,
-                       opened_title="Deal accepted - waiting to be allocated")
+                       opened_title="Sales order accepted - delivered and billed from Sales",
+                       work_type="sales_order")
     return work
+
+
+def on_invoice_generated(db: Session, order, invoice, user: User | None = None, cost=None):
+    """Sales: the invoice for a direct sale was generated. Sales has already taken the stock out of Inventory,
+    so the sales-order work is Delivered; it becomes Work done when the invoice is paid in Finance."""
+    w = (db.query(WorkOrder).filter(WorkOrder.org_id == invoice.org_id, WorkOrder.sales_order_id == order.id,
+                                    WorkOrder.work_type == "sales_order").first())
+    if not w:
+        return None
+    if w.status in ("cancelled", "cancel_pending"):
+        log_event(db, w, "invoice_after_cancel", "Invoice issued after cancellation",
+                  "Sales generated the invoice although this work was cancelled; the sale is booked in Finance.", user)
+        return w
+    w.quotation_amount = q2(invoice.amount)
+    w.discount_percent = q2(0)
+    # profit: what the units really cost (first-expiry-first-out lots) at the moment Sales issued them
+    if cost:
+        w.vendor_amount = q2(cost)
+    w.delivered_on = date.today()
+    w.delivery_note = "Delivered with the Sales invoice."
+    w.pending_note = None
+    _set_status(db, w, "delivered")
+    log_event(db, w, "delivered", "Delivered with the Sales invoice",
+              f"Invoice for {q2(invoice.amount)} generated in Sales; the stock was issued from Inventory at that moment. "
+              "The payment is recorded against the invoice in Finance.", user)
+    return w
+
+
+def on_invoice_payment(db: Session, invoice, payment, user: User | None = None):
+    """Finance: a payment was recorded against a Sales invoice. Mirrors it on the direct-sale work and closes it when paid."""
+    w = (db.query(WorkOrder).filter(WorkOrder.org_id == invoice.org_id, WorkOrder.sales_order_id == invoice.order_id,
+                                    WorkOrder.work_type == "sales_order").first())
+    if not w:
+        return None
+    left = pending_amount(w)
+    log_event(db, w, "payment", f"Invoice payment received: {q2(payment.amount)}",
+              f"Recorded against the Sales invoice in Finance ({payment.method}"
+              + (f", ref {payment.transaction_id}" if payment.transaction_id else "") + f"). Received so far {received_amount(w)}; "
+              + ("fully paid." if left == 0 else f"{left} still pending."), user,
+              {"amount": str(q2(payment.amount)), "method": payment.method, "transaction_id": payment.transaction_id})
+    if w.status == "delivered":
+        maybe_auto_close(db, w, user)
+    return w
 
 
 def _active_pos(db: Session, work: WorkOrder) -> list[PurchaseOrder]:
@@ -818,42 +934,59 @@ def on_procurement_notice(db: Session, po: PurchaseOrder, kind: str, channel: st
 
 
 def reconciliation_report(db: Session, org_id) -> list[dict]:
-    """Finance view: for every work, what was quoted (net payable) against what was received on the work
-    and what Finance has actually booked (journal entries WPMT-<payment id>, credited to Sales Revenue).
-    A work is only 'matched' when quoted = received = booked and it is closed as Work done."""
+    """Finance view: for every work, what was quoted (net payable) against what was received and what Finance has
+    actually booked. A normal work is booked through its own payments (journal WPMT-<id>, credit Sales Revenue); a
+    direct Sales order is booked through its invoice (invoice entry credits Sales Revenue, each invoice payment
+    PMT-<id> credits Accounts Receivable). A work is only 'matched' when quoted = received = booked and it is Work done."""
     from app.models.finance import JournalEntry, JournalLine, ChartOfAccounts as Account
     works = db.query(WorkOrder).filter(WorkOrder.org_id == org_id).order_by(WorkOrder.created_at.desc()).all()
-    refs = {}
+    refs, sales_refs, invoices = {}, {}, {}
     for w in works:
-        for p in w.payments:
-            refs[f"WPMT-{p.id}"] = w.id
+        if is_sales_order(w):
+            inv = sales_invoice(db, w)
+            invoices[w.id] = inv
+            for p in invoice_payments(db, inv):
+                sales_refs[f"PMT-{p.id}"] = w.id
+        else:
+            for p in w.payments:
+                refs[f"WPMT-{p.id}"] = w.id
     booked: dict = {}
-    if refs:
+    for mapping, code in ((refs, None), (sales_refs, "1100")):     # a work payment's credits are revenue + GST payable: all of it counts
+        if not mapping:
+            continue
         rows = (db.query(JournalEntry.reference, func.coalesce(func.sum(JournalLine.credit), 0))
                 .join(JournalLine, JournalLine.journal_entry_id == JournalEntry.id)
                 .join(Account, Account.id == JournalLine.account_id)
-                .filter(JournalEntry.org_id == org_id, JournalEntry.reference.in_(list(refs)), Account.code == "4000")
+                .filter(JournalEntry.org_id == org_id, JournalEntry.reference.in_(list(mapping)),
+                        *([Account.code == code] if code else []))
                 .group_by(JournalEntry.reference).all())
         for ref, amt in rows:
-            booked[refs[ref]] = booked.get(refs[ref], Decimal(0)) + Decimal(amt)
+            booked[mapping[ref]] = booked.get(mapping[ref], Decimal(0)) + Decimal(amt)
     out = []
     for w in works:
         quoted, got, books = net_payable(w), received_amount(w), q2(booked.get(w.id, Decimal(0)))
+        so = is_sales_order(w)
+        where = "against the Sales invoice" if so else "on the work"
         if w.status == "cancelled":
             if got != books:
-                state, note = "mismatch", f"Received {got} on the work but Finance has booked {books}."
+                state, note = "mismatch", f"Received {got} {where} but Finance has booked {books}."
             elif got > 0:
                 state, note = "cancelled_refund_due", f"Cancelled, but {got} was received from the customer and is still to be refunded."
             else:
                 state, note = "cancelled", "Cancelled; nothing was received."
         elif w.status == "closed" and quoted == got == books:
-            state, note = "matched", "Quoted = received = booked in Finance. Work done."
+            state, note = "matched", ("Sales order: invoice paid in full and booked in Finance. Work done." if so
+                                      else "Quoted = received = booked in Finance. Work done.")
         elif got != books:
-            state, note = "mismatch", f"Received {got} on the work but Finance has booked {books}."
+            state, note = "mismatch", f"Received {got} {where} but Finance has booked {books}."
         elif w.status == "closed":
             state, note = "mismatch", f"Closed, but quoted {quoted} differs from received {got}."
+        elif so and invoices.get(w.id) is None:
+            state, note = "not_started", "Sales order: the invoice has not been generated in Sales yet."
         elif got == 0:
-            state, note = "awaiting_payment" if w.status == "delivered" else "not_started", ("Delivered; no payment yet." if w.status == "delivered" else "Not yet delivered; no payment yet.")
+            state, note = "awaiting_payment" if w.status == "delivered" else "not_started", (
+                ("Sales order: invoice issued; waiting for the payment in Finance." if so else "Delivered; no payment yet.")
+                if w.status == "delivered" else "Not yet delivered; no payment yet.")
         elif got < quoted:
             state, note = "part_paid", f"{q2(quoted - got)} still to receive before the work can close."
         elif got == quoted:
@@ -861,7 +994,8 @@ def reconciliation_report(db: Session, org_id) -> list[dict]:
         else:
             state, note = "mismatch", f"Received {got} is above the quoted {quoted}."
         out.append({"work_id": w.id, "work_number": w.work_number, "client_name": w.client_name, "status_label": STATUSES[w.status]["label"],
-                    "quoted_net": quoted, "received": got, "booked_in_finance": books, "difference": q2(quoted - got), "state": state, "note": note})
+                    "work_type": w.work_type, "quoted_net": quoted, "received": got, "booked_in_finance": books,
+                    "difference": q2(quoted - got), "state": state, "note": note})
     return out
 
 
@@ -890,6 +1024,12 @@ def _name(u) -> str | None:
 def pending_reason(db: Session, w: WorkOrder) -> str:
     """Why the work is where it is and what it is waiting for. Derived live, never stored (except the stock-short note)."""
     st = w.status
+    if w.work_type == "sales_order" and st not in ("closed", "cancelled", "cancel_pending"):
+        inv = sales_invoice(db, w)
+        if inv is None:
+            return "Sales order: waiting for Sales to generate the invoice (that issues the stock and delivers it)."
+        left = pending_amount(w)
+        return f"Sales order delivered with its invoice. Waiting for the payment in Finance: {left} pending." if left > 0 else "Sales order delivered and fully paid."
     if st == "closed":
         return "Work done: delivered and fully paid."
     if st == "cancel_pending":
@@ -929,11 +1069,14 @@ def summary_row(db: Session, w: WorkOrder) -> dict:
     return {
         "id": w.id, "work_number": w.work_number, "client_name": w.client_name, "domain": w.domain,
         "client_mobile": w.client_mobile, "lead_id": w.lead_id,
+        "work_type": w.work_type, "sales_order_id": w.sales_order_id,
         "status": w.status, "status_label": STATUSES[w.status]["label"], "status_color": STATUSES[w.status]["color"],
         "is_pending": w.status in PENDING_KEYS, "pending_reason": pending_reason(db, w),
         "quotation_amount": q2(w.quotation_amount), "vendor_amount": q2(w.vendor_amount),
         "discount_percent": q2(w.discount_percent), "discount_amount": discount_amount(w),
-        "net_payable": net_payable(w), "profit": profit(w),
+        "net_payable": net_payable(w), "taxable_net": taxable_net(w),
+        "cgst_percent": q2(w.cgst_percent), "sgst_percent": q2(w.sgst_percent),
+        "cgst_amount": gst_amounts(w)[0], "sgst_amount": gst_amounts(w)[1], "profit": profit(w),
         "received_amount": received_amount(w), "pending_amount": pending_amount(w),
         "handling_department": dept.name if dept else None, "handling_department_id": w.handling_department_id,
         "allocated_employee_name": w.allocated_employee.name if w.allocated_employee else None,
@@ -991,7 +1134,9 @@ def detail(db: Session, w: WorkOrder) -> dict:
         "purchased_items": _purchased_items(db, w),
         "pricing": {"limits": pricing.limits(issued_lines(db, w)), "violations": pricing_violations(db, w)},
         "pending_note": w.pending_note,
-        "can_cancel": w.status not in ("closed", "cancelled", "cancel_pending"),
+        "can_cancel": w.status not in ("closed", "cancelled", "cancel_pending") and not (is_sales_order(w) and sales_invoice(db, w) is not None),
+        "sales_invoice": ({"id": sales_invoice(db, w).id, "amount": q2(sales_invoice(db, w).amount), "status": sales_invoice(db, w).status,
+                          "invoice_number": sales_invoice(db, w).invoice_number, "document_ready": received_amount(w) > 0} if is_sales_order(w) and sales_invoice(db, w) else None),
         "cancellation": ({
             "reason": w.cancel_reason, "remark": w.cancel_remark,
             "status_before": w.status_before_cancel,

@@ -16,6 +16,8 @@ class WorkCreate(BaseModel):
     quotation_amount: Decimal = Field(default=0, ge=0)
     vendor_amount: Decimal = Field(default=0, ge=0)
     discount_percent: Decimal = Field(default=0, ge=0, le=100)
+    cgst_percent: Decimal = Field(default=0, ge=0, le=50)
+    sgst_percent: Decimal = Field(default=0, ge=0, le=50)
     department_id: Optional[UUID] = None
     customer_id: Optional[UUID] = None
     client_mobile: Optional[str] = Field(default=None, max_length=30)
@@ -34,6 +36,8 @@ class WorkUpdate(BaseModel):
     quotation_amount: Optional[Decimal] = Field(default=None, ge=0)
     vendor_amount: Optional[Decimal] = Field(default=None, ge=0)
     discount_percent: Optional[Decimal] = Field(default=None, ge=0, le=100)
+    cgst_percent: Optional[Decimal] = Field(default=None, ge=0, le=50)
+    sgst_percent: Optional[Decimal] = Field(default=None, ge=0, le=50)
     client_mobile: Optional[str] = Field(default=None, max_length=30)
 
     @field_validator("client_mobile")

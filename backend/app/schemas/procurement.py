@@ -33,7 +33,9 @@ class VendorOut(BaseModel):
 class PurchaseOrderItemIn(BaseModel):
     product_id: UUID
     qty: int = Field(..., gt=0)
-    unit_price: Decimal = Field(..., ge=0)
+    unit_price: Decimal = Field(..., ge=0)      # excludes GST
+    cgst_percent: Optional[Decimal] = Field(None, ge=0, le=50)   # left out = the product's rate
+    sgst_percent: Optional[Decimal] = Field(None, ge=0, le=50)
 
 
 class PurchaseOrderItemOut(BaseModel):
@@ -43,6 +45,10 @@ class PurchaseOrderItemOut(BaseModel):
     qty: int
     unit_price: Decimal
     line_total: Decimal
+    cgst_percent: Decimal = Decimal("0")
+    sgst_percent: Decimal = Decimal("0")
+    cgst_amount: Decimal = Decimal("0")
+    sgst_amount: Decimal = Decimal("0")
 
     model_config = {"from_attributes": True}
 
@@ -98,7 +104,10 @@ class PurchaseOrderOut(BaseModel):
     order_date: date
     status: str                       # pending / received / defective / cancelled
     approval_status: str              # pending / approved / rejected
-    total: Decimal
+    total: Decimal                    # taxable value (cost basis)
+    cgst_amount: Decimal = Decimal("0")
+    sgst_amount: Decimal = Decimal("0")
+    grand_total: Decimal = Decimal("0")   # taxable value + GST: what the vendor is paid
     created_by_name: Optional[str] = None
     created_by_email: Optional[str] = None
     approved_by_name: Optional[str] = None

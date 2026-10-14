@@ -12,6 +12,19 @@ class ProductCreate(BaseModel):
     sku: Optional[str] = None
     category_id: Optional[UUID] = None
     reorder_level: int = 0
+    cgst_percent: Decimal = Field(Decimal("0"), ge=0, le=50)
+    sgst_percent: Decimal = Field(Decimal("0"), ge=0, le=50)
+    hsn_code: Optional[str] = None
+
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1)
+    unit_price: Optional[Decimal] = Field(None, ge=0)
+    sku: Optional[str] = None
+    reorder_level: Optional[int] = Field(None, ge=0)
+    cgst_percent: Optional[Decimal] = Field(None, ge=0, le=50)
+    sgst_percent: Optional[Decimal] = Field(None, ge=0, le=50)
+    hsn_code: Optional[str] = None
 
 
 class ProductOut(BaseModel):
@@ -21,6 +34,9 @@ class ProductOut(BaseModel):
     sku: Optional[str] = None
     category_id: Optional[UUID] = None
     reorder_level: int
+    cgst_percent: Decimal = Decimal("0")
+    sgst_percent: Decimal = Decimal("0")
+    hsn_code: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -45,7 +61,9 @@ class CustomerOut(BaseModel):
 class QuotationItemIn(BaseModel):
     product_id: UUID
     qty: int = Field(..., gt=0)
-    unit_price: Decimal
+    unit_price: Decimal                      # excludes GST
+    cgst_percent: Optional[Decimal] = Field(None, ge=0, le=50)   # left out = the product's rate
+    sgst_percent: Optional[Decimal] = Field(None, ge=0, le=50)
 
 
 class QuotationItemOut(BaseModel):
@@ -53,6 +71,8 @@ class QuotationItemOut(BaseModel):
     product_id: UUID
     qty: int
     unit_price: Decimal
+    cgst_percent: Decimal = Decimal("0")
+    sgst_percent: Decimal = Decimal("0")
 
     model_config = {"from_attributes": True}
 
@@ -67,7 +87,10 @@ class QuotationOut(BaseModel):
     id: UUID
     customer_id: UUID
     opportunity_id: Optional[UUID] = None
-    total: Decimal
+    total: Decimal                           # grand total, GST included
+    subtotal: Decimal = Decimal("0")
+    cgst_amount: Decimal = Decimal("0")
+    sgst_amount: Decimal = Decimal("0")
     status: str
     created_at: datetime
     items: list[QuotationItemOut] = []
@@ -84,6 +107,8 @@ class SalesOrderItemOut(BaseModel):
     product_id: UUID
     qty: int
     unit_price: Decimal
+    cgst_percent: Decimal = Decimal("0")
+    sgst_percent: Decimal = Decimal("0")
 
     model_config = {"from_attributes": True}
 
@@ -95,6 +120,9 @@ class SalesOrderOut(BaseModel):
     order_date: date
     status: str
     total: Decimal
+    subtotal: Decimal = Decimal("0")
+    cgst_amount: Decimal = Decimal("0")
+    sgst_amount: Decimal = Decimal("0")
     items: list[SalesOrderItemOut] = []
 
     model_config = {"from_attributes": True}
@@ -105,6 +133,13 @@ class InvoiceOut(BaseModel):
     order_id: UUID
     customer_id: UUID
     amount: Decimal
+    invoice_number: Optional[str] = None
+    subtotal: Decimal = Decimal("0")
+    cgst_amount: Decimal = Decimal("0")
+    sgst_amount: Decimal = Decimal("0")
+    paid_amount: Decimal = Decimal("0")
+    balance: Decimal = Decimal("0")
+    document_ready: bool = False        # true once a payment exists: the printable tax invoice can be downloaded
     due_date: Optional[date] = None
     status: str
     created_at: datetime

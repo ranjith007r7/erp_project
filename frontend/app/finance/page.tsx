@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, apiBlob, openBlob } from "@/lib/api";
 import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { SkeletonList } from "@/components/Skeleton";
@@ -10,7 +10,7 @@ import { useToast } from "@/components/Toast";
 type Account = { id: string; code: string; name: string; account_type: string };
 type JournalLine = { account_id: string; debit: string; credit: string };
 type JournalEntry = { id: string; entry_number: string | null; date: string; reference: string | null; description: string | null; lines: JournalLine[] };
-type Invoice = { id: string; amount: string; status: string };
+type Invoice = { id: string; amount: string; status: string; invoice_number: string | null; paid_amount: string; balance: string; document_ready: boolean; cgst_amount: string; sgst_amount: string; subtotal: string };
 type Payment = { id: string; invoice_id: string; amount: string; method: string; transaction_id: string | null; date: string };
 type Run = { id: string; month: number; year: number; status: string };
 type LeaveType = { id: string; code: string; name: string; days_per_year: string | null; per_month: string | null; paid: boolean; note: string | null };
@@ -25,7 +25,7 @@ const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 const RECON_LABEL: Record<string, string> = { matched: "Matched", mismatch: "Mismatch", awaiting_payment: "Awaiting payment", part_paid: "Part paid", not_started: "Not started", paid_awaiting_delivery: "Paid, awaiting delivery", cancelled: "Cancelled", cancelled_refund_due: "Cancelled, refund due" };
 type ReconRow = {
-  work_id: string; work_number: string; client_name: string; status_label: string; quoted_net: number; received: number;
+  work_id: string; work_number: string; work_type?: string; client_name: string; status_label: string; quoted_net: number; received: number;
   booked_in_finance: number; difference: number; state: string; note: string;
 };
 type PricingRow = {
@@ -49,6 +49,7 @@ export default function FinancePage() {
   const [pricing, setPricing] = useState<{ checked: number; violations: number; works: PricingRow[] } | null>(null);
 
   const [payFor, setPayFor] = useState<Invoice | null>(null);
+  const [payAmount, setPayAmount] = useState("");
   const [method, setMethod] = useState<Method>("cash");
   const [txn, setTxn] = useState("");
   const [paying, setPaying] = useState(false);
@@ -86,7 +87,7 @@ export default function FinancePage() {
   const txnOk = !needsTxn || /^[A-Za-z0-9._\-/]{4,64}$/.test(txn.trim());
 
   function openPay(inv: Invoice) {
-    setPayFor(inv); setMethod("cash"); setTxn(""); setPayError(null);
+    setPayFor(inv); setPayAmount(String(Number(inv.balance))); setMethod("cash"); setTxn(""); setPayError(null);
   }
 
   async function confirmPayment() {
@@ -95,7 +96,7 @@ export default function FinancePage() {
     try {
       await apiRequest("/api/finance/payments", {
         method: "POST", auth: true,
-        body: { invoice_id: payFor.id, amount: Number(payFor.amount), method, transaction_id: needsTxn ? txn.trim() : null },
+        body: { invoice_id: payFor.id, amount: Number(payAmount), method, transaction_id: needsTxn ? txn.trim() : null },
       });
       setPayFor(null);
       showToast("Payment recorded", "success");
@@ -107,6 +108,15 @@ export default function FinancePage() {
   }
 
   const unpaidInvoices = invoices.filter((inv) => inv.status !== "paid");
+  const taxInvoices = invoices.filter((inv) => inv.document_ready);
+
+  async function openTaxInvoice(inv: Invoice) {
+    try {
+      openBlob(await apiBlob(`/api/sales/invoices/${inv.id}/pdf`), `${inv.invoice_number || "invoice"}.pdf`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not open the invoice", "error");
+    }
+  }
   const selectedRun = runs.find((r) => r.id === runId);
   const locked = selectedRun?.status === "processed";
   const unconfigured = rows.filter((r) => !r.configured).length;
@@ -165,7 +175,7 @@ export default function FinancePage() {
                   <tbody>
                     {recon.works.map((r) => (
                       <tr key={r.work_id} className="border-b border-slate-100 dark:border-zinc-800 align-top">
-                        <td className="py-2 pr-3">{r.work_number}</td><td className="pr-3">{r.client_name}</td><td className="pr-3">{r.status_label}</td>
+                        <td className="py-2 pr-3">{r.work_number}{r.work_type === "sales_order" && <div className="text-xs text-indigo-600 dark:text-indigo-300">Sales order</div>}</td><td className="pr-3">{r.client_name}</td><td className="pr-3">{r.status_label}</td>
                         <td className="pr-3 text-right tabular-nums">{Number(r.quoted_net).toLocaleString("en-IN")}</td>
                         <td className="pr-3 text-right tabular-nums">{Number(r.received).toLocaleString("en-IN")}</td>
                         <td className="pr-3 text-right tabular-nums">{Number(r.booked_in_finance).toLocaleString("en-IN")}</td>
@@ -225,13 +235,28 @@ export default function FinancePage() {
                 {unpaidInvoices.map((inv) => (
                   <Card key={inv.id} className="p-3 flex justify-between items-center">
                     <div>
-                      <p className="text-sm font-medium text-slate-800 dark:text-white">{inv.amount ? inr(inv.amount) : ""}</p>
-                      <p className="text-xs text-slate-500 dark:text-zinc-500">{inv.status}</p>
+                      <p className="text-sm font-medium text-slate-800 dark:text-white">{inv.invoice_number} · {inr(inv.amount)}</p>
+                      <p className="text-xs text-slate-500 dark:text-zinc-500">{inv.status} · taxable {inr(inv.subtotal)} + CGST {inr(inv.cgst_amount)} + SGST {inr(inv.sgst_amount)}</p>
+                      <p className="text-xs text-slate-500 dark:text-zinc-500">received {inr(inv.paid_amount)} · due {inr(inv.balance)}</p>
                     </div>
                     <Button size="sm" onClick={() => openPay(inv)}>Record Payment</Button>
                   </Card>
                 ))}
                 {unpaidInvoices.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No unpaid invoices.</p>}
+              </div>
+
+              <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mt-6 mb-3">Tax Invoices <span className="font-normal text-xs text-slate-400">· issued once a payment is recorded</span></h2>
+              <div className="space-y-2" data-testid="tax-invoices">
+                {taxInvoices.map((inv) => (
+                  <Card key={inv.id} className="p-3 flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium text-slate-800 dark:text-white">{inv.invoice_number} · {inr(inv.amount)}</p>
+                      <p className="text-xs text-slate-500 dark:text-zinc-500">{Number(inv.balance) > 0 ? `part paid, ${inr(inv.balance)} due` : "paid"}</p>
+                    </div>
+                    <Button size="sm" variant="secondary" onClick={() => openTaxInvoice(inv)} data-testid="open-tax-invoice">Download PDF</Button>
+                  </Card>
+                ))}
+                {taxInvoices.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">None yet.</p>}
               </div>
 
               <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mt-6 mb-3">Payments Received</h2>
@@ -346,7 +371,8 @@ export default function FinancePage() {
       {payFor && (
         <Modal title="Record payment" onClose={() => setPayFor(null)}>
           <div className="space-y-3">
-            <p className="text-sm text-slate-600 dark:text-zinc-300">Amount received: <b>{inr(payFor.amount)}</b></p>
+            <p className="text-sm text-slate-600 dark:text-zinc-300">{payFor.invoice_number}: total {inr(payFor.amount)}, already received {inr(payFor.paid_amount)}, due <b>{inr(payFor.balance)}</b></p>
+            <Input label="Amount received now" type="number" min="0.01" step="0.01" max={Number(payFor.balance)} value={payAmount} onChange={(e) => setPayAmount(e.target.value)} data-testid="pay-amount" />
             <fieldset>
               <legend className="text-sm text-slate-600 dark:text-zinc-300 mb-1">Payment mode</legend>
               <div className="flex gap-2">

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, ArrowLeft } from "lucide-react";
-import { apiRequest, getToken } from "@/lib/api";
+import { apiRequest, apiBlob, openBlob, getToken } from "@/lib/api";
 import { Button, Input, Select, Card } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { StatusPill } from "@/components/StatusPill";
@@ -70,7 +70,7 @@ export default function WorkDetailPage() {
       <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white" data-testid="work-title">{w.client_name}</h1>
-          <p className="text-sm text-slate-500 dark:text-zinc-400">{w.work_number}{w.domain ? ` · ${w.domain}` : ""} · received {formatDateTime(w.created_at)}</p>
+          <p className="text-sm text-slate-500 dark:text-zinc-400">{w.work_number}{w.domain ? ` · ${w.domain}` : ""} · received {formatDateTime(w.created_at)}{w.work_type === "sales_order" && <span className="ml-2 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 text-xs font-medium" data-testid="type-badge">Sales order</span>}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span data-testid="work-status"><StatusPill label={w.status_label} color={w.status_color} /></span>
@@ -125,10 +125,13 @@ export default function WorkDetailPage() {
       </Card>}
 
       {/* money */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4" data-testid="money">
-        <Money label="Quotation" value={w.quotation_amount} />
-        <Money label={`Client discount (${Number(w.discount_percent)}%)`} value={w.discount_amount} />
-        <Money label="Net payable" value={w.net_payable} />
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-4" data-testid="money">
+        {w.work_type !== "sales_order" && <Money label="Quotation" value={w.quotation_amount} />}
+        {w.work_type !== "sales_order" && <Money label={`Client discount (${Number(w.discount_percent)}%)`} value={w.discount_amount} />}
+        <Money label="Taxable value" value={w.taxable_net} />
+        <Money label={`CGST (${Number(w.cgst_percent)}%)`} value={w.cgst_amount} />
+        <Money label={`SGST (${Number(w.sgst_percent)}%)`} value={w.sgst_amount} />
+        <Money label="Net payable (GST incl.)" value={w.net_payable} />
         <Money label="Vendor amount" value={w.vendor_amount} />
         <Money label="Profit" value={w.profit} tone={Number(w.profit) < 0 ? "bad" : "good"} />
         <Money label="Received" value={w.received_amount} />
@@ -140,18 +143,20 @@ export default function WorkDetailPage() {
         <div className="flex flex-wrap gap-2 mb-4" data-testid="actions">
           <Button variant="secondary" onClick={() => setDialog("allocate")}>{w.handling_department ? "Re-allocate" : "Allocate"}</Button>
           {w.status === "po_received" && <Button variant="secondary" onClick={() => setDialog("deliver")}>Mark delivered</Button>}
-          {Number(w.pending_amount) > 0 && <Button variant="secondary" onClick={() => setDialog("payment")}>Record payment</Button>}
-          {w.status === "delivered" && can("workpage", "approve") && (
+          {Number(w.pending_amount) > 0 && w.work_type !== "sales_order" && <Button variant="secondary" onClick={() => setDialog("payment")}>Record payment</Button>}
+          {w.status === "delivered" && w.work_type !== "sales_order" && can("workpage", "approve") && (
             <Button onClick={() => act("/close", {}, "Work closed.")} disabled={!w.can_close || busy} title={w.can_close ? "" : "Close is allowed only after the full payment is recorded"}>Close work</Button>
           )}
           {w.can_cancel && <Button variant="danger" onClick={() => setDialog("cancel")} data-testid="cancel-work">Cancel work</Button>}
-          {w.status === "delivered" && !w.can_close && <span className="self-center text-xs text-slate-500 dark:text-zinc-400">Closing needs the full payment ({inr(w.pending_amount)} pending).</span>}
+          {w.work_type === "sales_order" && w.status === "delivered" && <span className="self-center text-xs text-slate-500 dark:text-zinc-400" data-testid="so-note">Sales order: record the payment against its invoice in Finance ({inr(w.pending_amount)} pending). This work closes by itself when the invoice is paid.</span>}
+          {w.sales_invoice?.document_ready && <Button variant="secondary" data-testid="work-tax-invoice" onClick={async () => { try { openBlob(await apiBlob(`/api/sales/invoices/${w.sales_invoice!.id}/pdf`), `${w.sales_invoice!.invoice_number}.pdf`); } catch (e) { showToast(e instanceof Error ? e.message : "Could not open the invoice", "error"); } }}>Download tax invoice</Button>}
+          {w.work_type !== "sales_order" && w.status === "delivered" && !w.can_close && <span className="self-center text-xs text-slate-500 dark:text-zinc-400">Closing needs the full payment ({inr(w.pending_amount)} pending).</span>}
         </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 space-y-4">
-          {(canEdit || w.items.length > 0 || fromStock) && (
+          {(canEdit || w.items.length > 0 || fromStock) && w.work_type !== "sales_order" && (
             <InventoryCard w={w} canEdit={canEdit} meta={meta} reload={load} setW={setW} />
           )}
 
@@ -356,14 +361,14 @@ function PaymentDialog({ w, meta, busy, onClose, onSubmit }: { w: WorkDetail; me
 
 function EditDialog({ w, onClose, onSaved }: { w: WorkDetail; onClose: () => void; onSaved: (d: WorkDetail) => void }) {
   const { showToast } = useToast();
-  const [f, setF] = useState({ client_name: w.client_name, domain: w.domain ?? "", client_details: w.client_details ?? "", quotation_amount: String(Number(w.quotation_amount)), vendor_amount: String(Number(w.vendor_amount)), discount_percent: String(Number(w.discount_percent)) });
+  const [f, setF] = useState({ client_name: w.client_name, domain: w.domain ?? "", client_details: w.client_details ?? "", quotation_amount: String(Number(w.quotation_amount)), vendor_amount: String(Number(w.vendor_amount)), discount_percent: String(Number(w.discount_percent)), cgst_percent: String(Number(w.cgst_percent)), sgst_percent: String(Number(w.sgst_percent)) });
   const [busy, setBusy] = useState(false);
   async function save(e: React.FormEvent) {
     e.preventDefault(); setBusy(true);
     try {
       const d = await apiRequest<WorkDetail>(`/api/workpage/works/${w.id}`, { method: "PATCH", auth: true, body: {
         client_name: f.client_name, domain: f.domain, client_details: f.client_details,
-        quotation_amount: Number(f.quotation_amount), vendor_amount: Number(f.vendor_amount), discount_percent: Number(f.discount_percent) } });
+        quotation_amount: Number(f.quotation_amount), vendor_amount: Number(f.vendor_amount), discount_percent: Number(f.discount_percent), cgst_percent: Number(f.cgst_percent), sgst_percent: Number(f.sgst_percent) } });
       onSaved(d);
     } catch (err) { showToast(err instanceof Error ? err.message : "Could not save", "error"); } finally { setBusy(false); }
   }
@@ -376,6 +381,10 @@ function EditDialog({ w, onClose, onSaved }: { w: WorkDetail; onClose: () => voi
           <Input label="Quotation amount" type="number" min="0" step="0.01" value={f.quotation_amount} onChange={(e) => setF({ ...f, quotation_amount: e.target.value })} />
           <Input label="Vendor amount" type="number" min="0" step="0.01" value={f.vendor_amount} onChange={(e) => setF({ ...f, vendor_amount: e.target.value })} />
           <Input label="Client discount %" type="number" min="0" max="100" step="0.01" value={f.discount_percent} onChange={(e) => setF({ ...f, discount_percent: e.target.value })} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="CGST % (on the discounted amount)" type="number" min="0" max="50" step="0.01" value={f.cgst_percent} onChange={(e) => setF({ ...f, cgst_percent: e.target.value })} />
+          <Input label="SGST %" type="number" min="0" max="50" step="0.01" value={f.sgst_percent} onChange={(e) => setF({ ...f, sgst_percent: e.target.value })} />
         </div>
         <label className="block text-sm text-slate-600 dark:text-zinc-300">Client details
           <textarea className="mt-1 w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" rows={3} value={f.client_details} onChange={(e) => setF({ ...f, client_details: e.target.value })} />

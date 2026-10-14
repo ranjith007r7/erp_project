@@ -206,7 +206,7 @@ def test_accepting_a_quotation_opens_a_work_once(client, signup):
     works = client.get(W, headers=h).json()["works"]
     assert len(works) == 1 and works[0]["client_name"] == "Globex" and D(works[0]["quotation_amount"]) == 200
     d = get(client, h, works[0]["id"])
-    assert d["quotation"]["id"] == q["id"] and "waiting to be allocated" in d["events"][0]["title"]
+    assert d["quotation"]["id"] == q["id"] and d["work_type"] == "sales_order" and "Sales order accepted" in d["events"][0]["title"]
 
 
 def test_other_org_cannot_see_or_link_a_work(client, signup):

@@ -36,10 +36,16 @@ class WorkOrder(Base):
     description = Column(Text, nullable=True)
 
     status = Column(String, nullable=False, default="assigned", server_default="assigned")
+    # "project" = the normal work cycle (CRM / manual). "sales_order" = a direct sale: a Sales quotation accepted with no
+    # CRM opportunity behind it. Its delivery and money come from the Sales invoice and Finance payments, not from here.
+    work_type = Column(String, nullable=False, default="project", server_default="project")
 
     quotation_amount = Column(Numeric(14, 2), nullable=False, default=0)
     vendor_amount = Column(Numeric(14, 2), nullable=False, default=0)
     discount_percent = Column(Numeric(5, 2), nullable=False, default=0)
+    # GST on the work's (discounted) quotation amount. The amount typed is exclusive of GST; the customer pays amount + GST.
+    cgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
+    sgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
 
     # Optional links back to the records this work grew out of. Plain ids, no
     # relationships to the other modules' models.

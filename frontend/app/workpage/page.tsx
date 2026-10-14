@@ -26,7 +26,7 @@ export default function WorkpagePage() {
   const [q, setQ] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ client_name: "", client_mobile: "", domain: "", client_details: "", quotation_amount: "", vendor_amount: "", discount_percent: "0", department_id: "" });
+  const [form, setForm] = useState({ client_name: "", client_mobile: "", domain: "", client_details: "", quotation_amount: "", vendor_amount: "", discount_percent: "0", cgst_percent: "0", sgst_percent: "0", department_id: "" });
 
   const load = useCallback(() => {
     const qs = new URLSearchParams();
@@ -47,7 +47,7 @@ export default function WorkpagePage() {
         body: {
           client_name: form.client_name, client_mobile: form.client_mobile || null, domain: form.domain || null, client_details: form.client_details || null,
           quotation_amount: Number(form.quotation_amount || 0), vendor_amount: Number(form.vendor_amount || 0),
-          discount_percent: Number(form.discount_percent || 0), department_id: form.department_id || null,
+          discount_percent: Number(form.discount_percent || 0), cgst_percent: Number(form.cgst_percent || 0), sgst_percent: Number(form.sgst_percent || 0), department_id: form.department_id || null,
         },
       });
       showToast("Work created.", "success");
@@ -109,17 +109,17 @@ export default function WorkpagePage() {
             <thead>
               <tr className="text-left text-xs text-slate-500 dark:text-zinc-400 border-b border-slate-200 dark:border-zinc-800">
                 <th className="p-3 font-medium">Client name</th><th className="p-3 font-medium">Domain</th><th className="p-3 font-medium">Status</th>
-                <th className="p-3 font-medium text-right">Quotation amount</th><th className="p-3 font-medium text-right">Vendor amount</th>
+                <th className="p-3 font-medium text-right">Quotation amount (excl. GST)</th><th className="p-3 font-medium text-right">Vendor amount</th>
                 <th className="p-3 font-medium text-right">Client discount</th><th className="p-3 font-medium text-right">Profit</th><th className="p-3 font-medium">Who is handling</th>
               </tr>
             </thead>
             <tbody>
               {data.works.map((w) => (
                 <tr key={w.id} className="border-b last:border-0 border-slate-100 dark:border-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-800/50">
-                  <td className="p-3"><Link href={`/workpage/${w.id}`} className="font-medium text-slate-800 dark:text-white hover:underline">{w.client_name}</Link><div className="text-xs text-slate-400 dark:text-zinc-500">{w.work_number}{w.client_mobile ? ` · ${w.client_mobile}` : ""}</div></td>
+                  <td className="p-3"><Link href={`/workpage/${w.id}`} className="font-medium text-slate-800 dark:text-white hover:underline">{w.client_name}</Link><div className="text-xs text-slate-400 dark:text-zinc-500">{w.work_number}{w.client_mobile ? ` · ${w.client_mobile}` : ""}{w.work_type === "sales_order" && <span className="ml-2 px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-medium" data-testid="type-badge" title="A direct sale: delivered with its Sales invoice and paid in Finance">Sales order</span>}</div></td>
                   <td className="p-3 text-slate-600 dark:text-zinc-300">{w.domain || "—"}</td>
                   <td className="p-3 max-w-xs"><StatusPill label={w.status_label} color={w.status_color} /><div className="text-xs text-slate-500 dark:text-zinc-400 mt-1 whitespace-normal" data-testid="work-reason">{w.pending_reason}</div></td>
-                  <td className="p-3 text-right tabular-nums text-slate-800 dark:text-white">{inr(w.quotation_amount)}</td>
+                  <td className="p-3 text-right tabular-nums text-slate-800 dark:text-white">{inr(w.work_type === "sales_order" ? w.taxable_net : w.quotation_amount)}{Number(w.cgst_amount) + Number(w.sgst_amount) > 0 && <div className="text-xs text-slate-400 font-normal">+ GST {inr(Number(w.cgst_amount) + Number(w.sgst_amount))}</div>}</td>
                   <td className="p-3 text-right tabular-nums text-slate-600 dark:text-zinc-300">{inr(w.vendor_amount)}</td>
                   <td className="p-3 text-right tabular-nums text-slate-600 dark:text-zinc-300">{Number(w.discount_percent)}%</td>
                   <td className={`p-3 text-right tabular-nums font-medium ${Number(w.profit) < 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}>{inr(w.profit)}</td>
@@ -144,6 +144,10 @@ export default function WorkpagePage() {
               <Input label="Quotation amount" type="number" min="0" step="0.01" value={form.quotation_amount} onChange={(e) => setForm({ ...form, quotation_amount: e.target.value })} />
               <Input label="Vendor amount" type="number" min="0" step="0.01" value={form.vendor_amount} onChange={(e) => setForm({ ...form, vendor_amount: e.target.value })} />
               <Input label="Client discount %" type="number" min="0" max="100" step="0.01" value={form.discount_percent} onChange={(e) => setForm({ ...form, discount_percent: e.target.value })} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="CGST % (amounts above exclude GST)" type="number" min="0" max="50" step="0.01" value={form.cgst_percent} onChange={(e) => setForm({ ...form, cgst_percent: e.target.value })} />
+              <Input label="SGST %" type="number" min="0" max="50" step="0.01" value={form.sgst_percent} onChange={(e) => setForm({ ...form, sgst_percent: e.target.value })} />
             </div>
             <Select label="Assign to department" value={form.department_id} onChange={(e) => setForm({ ...form, department_id: e.target.value })}>
               <option value="">Choose later</option>

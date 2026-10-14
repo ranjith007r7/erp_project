@@ -9,6 +9,8 @@ a circular import: Sales needs Finance's accounts to post to, and Finance
 needs Sales' Invoice model for Payments - putting the shared logic in its
 own module means neither route file has to import the other.
 """
+from decimal import Decimal
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -28,6 +30,9 @@ DEFAULT_ACCOUNTS = [
     # PF, insurance and TDS withheld from salaries: owed to the authorities
     # until paid out, so a liability. Created on first use like every default.
     ("2100", "Payroll Deductions Payable", "liability"),
+    # GST collected from customers on sales: owed to the government until it is paid over, so liabilities.
+    ("2210", "CGST Payable", "liability"),
+    ("2220", "SGST Payable", "liability"),
 ]
 
 
@@ -90,11 +95,12 @@ def next_entry_number(db: Session, org_id: str) -> str:
             return number
 
 
-def post_invoice_journal_entry(db: Session, org_id: str, invoice_id: str, amount) -> JournalEntry:
+def post_invoice_journal_entry(db: Session, org_id: str, invoice_id: str, amount, cgst=0, sgst=0) -> JournalEntry:
     """
     The moment an Invoice is generated, we record:
-        Debit  Accounts Receivable   (we're now owed this money)
-        Credit Sales Revenue         (we've earned this revenue)
+        Debit  Accounts Receivable   (we're now owed the full amount, GST included)
+        Credit Sales Revenue         (the taxable value we have earned)
+        Credit CGST Payable / SGST Payable (GST collected on behalf of the government, only when there is any)
     This does NOT commit - the caller (Sales route) commits once, so the
     Invoice row and this Journal Entry are saved together or not at all.
     """
@@ -103,8 +109,13 @@ def post_invoice_journal_entry(db: Session, org_id: str, invoice_id: str, amount
 
     entry = JournalEntry(org_id=org_id, entry_number=next_entry_number(db, org_id),
                          reference=f"INV-{invoice_id}", description="Invoice issued")
+    cgst, sgst = Decimal(cgst or 0), Decimal(sgst or 0)
     entry.lines.append(JournalLine(account_id=ar_account.id, debit=amount, credit=0))
-    entry.lines.append(JournalLine(account_id=revenue_account.id, debit=0, credit=amount))
+    entry.lines.append(JournalLine(account_id=revenue_account.id, debit=0, credit=Decimal(amount) - cgst - sgst))
+    if cgst:
+        entry.lines.append(JournalLine(account_id=get_account(db, org_id, "2210").id, debit=0, credit=cgst))
+    if sgst:
+        entry.lines.append(JournalLine(account_id=get_account(db, org_id, "2220").id, debit=0, credit=sgst))
     db.add(entry)
     return entry
 
@@ -126,7 +137,8 @@ def post_payment_journal_entry(db: Session, org_id: str, payment_id: str, amount
     return entry
 
 
-def post_work_receipt_journal_entry(db: Session, org_id: str, payment_id: str, amount, note: str | None = None) -> JournalEntry:
+def post_work_receipt_journal_entry(db: Session, org_id: str, payment_id: str, amount, note: str | None = None,
+                                    cgst_percent=0, sgst_percent=0) -> JournalEntry:
     """
     Money received straight against a customer work (Workpage), which has no
     Sales invoice behind it to have raised a receivable first:
@@ -137,8 +149,17 @@ def post_work_receipt_journal_entry(db: Session, org_id: str, payment_id: str, a
     revenue_account = get_account(db, org_id, "4000")
     entry = JournalEntry(org_id=org_id, entry_number=next_entry_number(db, org_id), reference=f"WPMT-{payment_id}",
                          description="Work payment received" + (f" ({note})" if note else ""))
+    # The payment is GST-inclusive: split it pro rata into revenue and the GST payable accounts.
+    amount = Decimal(amount)
+    c, s_ = Decimal(cgst_percent or 0), Decimal(sgst_percent or 0)
+    cgst = (amount * c / (100 + c + s_)).quantize(Decimal("0.01")) if c else Decimal(0)
+    sgst = (amount * s_ / (100 + c + s_)).quantize(Decimal("0.01")) if s_ else Decimal(0)
     entry.lines.append(JournalLine(account_id=cash_account.id, debit=amount, credit=0))
-    entry.lines.append(JournalLine(account_id=revenue_account.id, debit=0, credit=amount))
+    entry.lines.append(JournalLine(account_id=revenue_account.id, debit=0, credit=amount - cgst - sgst))
+    if cgst:
+        entry.lines.append(JournalLine(account_id=get_account(db, org_id, "2210").id, debit=0, credit=cgst))
+    if sgst:
+        entry.lines.append(JournalLine(account_id=get_account(db, org_id, "2220").id, debit=0, credit=sgst))
     db.add(entry)
     return entry
 

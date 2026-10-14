@@ -55,7 +55,8 @@ def _item_lines(po) -> list[str]:
     lines = []
     for i, it in enumerate(po.items, 1):
         name = it.product.name if it.product else "Item"
-        lines.append(f"  {i}. {name} - qty {it.qty} x {money(it.unit_price)} = {money(it.qty * it.unit_price)}")
+        gtxt = f" + GST {Decimal(it.cgst_percent) + Decimal(it.sgst_percent):g}%" if (it.cgst_percent or it.sgst_percent) else ""
+        lines.append(f"  {i}. {name} - qty {it.qty} x {money(it.unit_price)}{gtxt} = {money(it.qty * it.unit_price)}")
     return lines
 
 
@@ -76,7 +77,9 @@ def build_po_email(org_name: str, po) -> dict:
         "Items:",
         *_item_lines(po),
         "",
-        f"Quoted total: {money(po.total)}",
+        f"Taxable value: {money(po.total)}",
+        f"CGST: {money(po.cgst_amount)}   SGST: {money(po.sgst_amount)}",
+        f"Total payable (GST included): {money(po.grand_total)}",
         "",
         "Please quote the PO number on your invoice and on the courier proof of delivery.",
         "",
@@ -102,7 +105,7 @@ def build_defect_email(org_name: str, po, receipt) -> dict:
         "We have NOT accepted this delivery into stock.",
         "",
         f"PO number: {po_number(po)}",
-        f"PO total: {money(po.total)}",
+        f"PO total: {money(po.grand_total)} (taxable {money(po.total)} + GST)",
         f"Inspected by: {_who(receipt.receiver)}",
         "",
         "Items ordered:",
@@ -142,17 +145,20 @@ def _po_block(po) -> list:
     out = [Paragraph(f"{_esc(po_number(po))} &nbsp;-&nbsp; {APPROVAL_LABEL.get(po.approval_status, po.approval_status)}", _B),
            Paragraph(f"Date {po.order_date:%d %b %Y} | Delivery: {STATUS_LABEL.get(po.status, po.status)} | "
                      f"Raised by {_esc(_who(po.creator))} | Approved by {_esc(_who(po.approver))}", _S)]
-    rows = [["#", "Item", "Qty", "Unit price", "Amount"]]
+    rows = [["#", "Item", "Qty", "Unit price", "CGST/SGST %", "Amount"]]
     for i, it in enumerate(po.items, 1):
         rows.append([str(i), it.product.name if it.product else "Item", str(it.qty),
-                     money(it.unit_price), money(it.qty * it.unit_price)])
-    rows.append(["", "", "", "Total", money(po.total)])
-    t = Table(rows, colWidths=[8 * mm, 85 * mm, 15 * mm, 33 * mm, 33 * mm], repeatRows=1)
+                     money(it.unit_price), f"{Decimal(it.cgst_percent):g} / {Decimal(it.sgst_percent):g}", money(it.qty * it.unit_price)])
+    rows.append(["", "", "", "", "Taxable value", money(po.total)])
+    rows.append(["", "", "", "", "CGST", money(po.cgst_amount)])
+    rows.append(["", "", "", "", "SGST", money(po.sgst_amount)])
+    rows.append(["", "", "", "", "Total payable", money(po.grand_total)])
+    t = Table(rows, colWidths=[8 * mm, 70 * mm, 13 * mm, 28 * mm, 30 * mm, 31 * mm], repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f2937")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTSIZE", (0, 0), (-1, -1), 8.5), ("ALIGN", (2, 0), (-1, -1), "RIGHT"),
-        ("GRID", (0, 0), (-1, -2), 0.3, colors.HexColor("#cccccc")),
-        ("FONTNAME", (3, -1), (-1, -1), "Helvetica-Bold"), ("LINEABOVE", (3, -1), (-1, -1), 0.6, colors.black),
+        ("GRID", (0, 0), (-1, -5), 0.3, colors.HexColor("#cccccc")),
+        ("FONTNAME", (4, -1), (-1, -1), "Helvetica-Bold"), ("LINEABOVE", (4, -4), (-1, -4), 0.6, colors.black),
     ]))
     out += [Spacer(1, 3), t, Spacer(1, 6)]
     return out
@@ -185,8 +191,8 @@ def vendor_pdf(org_name: str, vendor, pos: list, scope: str) -> bytes:
     story.append(Spacer(1, 6))
     for po in pos:
         story.append(KeepTogether(_po_block(po)))
-    total = sum((Decimal(p.total or 0) for p in pos), Decimal(0))
-    story.append(Paragraph(f"<b>Grand total of listed orders: {money(total)}</b>", _N))
+    total = sum((Decimal(p.grand_total or 0) for p in pos), Decimal(0))
+    story.append(Paragraph(f"<b>Grand total of listed orders (GST included): {money(total)}</b>", _N))
     _doc(buf, f"POs {vendor.name}").build(story)
     return buf.getvalue()
 

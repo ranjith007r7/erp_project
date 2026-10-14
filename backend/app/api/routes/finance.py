@@ -4,6 +4,7 @@ one real action: recording a Payment against an Invoice, which posts its
 own Journal Entry through the same shared accounting service Sales uses.
 """
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
@@ -22,6 +23,7 @@ from app.services.payroll import get_leave_types, lop_days_from_approved_leave
 from app.services.accounting import post_payment_journal_entry
 from app.services.notifications import notify_role
 from app.services.audit import log_audit_event
+from app.services import workpages
 
 router = APIRouter(prefix="/api/finance", tags=["finance"], dependencies=[Depends(get_current_user)])
 
@@ -57,6 +59,11 @@ def record_payment(payload: PaymentCreate, db: Session = Depends(get_db), org_id
     if invoice.status == "paid":
         raise HTTPException(status_code=400, detail="This invoice is already fully paid.")
 
+    paid_so_far = Decimal(db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(Payment.invoice_id == invoice.id).scalar() or 0)
+    due = Decimal(invoice.amount) - paid_so_far
+    if Decimal(payload.amount) > due:
+        raise HTTPException(status_code=400, detail=f"This payment ({payload.amount}) is more than the amount still due on the invoice ({due}).")
+
     txn = (payload.transaction_id or "").strip() or None
     if payload.method in METHODS_NEEDING_REFERENCE:
         label = {"card": "card", "gpay": "GPay", "bank_transfer": "bank transfer"}[payload.method]
@@ -91,7 +98,9 @@ def record_payment(payload: PaymentCreate, db: Session = Depends(get_db), org_id
     # Simple model for now: any payment recorded marks the invoice fully
     # paid. Partial-payment tracking (amount_paid vs amount_due) is a
     # reasonable Phase-4-or-later refinement, not needed for the demo story.
-    invoice.status = "paid"
+    if paid_so_far + Decimal(payment.amount) >= Decimal(invoice.amount):
+        invoice.status = "paid"
+    workpages.safe(db, workpages.on_invoice_payment, invoice, payment, current_user)
 
     # Real trigger #1 of 2 for "notifications only cover a few things" -
     # invoice payment recorded is exactly the kind of event a real org

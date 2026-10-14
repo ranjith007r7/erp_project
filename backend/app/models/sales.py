@@ -25,6 +25,10 @@ class Product(Base):
     sku = Column(String, nullable=True)
     category_id = Column(UUID(as_uuid=True), ForeignKey("product_categories.id"), nullable=True)
     reorder_level = Column(Integer, nullable=False, default=0)
+    # Selling price above is EXCLUSIVE of GST; these are the default rates a quotation line picks up (editable per line).
+    cgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
+    sgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
+    hsn_code = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -53,7 +57,10 @@ class Quotation(Base):
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=False)
     opportunity_id = Column(UUID(as_uuid=True), ForeignKey("crm_opportunities.id"), nullable=True)
-    total = Column(Numeric(12, 2), default=0)
+    total = Column(Numeric(12, 2), default=0)       # grand total, GST included
+    subtotal = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")   # taxable value
+    cgst_amount = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
+    sgst_amount = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
     status = Column(String, default="draft")  # draft / sent / accepted / rejected
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -67,7 +74,9 @@ class QuotationItem(Base):
     quotation_id = Column(UUID(as_uuid=True), ForeignKey("quotations.id"), nullable=False)
     product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
     qty = Column(Integer, nullable=False, default=1)
-    unit_price = Column(Numeric(12, 2), nullable=False)
+    unit_price = Column(Numeric(12, 2), nullable=False)   # excludes GST
+    cgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
+    sgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
 
     quotation = relationship("Quotation", back_populates="items")
     product = relationship("Product")
@@ -83,7 +92,10 @@ class SalesOrder(Base):
     quotation_id = Column(UUID(as_uuid=True), ForeignKey("quotations.id"), nullable=True)
     order_date = Column(Date, default=date.today)
     status = Column(String, default="pending")  # pending / fulfilled / cancelled
-    total = Column(Numeric(12, 2), default=0)
+    total = Column(Numeric(12, 2), default=0)       # grand total, GST included
+    subtotal = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
+    cgst_amount = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
+    sgst_amount = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
 
     items = relationship("SalesOrderItem", back_populates="order", cascade="all, delete-orphan")
 
@@ -95,7 +107,9 @@ class SalesOrderItem(Base):
     order_id = Column(UUID(as_uuid=True), ForeignKey("sales_orders.id"), nullable=False)
     product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
     qty = Column(Integer, nullable=False, default=1)
-    unit_price = Column(Numeric(12, 2), nullable=False)
+    unit_price = Column(Numeric(12, 2), nullable=False)   # excludes GST
+    cgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
+    sgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
 
     order = relationship("SalesOrder", back_populates="items")
     product = relationship("Product")
@@ -114,7 +128,11 @@ class Invoice(Base):
     org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     order_id = Column(UUID(as_uuid=True), ForeignKey("sales_orders.id"), nullable=False)
     customer_id = Column(UUID(as_uuid=True), ForeignKey("customers.id"), nullable=False)
-    amount = Column(Numeric(12, 2), nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)   # grand total payable, GST included
+    invoice_number = Column(String, nullable=True)    # "INV-0001", per organization (unique with org_id, see migration)
+    subtotal = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
+    cgst_amount = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
+    sgst_amount = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
     due_date = Column(Date, nullable=True)
     status = Column(String, default="unpaid")  # unpaid / paid / overdue
     created_at = Column(DateTime, default=datetime.utcnow)

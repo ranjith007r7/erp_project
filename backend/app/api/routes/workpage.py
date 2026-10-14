@@ -95,6 +95,7 @@ def create_work(payload: WorkCreate, db: Session = Depends(get_db), org_id: str 
                         client_details=payload.client_details, description=payload.description,
                         quotation_amount=payload.quotation_amount, vendor_amount=payload.vendor_amount,
                         discount_percent=payload.discount_percent, department_id=payload.department_id,
+                        cgst_percent=payload.cgst_percent, sgst_percent=payload.sgst_percent,
                         customer_id=payload.customer_id, client_mobile=payload.client_mobile,
                         opened_title="Work added manually")
     log_audit_event(db, org_id, current_user.id, "create_work", "WorkOrder", w.id)
@@ -134,9 +135,12 @@ def update_work(work_id: str, payload: WorkUpdate, db: Session = Depends(get_db)
     except svc.WorkError as e:
         raise HTTPException(400, str(e))
     changes = payload.model_dump(exclude_unset=True)
+    if svc.is_sales_order(w) and ({"quotation_amount", "discount_percent", "cgst_percent", "sgst_percent"} & set(changes)):
+        raise HTTPException(400, "This is a Sales order: its amounts and GST come from the Sales order and invoice and cannot be changed here.")
     if "vendor_amount" in changes and svc._issues(db, w) and svc.q2(changes["vendor_amount"]) != svc.q2(w.vendor_amount):
         raise HTTPException(400, "The vendor amount comes from the stock batches taken from inventory and cannot be typed over.")
-    money = {"quotation_amount": "Quoted amount", "vendor_amount": "Vendor amount", "discount_percent": "Client discount %"}
+    money = {"quotation_amount": "Quoted amount", "vendor_amount": "Vendor amount", "discount_percent": "Client discount %",
+             "cgst_percent": "CGST %", "sgst_percent": "SGST %"}
     notes = []
     for field, value in changes.items():
         old = getattr(w, field)

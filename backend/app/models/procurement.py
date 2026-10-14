@@ -44,7 +44,10 @@ class PurchaseOrder(Base):
     vendor_id = Column(UUID(as_uuid=True), ForeignKey("vendors.id"), nullable=False)
     order_date = Column(Date, default=date.today)
     status = Column(String, default="pending")  # pending / received / defective / cancelled
-    total = Column(Numeric(12, 2), default=0)
+    total = Column(Numeric(12, 2), default=0)   # taxable value (the cost basis: input GST is claimable, so it is not cost)
+    cgst_amount = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
+    sgst_amount = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
+    grand_total = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")   # what the vendor is paid, GST included
 
     # Human-readable number printed on emails and PDFs ("PO-0007"), unique
     # per organization. Nullable only so rows created by old scripts that
@@ -74,7 +77,9 @@ class PurchaseOrderItem(Base):
     po_id = Column(UUID(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=False)
     product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=False)
     qty = Column(Integer, nullable=False, default=1)
-    unit_price = Column(Numeric(12, 2), nullable=False)
+    unit_price = Column(Numeric(12, 2), nullable=False)   # excludes GST
+    cgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
+    sgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
 
     purchase_order = relationship("PurchaseOrder", back_populates="items")
     product = relationship("Product")

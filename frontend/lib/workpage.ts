@@ -6,6 +6,8 @@ export type WorkRow = {
   handling_department: string | null; handling_department_id: string | null; created_at: string;
   client_mobile: string | null; is_pending: boolean; pending_reason: string; allocated_employee_name: string | null;
   delivered_on: string | null; closed_at: string | null;
+  work_type: "project" | "sales_order"; sales_order_id: string | null;
+  taxable_net: string; cgst_percent: string; sgst_percent: string; cgst_amount: string; sgst_amount: string;
 };
 
 export type StockCheckItem = {
@@ -19,6 +21,7 @@ export type StockCheck = {
 };
 
 export type WorkDetail = WorkRow & {
+  sales_invoice: { id: string; amount: string; status: string; invoice_number: string | null; document_ready: boolean } | null;
   client_details: string | null; description: string | null; delivered_on: string | null; delivery_note: string | null;
   can_close: boolean; pending_note: string | null; can_cancel: boolean;
   cancellation: { reason: string; remark: string | null; status_before: string | null; status_before_label: string | null; requested_by: string | null; requested_at: string | null; decided_by: string | null; decided_at: string | null; decision_note: string | null } | null;

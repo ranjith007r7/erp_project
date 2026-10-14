@@ -158,8 +158,8 @@ export default function StockIntakePage() {
                   <input required list="vendor-names" className={field} value={form.vendor_name} onChange={(e) => f("vendor_name", e.target.value)} />
                   <datalist id="vendor-names">{summary?.vendor_names.map((v) => <option key={v} value={v} />)}</datalist>
                 </div>
-                <div><label className={label}>Vendor amount - rate bought at, per unit *</label><input required type="number" min={0} step="0.01" className={field} value={form.vendor_amount} onChange={(e) => f("vendor_amount", e.target.value)} /></div>
-                <div><label className={label}>MRP - can be sold at, per unit *</label><input required type="number" min={0.01} step="0.01" className={field} value={form.mrp} onChange={(e) => f("mrp", e.target.value)} /></div>
+                <div><label className={label}>Vendor amount - rate bought at, per unit, excluding GST *</label><input required type="number" min={0} step="0.01" className={field} value={form.vendor_amount} onChange={(e) => f("vendor_amount", e.target.value)} /></div>
+                <div><label className={label}>MRP - can be sold at, per unit, GST included (as printed on the pack) *</label><input required type="number" min={0.01} step="0.01" className={field} value={form.mrp} onChange={(e) => f("mrp", e.target.value)} /></div>
                 <div><label className={label}>Max discount for this part (%) *</label><input required type="number" min={0} max={100} step="0.01" className={field} value={form.max_discount_percent} onChange={(e) => f("max_discount_percent", e.target.value)} /></div>
                 <div><label className={label}>Date of inward</label><input type="date" max={today()} className={field} value={form.inward_date} onChange={(e) => f("inward_date", e.target.value)} /></div>
                 <div><label className={label}>Month of manufacture</label><input type="month" className={field} value={form.manufacture_month} onChange={(e) => f("manufacture_month", e.target.value)} /></div>

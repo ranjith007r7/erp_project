@@ -12,7 +12,8 @@ import { EmailPreviewModal } from "@/components/procurement/EmailPreviewModal";
 import { ReceiveModal } from "@/components/procurement/ReceiveModal";
 import { inr, type Product, type PurchaseOrder, type Receipt, type Vendor } from "@/components/procurement/types";
 
-type Line = { product_id: string; qty: string; unit_price: string };
+type Line = { product_id: string; qty: string; unit_price: string; cgst_percent: string; sgst_percent: string };
+const NEWLINE: Line = { product_id: "", qty: "1", unit_price: "", cgst_percent: "0", sgst_percent: "0" };
 type EmailTarget = { kind: "po"; po: PurchaseOrder } | { kind: "defect"; po: PurchaseOrder; receipt: Receipt };
 
 const APPROVAL_STYLE: Record<string, string> = {
@@ -43,7 +44,7 @@ export default function ProcurementPage() {
   const [poVendor, setPoVendor] = useState("");
   const [poWork, setPoWork] = useState("");
   const [openWorks, setOpenWorks] = useState<{ id: string; work_number: string; client_name: string; status_label: string; needs: { product_id: string; product_name: string | null; needed: number; in_stock: number; on_pos: number; remaining: number }[] }[]>([]);
-  const [lines, setLines] = useState<Line[]>([{ product_id: "", qty: "1", unit_price: "" }]);
+  const [lines, setLines] = useState<Line[]>([NEWLINE]);
 
   const [filterVendor, setFilterVendor] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -106,19 +107,21 @@ export default function ProcurementPage() {
     const need = (w?.needs ?? []).filter((n) => n.remaining > 0);
     // Fill the lines from what the work still needs, so the quantity (and so the vendor amount) is right without typing.
     if (need.length) {
-      setLines(need.map((n) => ({ product_id: n.product_id, qty: String(n.remaining), unit_price: String(Number(products.find((p) => p.id === n.product_id)?.unit_price ?? 0) || "") })));
+      setLines(need.map((n) => { const pr = products.find((p) => p.id === n.product_id); return { product_id: n.product_id, qty: String(n.remaining), unit_price: String(Number(pr?.unit_price ?? 0) || ""), cgst_percent: String(Number(pr?.cgst_percent ?? 0)), sgst_percent: String(Number(pr?.sgst_percent ?? 0)) }; }));
     }
   }
   const poTotal = lines.reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit_price) || 0), 0);
+  const poCgst = lines.reduce((s, l) => s + Math.round((Number(l.qty) || 0) * (Number(l.unit_price) || 0) * (Number(l.cgst_percent) || 0)) / 100, 0);
+  const poSgst = lines.reduce((s, l) => s + Math.round((Number(l.qty) || 0) * (Number(l.unit_price) || 0) * (Number(l.sgst_percent) || 0)) / 100, 0);
 
   async function createPO(e: React.FormEvent) {
     e.preventDefault();
     try {
       await apiRequest("/api/procurement/purchase-orders", {
         method: "POST", auth: true,
-        body: { vendor_id: poVendor, work_order_id: poWork || undefined, items: lines.map((l) => ({ product_id: l.product_id, qty: Number(l.qty), unit_price: Number(l.unit_price) })) },
+        body: { vendor_id: poVendor, work_order_id: poWork || undefined, items: lines.map((l) => ({ product_id: l.product_id, qty: Number(l.qty), unit_price: Number(l.unit_price), cgst_percent: Number(l.cgst_percent || 0), sgst_percent: Number(l.sgst_percent || 0) })) },
       });
-      setPoVendor(""); setPoWork(""); setLines([{ product_id: "", qty: "1", unit_price: "" }]);
+      setPoVendor(""); setPoWork(""); setLines([NEWLINE]);
       showToast("Purchase order raised. It now waits for approval.", "success");
       loadAll();
     } catch (err) { fail(err, "Failed to create purchase order"); }
@@ -198,25 +201,27 @@ export default function ProcurementPage() {
                 )}
                 {lines.map((l, i) => (
                   <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                    <Select required aria-label="Product" className="col-span-6" value={l.product_id}
+                    <Select required aria-label="Product" className="col-span-4" value={l.product_id}
                       onChange={(e) => {
                         const p = products.find((x) => x.id === e.target.value);
-                        setLine(i, { product_id: e.target.value, unit_price: l.unit_price || (p ? String(Number(p.unit_price)) : "") });
+                        setLine(i, { product_id: e.target.value, unit_price: l.unit_price || (p ? String(Number(p.unit_price)) : ""), cgst_percent: p ? String(Number(p.cgst_percent)) : "0", sgst_percent: p ? String(Number(p.sgst_percent)) : "0" });
                       }}>
                       <option value="">Product...</option>
                       {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </Select>
                     <Input aria-label="Qty" className="col-span-2" type="number" min={1} max={chosenWork ? toOrder.find((n) => n.product_id === l.product_id)?.remaining : undefined} required value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} />
-                    <Input aria-label="Unit cost" className="col-span-3" type="number" min={0} step="0.01" required placeholder="Unit cost" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} />
+                    <Input aria-label="Unit cost" className="col-span-2" type="number" min={0} step="0.01" required placeholder="Unit cost (excl. GST)" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} />
+                    <Input aria-label="CGST %" className="col-span-1" type="number" min={0} max={50} step="0.01" placeholder="CGST %" value={l.cgst_percent} onChange={(e) => setLine(i, { cgst_percent: e.target.value })} />
+                    <Input aria-label="SGST %" className="col-span-1" type="number" min={0} max={50} step="0.01" placeholder="SGST %" value={l.sgst_percent} onChange={(e) => setLine(i, { sgst_percent: e.target.value })} />
                     <button type="button" aria-label="Remove line" disabled={lines.length === 1}
                       onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))}
                       className="col-span-1 text-slate-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={16} /></button>
                   </div>
                 ))}
                 <div className="flex justify-between items-center">
-                  <button type="button" onClick={() => setLines((ls) => [...ls, { product_id: "", qty: "1", unit_price: "" }])}
+                  <button type="button" onClick={() => setLines((ls) => [...ls, NEWLINE])}
                     className="text-xs flex items-center gap-1 text-slate-600 dark:text-zinc-300 hover:underline"><Plus size={14} /> Add another product</button>
-                  <span className="text-sm text-slate-600 dark:text-zinc-300">Quoted total: <b>{inr(poTotal)}</b></span>
+                  <span className="text-sm text-slate-600 dark:text-zinc-300" data-testid="po-preview">{inr(poTotal)} + CGST {inr(poCgst)} + SGST {inr(poSgst)} = <b>{inr(poTotal + poCgst + poSgst)}</b></span>
                 </div>
                 <Button className="w-full">Create Purchase Order</Button>
               </form>
@@ -277,9 +282,12 @@ export default function ProcurementPage() {
 
                     <ul className="mt-2 text-sm text-slate-700 dark:text-zinc-200 space-y-0.5">
                       {po.items.map((i) => (
-                        <li key={i.id} className="flex justify-between"><span>{i.product_name} × {i.qty} @ {inr(i.unit_price)}</span><span>{inr(i.line_total)}</span></li>
+                        <li key={i.id} className="flex justify-between"><span>{i.product_name} × {i.qty} @ {inr(i.unit_price)}{Number(i.cgst_percent) + Number(i.sgst_percent) > 0 ? ` + ${Number(i.cgst_percent)}% CGST + ${Number(i.sgst_percent)}% SGST` : ""}</span><span>{inr(i.line_total)}</span></li>
                       ))}
-                      <li className="flex justify-between font-semibold border-t border-slate-200 dark:border-zinc-700 pt-1 mt-1"><span>Total</span><span>{inr(po.total)}</span></li>
+                      <li className="flex justify-between border-t border-slate-200 dark:border-zinc-700 pt-1 mt-1"><span>Taxable value</span><span>{inr(po.total)}</span></li>
+                      <li className="flex justify-between"><span>CGST</span><span>{inr(po.cgst_amount)}</span></li>
+                      <li className="flex justify-between"><span>SGST</span><span>{inr(po.sgst_amount)}</span></li>
+                      <li className="flex justify-between font-semibold" data-testid="po-grand"><span>Total payable</span><span>{inr(po.grand_total)}</span></li>
                     </ul>
 
                     {(po.corrections?.length ?? 0) > 0 && (

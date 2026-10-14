@@ -2,17 +2,27 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, apiBlob, openBlob } from "@/lib/api";
 import { PageHeader } from "@/components/ui";
 import { usePagination, PaginationControls } from "@/components/Pagination";
 import { SkeletonList } from "@/components/Skeleton";
 
-type Product = { id: string; name: string; unit_price: string };
+type Product = { id: string; name: string; unit_price: string; cgst_percent: string; sgst_percent: string; hsn_code: string | null };
 type Customer = { id: string; name: string };
-type QuotationItem = { product_id: string; qty: number; unit_price: string };
-type Quotation = { id: string; customer_id: string; total: string; status: string; items: QuotationItem[] };
-type SalesOrder = { id: string; customer_id: string; total: string; status: string };
-type Invoice = { id: string; order_id: string; amount: string; status: string };
+type QuotationItem = { product_id: string; qty: number; unit_price: string; cgst_percent: string; sgst_percent: string };
+type Tax = { subtotal: string; cgst_amount: string; sgst_amount: string };
+type Quotation = Tax & { id: string; customer_id: string; total: string; status: string; items: QuotationItem[] };
+type SalesOrder = Tax & { id: string; customer_id: string; total: string; status: string };
+type Invoice = Tax & { id: string; order_id: string; amount: string; status: string; invoice_number: string | null; paid_amount: string; balance: string; document_ready: boolean };
+const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const TaxLines = ({ t, total }: { t: Tax; total: string }) => (
+  <div className="text-xs text-slate-500 dark:text-zinc-500 mt-1 space-y-0.5" data-testid="tax-lines">
+    <div className="flex justify-between"><span>Taxable value</span><span>{inr(t.subtotal)}</span></div>
+    <div className="flex justify-between"><span>CGST</span><span>{inr(t.cgst_amount)}</span></div>
+    <div className="flex justify-between"><span>SGST</span><span>{inr(t.sgst_amount)}</span></div>
+    <div className="flex justify-between font-medium text-slate-700 dark:text-zinc-300"><span>Total</span><span>{inr(total)}</span></div>
+  </div>
+);
 
 export default function SalesPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -24,9 +34,12 @@ export default function SalesPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [productForm, setProductForm] = useState({ name: "", unit_price: "" });
+  const [productForm, setProductForm] = useState({ name: "", unit_price: "", cgst_percent: "0", sgst_percent: "0", hsn_code: "" });
   const [customerForm, setCustomerForm] = useState({ name: "" });
-  const [quoteForm, setQuoteForm] = useState({ customer_id: "", product_id: "", qty: "1", unit_price: "" });
+  const [quoteForm, setQuoteForm] = useState({ customer_id: "", product_id: "", qty: "1", unit_price: "", cgst_percent: "0", sgst_percent: "0" });
+  const qTaxable = Number(quoteForm.qty || 0) * Number(quoteForm.unit_price || 0);
+  const qCgst = Math.round(qTaxable * Number(quoteForm.cgst_percent || 0)) / 100;
+  const qSgst = Math.round(qTaxable * Number(quoteForm.sgst_percent || 0)) / 100;
 
   function loadAll() {
     Promise.allSettled([
@@ -45,9 +58,10 @@ export default function SalesPage() {
     await apiRequest("/api/sales/products", {
       method: "POST",
       auth: true,
-      body: { name: productForm.name, unit_price: Number(productForm.unit_price) },
+      body: { name: productForm.name, unit_price: Number(productForm.unit_price), cgst_percent: Number(productForm.cgst_percent || 0),
+              sgst_percent: Number(productForm.sgst_percent || 0), hsn_code: productForm.hsn_code.trim() || null },
     }).catch((err) => setError(err.message));
-    setProductForm({ name: "", unit_price: "" });
+    setProductForm({ name: "", unit_price: "", cgst_percent: "0", sgst_percent: "0", hsn_code: "" });
     loadAll();
   }
 
@@ -75,11 +89,13 @@ export default function SalesPage() {
               product_id: quoteForm.product_id,
               qty: Number(quoteForm.qty),
               unit_price: Number(quoteForm.unit_price),
+              cgst_percent: Number(quoteForm.cgst_percent || 0),
+              sgst_percent: Number(quoteForm.sgst_percent || 0),
             },
           ],
         },
       });
-      setQuoteForm({ customer_id: "", product_id: "", qty: "1", unit_price: "" });
+      setQuoteForm({ customer_id: "", product_id: "", qty: "1", unit_price: "", cgst_percent: "0", sgst_percent: "0" });
       loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create quotation");
@@ -101,6 +117,23 @@ export default function SalesPage() {
       loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to generate invoice");
+    }
+  }
+
+  async function downloadInvoice(inv: Invoice) {
+    try {
+      openBlob(await apiBlob(`/api/sales/invoices/${inv.id}/pdf`), `${inv.invoice_number || "invoice"}.pdf`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open the invoice");
+    }
+  }
+
+  async function saveRates(p: Product, cgst: string, sgst: string) {
+    try {
+      await apiRequest(`/api/sales/products/${p.id}`, { method: "PATCH", auth: true, body: { cgst_percent: Number(cgst), sgst_percent: Number(sgst) } });
+      loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save the GST rates");
     }
   }
 
@@ -129,13 +162,28 @@ export default function SalesPage() {
             className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           />
           <input
-            placeholder="Unit price"
+            placeholder="Unit price (excluding GST)"
             required
             type="number"
+            min="0"
+            step="0.01"
             value={productForm.unit_price}
             onChange={(e) => setProductForm({ ...productForm, unit_price: e.target.value })}
             className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           />
+          <div className="grid grid-cols-3 gap-2">
+            <label className="text-xs text-slate-500 dark:text-zinc-500">CGST %
+              <input type="number" min="0" max="50" step="0.01" value={productForm.cgst_percent} data-testid="product-cgst"
+                onChange={(e) => setProductForm({ ...productForm, cgst_percent: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+            </label>
+            <label className="text-xs text-slate-500 dark:text-zinc-500">SGST %
+              <input type="number" min="0" max="50" step="0.01" value={productForm.sgst_percent} data-testid="product-sgst"
+                onChange={(e) => setProductForm({ ...productForm, sgst_percent: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+            </label>
+            <label className="text-xs text-slate-500 dark:text-zinc-500">HSN / SAC
+              <input value={productForm.hsn_code} onChange={(e) => setProductForm({ ...productForm, hsn_code: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+            </label>
+          </div>
           <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">
             Add Product
           </button>
@@ -155,6 +203,16 @@ export default function SalesPage() {
           </button>
         </form>
       </div>
+
+      {products.length > 0 && (
+        <section className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 mb-8 overflow-x-auto" data-testid="product-list">
+          <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm mb-2">Products <span className="font-normal text-slate-400">· prices exclude GST</span></h2>
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-xs text-slate-500 dark:text-zinc-500 border-b border-slate-200 dark:border-zinc-800"><th className="py-1 pr-3">Product</th><th className="pr-3 text-right">Price</th><th className="pr-3">HSN</th><th className="pr-3">CGST %</th><th className="pr-3">SGST %</th><th className="pr-3 text-right">Price with GST</th><th /></tr></thead>
+            <tbody>{products.map((p) => <ProductRow key={p.id} p={p} onSave={saveRates} />)}</tbody>
+          </table>
+        </section>
+      )}
 
       <form onSubmit={createQuotation} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 mb-8 grid md:grid-cols-5 gap-2 items-end">
         <div className="md:col-span-2">
@@ -178,7 +236,7 @@ export default function SalesPage() {
             value={quoteForm.product_id}
             onChange={(e) => {
               const p = products.find((p) => p.id === e.target.value);
-              setQuoteForm({ ...quoteForm, product_id: e.target.value, unit_price: p?.unit_price || "" });
+              setQuoteForm({ ...quoteForm, product_id: e.target.value, unit_price: p?.unit_price || "", cgst_percent: String(Number(p?.cgst_percent || 0)), sgst_percent: String(Number(p?.sgst_percent || 0)) });
             }}
             className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
           >
@@ -201,6 +259,20 @@ export default function SalesPage() {
         <button className="bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">
           Create Quote
         </button>
+        <div className="md:col-span-5 grid grid-cols-2 md:grid-cols-5 gap-2 items-end">
+          <label className="text-xs text-slate-500 dark:text-zinc-500">Unit price (excl. GST)
+            <input type="number" min="0" step="0.01" value={quoteForm.unit_price} onChange={(e) => setQuoteForm({ ...quoteForm, unit_price: e.target.value })} data-testid="quote-price" className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+          </label>
+          <label className="text-xs text-slate-500 dark:text-zinc-500">CGST %
+            <input type="number" min="0" max="50" step="0.01" value={quoteForm.cgst_percent} onChange={(e) => setQuoteForm({ ...quoteForm, cgst_percent: e.target.value })} data-testid="quote-cgst" className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+          </label>
+          <label className="text-xs text-slate-500 dark:text-zinc-500">SGST %
+            <input type="number" min="0" max="50" step="0.01" value={quoteForm.sgst_percent} onChange={(e) => setQuoteForm({ ...quoteForm, sgst_percent: e.target.value })} data-testid="quote-sgst" className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+          </label>
+          <p className="md:col-span-2 text-xs text-slate-500 dark:text-zinc-400" data-testid="quote-preview">
+            {inr(qTaxable)} + CGST {inr(qCgst)} + SGST {inr(qSgst)} = <b className="text-slate-800 dark:text-white">{inr(qTaxable + qCgst + qSgst)}</b>
+          </p>
+        </div>
       </form>
 
       <div className="grid md:grid-cols-3 gap-6">
@@ -210,7 +282,8 @@ export default function SalesPage() {
             {quotations.map((q) => (
               <div key={q.id} className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-3">
                 <p className="text-sm font-medium text-slate-800 dark:text-white">{customerName(q.customer_id)}</p>
-                <p className="text-xs text-slate-500 dark:text-zinc-500">₹{Number(q.total).toLocaleString("en-IN")} · {q.status}</p>
+                <p className="text-xs text-slate-500 dark:text-zinc-500">{q.status}</p>
+                <TaxLines t={q} total={q.total} />
                 {q.status !== "accepted" && (
                   <button
                     onClick={() => acceptQuotation(q.id)}
@@ -231,7 +304,8 @@ export default function SalesPage() {
             {orders.map((o) => (
               <div key={o.id} className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-3">
                 <p className="text-sm font-medium text-slate-800 dark:text-white">{customerName(o.customer_id)}</p>
-                <p className="text-xs text-slate-500 dark:text-zinc-500">₹{Number(o.total).toLocaleString("en-IN")} · {o.status}</p>
+                <p className="text-xs text-slate-500 dark:text-zinc-500">{o.status}</p>
+                <TaxLines t={o} total={o.total} />
                 {o.status !== "fulfilled" && (
                   <button
                     onClick={() => generateInvoice(o.id)}
@@ -252,9 +326,18 @@ export default function SalesPage() {
             {pagedInvoices.map((inv) => (
               <div key={inv.id} className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-3">
                 <p className="text-sm font-medium text-slate-800 dark:text-white">
-                  ₹{Number(inv.amount).toLocaleString("en-IN")}
+                  {inv.invoice_number || "Invoice"} · {customerName(orders.find((o) => o.id === inv.order_id)?.customer_id || "")}
                 </p>
-                <p className="text-xs text-slate-500 dark:text-zinc-500">{inv.status}</p>
+                <p className="text-xs text-slate-500 dark:text-zinc-500">{inv.status} · received {inr(inv.paid_amount)} · due {inr(inv.balance)}</p>
+                <TaxLines t={inv} total={inv.amount} />
+                {inv.document_ready ? (
+                  <button onClick={() => downloadInvoice(inv)} data-testid="download-invoice"
+                    className="mt-2 text-xs bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 px-3 py-1.5 rounded-lg hover:bg-slate-700 dark:hover:bg-zinc-300">
+                    Download tax invoice (PDF)
+                  </button>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-400 dark:text-zinc-500">The tax invoice is available once a payment is recorded in Finance.</p>
+                )}
               </div>
             ))}
             {invoices.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No invoices yet.</p>}
@@ -265,5 +348,23 @@ export default function SalesPage() {
       </>
       )}
     </main>
+  );
+}
+
+function ProductRow({ p, onSave }: { p: Product; onSave: (p: Product, cgst: string, sgst: string) => void }) {
+  const [c, setC] = useState(String(Number(p.cgst_percent)));
+  const [g, setG] = useState(String(Number(p.sgst_percent)));
+  const dirty = Number(c) !== Number(p.cgst_percent) || Number(g) !== Number(p.sgst_percent);
+  const inp = "w-20 border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded px-2 py-1 text-sm";
+  return (
+    <tr className="border-b last:border-0 border-slate-100 dark:border-zinc-800" data-testid="product-row">
+      <td className="py-1.5 pr-3 text-slate-800 dark:text-white">{p.name}</td>
+      <td className="pr-3 text-right tabular-nums">{inr(p.unit_price)}</td>
+      <td className="pr-3 text-slate-500">{p.hsn_code || "—"}</td>
+      <td className="pr-3"><input className={inp} type="number" min="0" max="50" step="0.01" value={c} onChange={(e) => setC(e.target.value)} aria-label={`CGST % for ${p.name}`} /></td>
+      <td className="pr-3"><input className={inp} type="number" min="0" max="50" step="0.01" value={g} onChange={(e) => setG(e.target.value)} aria-label={`SGST % for ${p.name}`} /></td>
+      <td className="pr-3 text-right tabular-nums text-slate-600 dark:text-zinc-300">{inr(Number(p.unit_price) * (1 + (Number(c) + Number(g)) / 100))}</td>
+      <td>{dirty && <button onClick={() => onSave(p, c, g)} className="text-xs bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 px-2 py-1 rounded">Save</button>}</td>
+    </tr>
   );
 }

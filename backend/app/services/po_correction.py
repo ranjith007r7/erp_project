@@ -18,7 +18,7 @@ from app.models.procurement import PurchaseOrder, PoPriceCorrection
 from app.models.sales import Product
 from app.models.user import User
 from app.models.workpage import WorkOrder, WorkStockIssue
-from app.services import stock as stock_svc, workpages
+from app.services import gst,  stock as stock_svc, workpages
 from app.services.audit import log_audit_event
 
 q2 = workpages.q2
@@ -75,7 +75,7 @@ def correct_prices(db: Session, org_id, po: PurchaseOrder, user: User, changes: 
             for iss in db.query(WorkStockIssue).filter(WorkStockIssue.batch_id == lot.id).all():
                 iss.cost_rate = new
                 works[iss.work_id] = True
-    po.total = q2(sum(Decimal(i.qty) * Decimal(i.unit_price) for i in po.items))
+    gst.set_po_totals(po)
     for lg in logs:
         db.add(lg)
     if po.work_order_id:
