@@ -72,7 +72,8 @@ def _batch(db: Session, org_id, batch_id) -> StockBatch:
 def products(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     rows = db.query(Product).filter(Product.org_id == org_id).order_by(Product.name).all()
     return [{"id": p.id, "name": p.name, "sku": p.sku, "unit_price": p.unit_price,
-             "cgst_percent": p.cgst_percent or 0, "sgst_percent": p.sgst_percent or 0} for p in rows]
+             "cgst_percent": p.cgst_percent or 0, "sgst_percent": p.sgst_percent or 0,
+             "mrp": svc.product_default_mrp(p), "max_discount_percent": p.max_discount_percent or 0} for p in rows]
 
 
 @router.get("/summary", dependencies=[Depends(require_permission("stockin", "view"))])
@@ -118,7 +119,7 @@ def create_batch(payload: StockBatchIn, db: Session = Depends(get_db), org_id: s
              max_discount_percent=payload.max_discount_percent, inward_date=payload.inward_date or date.today(),
              manufacture_month=month, expiry_date=payload.expiry_date, source="manual", note=payload.note,
              already_in_inventory=payload.already_in_inventory,
-             cgst_percent=payload.cgst_percent, sgst_percent=payload.sgst_percent)
+             cgst_percent=payload.cgst_percent, sgst_percent=payload.sgst_percent, itc_eligible=payload.itc_eligible)
     log_audit_event(db, org_id, current_user.id, "stock_intake", "StockBatch", b.id)
     db.commit()
     return svc.batch_row(db, b)
@@ -136,10 +137,13 @@ def update_batch(batch_id: str, payload: StockBatchUpdate, db: Session = Depends
               "CGST %": svc.q2(b.cgst_percent), "SGST %": svc.q2(b.sgst_percent)}
     new = {"vendor_name": b.vendor_name, "vendor_amount": b.vendor_amount, "mrp": b.mrp, "max_discount_percent": b.max_discount_percent,
            "inward_date": b.inward_date, "manufacture_month": b.manufacture_month, "expiry_date": b.expiry_date,
-           "cgst_percent": b.cgst_percent, "sgst_percent": b.sgst_percent}
+           "cgst_percent": b.cgst_percent, "sgst_percent": b.sgst_percent, "itc_eligible": b.itc_eligible}
     new.update({k: v for k, v in ch.items() if k in new})
-    _run(db, svc.validate_fields, **{k: v for k, v in new.items() if k not in ("cgst_percent", "sgst_percent")})
+    _run(db, svc.validate_fields, **{k: v for k, v in new.items() if k not in ("cgst_percent", "sgst_percent", "itc_eligible")})
     for k, v in new.items():
+        if k == "itc_eligible":
+            b.itc_eligible = bool(v)
+            continue
         setattr(b, k, svc.q2(v) if k in ("vendor_amount", "mrp", "max_discount_percent", "cgst_percent", "sgst_percent") else (v.strip() if k == "vendor_name" else v))
     if "note" in ch:
         b.note = (ch["note"] or "").strip() or None

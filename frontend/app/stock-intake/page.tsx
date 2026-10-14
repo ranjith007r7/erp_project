@@ -6,7 +6,7 @@ import { PageHeader, Button } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { SkeletonList } from "@/components/Skeleton";
 
-type Product = { id: string; name: string; sku: string | null; cgst_percent?: number; sgst_percent?: number };
+type Product = { id: string; name: string; sku: string | null; cgst_percent?: number; sgst_percent?: number; mrp?: number | null; max_discount_percent?: number };
 type SummaryRow = { product_id: string; product_name: string; sku: string | null; on_hand: number; priced: number; unpriced: number; usable: number; expired: number; value_at_cost: number };
 type Summary = { products: SummaryRow[]; vendor_names: string[]; totals: { units_priced: number; units_unpriced: number; value_at_cost: number } };
 type Batch = {
@@ -15,14 +15,14 @@ type Batch = {
   inward_date: string; manufacture_month: string | null; expiry_date: string | null; expired: boolean; expiring_soon: boolean;
   source: string; note: string | null; sold_below_cost_warning?: boolean;
   cgst_percent: number; sgst_percent: number; msp: number; mrp_cgst: number; mrp_sgst: number; lowest_selling_price_excl_gst: number;
-  vendor_cgst?: number; vendor_sgst?: number; vendor_total_paid?: number;
+  itc_eligible?: boolean; vendor_cgst?: number; vendor_sgst?: number; vendor_total_paid?: number;
 };
 
 const inr = (n: number) => "Rs. " + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const field = "w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm";
 const label = "block text-xs font-medium text-slate-600 dark:text-zinc-400 mb-1";
 const today = () => new Date().toISOString().slice(0, 10);
-const EMPTY = { product_id: "", quantity: "", vendor_name: "", vendor_amount: "", mrp: "", max_discount_percent: "", cgst_percent: "", sgst_percent: "", inward_date: today(), manufacture_month: "", expiry_date: "", already_in_inventory: false, note: "" };
+const EMPTY = { product_id: "", quantity: "", vendor_name: "", vendor_amount: "", mrp: "", max_discount_percent: "", cgst_percent: "", sgst_percent: "", itc_eligible: true, inward_date: today(), manufacture_month: "", expiry_date: "", already_in_inventory: false, note: "" };
 
 export default function StockIntakePage() {
   const { showToast } = useToast();
@@ -77,7 +77,7 @@ export default function StockIntakePage() {
         body: {
           product_id: form.product_id, quantity: Number(form.quantity), vendor_name: form.vendor_name.trim(),
           vendor_amount: Number(form.vendor_amount), mrp: Number(form.mrp), max_discount_percent: Number(form.max_discount_percent),
-          cgst_percent: Number(form.cgst_percent) || 0, sgst_percent: Number(form.sgst_percent) || 0,
+          cgst_percent: Number(form.cgst_percent) || 0, sgst_percent: Number(form.sgst_percent) || 0, itc_eligible: form.itc_eligible,
           inward_date: form.inward_date || null, manufacture_month: form.manufacture_month || null, expiry_date: form.expiry_date || null,
           already_in_inventory: form.already_in_inventory, note: form.note.trim() || null,
         },
@@ -94,7 +94,7 @@ export default function StockIntakePage() {
     setEditing(b);
     setEdit({
       vendor_name: b.vendor_name, vendor_amount: String(b.vendor_amount), mrp: String(b.mrp), max_discount_percent: String(b.max_discount_percent),
-      cgst_percent: String(Number(b.cgst_percent)), sgst_percent: String(Number(b.sgst_percent)),
+      cgst_percent: String(Number(b.cgst_percent)), sgst_percent: String(Number(b.sgst_percent)), itc_eligible: b.itc_eligible === false ? "no" : "yes",
       inward_date: b.inward_date, manufacture_month: b.manufacture_month ? b.manufacture_month.slice(0, 7) : "", expiry_date: b.expiry_date ?? "", note: b.note ?? "",
     });
   }
@@ -106,7 +106,7 @@ export default function StockIntakePage() {
         method: "PATCH", auth: true,
         body: {
           vendor_name: edit.vendor_name, vendor_amount: Number(edit.vendor_amount), mrp: Number(edit.mrp), max_discount_percent: Number(edit.max_discount_percent),
-          cgst_percent: Number(edit.cgst_percent) || 0, sgst_percent: Number(edit.sgst_percent) || 0,
+          cgst_percent: Number(edit.cgst_percent) || 0, sgst_percent: Number(edit.sgst_percent) || 0, itc_eligible: edit.itc_eligible !== "no",
           inward_date: edit.inward_date || null, manufacture_month: edit.manufacture_month || "", expiry_date: edit.expiry_date || null, note: edit.note,
         },
       });
@@ -163,7 +163,8 @@ export default function StockIntakePage() {
                   <label className={label}>Product *</label>
                   <select required className={field} value={form.product_id} onChange={(e) => {
                     const p = products.find((x) => x.id === e.target.value);
-                    setForm((s) => ({ ...s, product_id: e.target.value, cgst_percent: String(Number(p?.cgst_percent ?? 0)), sgst_percent: String(Number(p?.sgst_percent ?? 0)) }));
+                    setForm((s) => ({ ...s, product_id: e.target.value, cgst_percent: String(Number(p?.cgst_percent ?? 0)), sgst_percent: String(Number(p?.sgst_percent ?? 0)),
+                      mrp: p?.mrp ? String(Number(p.mrp)) : s.mrp, max_discount_percent: p ? String(Number(p.max_discount_percent ?? 0)) : s.max_discount_percent }));
                   }}>
                     <option value="">Select product…</option>
                     {products.map((p) => <option key={p.id} value={p.id}>{p.name}{p.sku ? ` (${p.sku})` : ""}</option>)}
@@ -177,11 +178,11 @@ export default function StockIntakePage() {
                   <datalist id="vendor-names">{summary?.vendor_names.map((v) => <option key={v} value={v} />)}</datalist>
                 </div>
                 <div><label className={label}>Vendor amount - rate bought at, per unit, excluding GST *</label><input required type="number" min={0} step="0.01" className={field} value={form.vendor_amount} onChange={(e) => f("vendor_amount", e.target.value)} /></div>
-                <div><label className={label}>MRP - can be sold at, per unit, GST included (as printed on the pack) *</label><input required type="number" min={0.01} step="0.01" className={field} value={form.mrp} onChange={(e) => f("mrp", e.target.value)} /></div>
+                <div><label className={label}>MRP - GST included (as printed on the pack). Filled from the product; change only for this lot *</label><input required type="number" min={0.01} step="0.01" className={field} value={form.mrp} onChange={(e) => f("mrp", e.target.value)} /></div>
                 <div><label className={label}>Max discount for this part (%) *</label><input required type="number" min={0} max={100} step="0.01" className={field} value={form.max_discount_percent} onChange={(e) => f("max_discount_percent", e.target.value)} /></div>
                 <div><label className={label}>CGST % (on this lot)</label><input type="number" min={0} max={50} step="0.01" className={field} value={form.cgst_percent} onChange={(e) => f("cgst_percent", e.target.value)} data-testid="lot-cgst" /></div>
                 <div><label className={label}>SGST % (on this lot)</label><input type="number" min={0} max={50} step="0.01" className={field} value={form.sgst_percent} onChange={(e) => f("sgst_percent", e.target.value)} data-testid="lot-sgst" /></div>
-                <div className="hidden sm:block" />
+                <label className="flex items-start gap-2 text-xs text-slate-700 dark:text-zinc-300 sm:mt-5"><input type="checkbox" className="mt-0.5" checked={form.itc_eligible} onChange={(e) => setForm({ ...form, itc_eligible: e.target.checked })} data-testid="lot-itc" /><span>GST paid on this lot can be claimed back as credit (untick if it cannot)</span></label>
                 <div><label className={label}>Date of inward</label><input type="date" max={today()} className={field} value={form.inward_date} onChange={(e) => f("inward_date", e.target.value)} /></div>
                 <div><label className={label}>Month of manufacture</label><input type="month" className={field} value={form.manufacture_month} onChange={(e) => f("manufacture_month", e.target.value)} /></div>
                 <div><label className={label}>Expiry date</label><input type="date" className={field} value={form.expiry_date} onChange={(e) => f("expiry_date", e.target.value)} /></div>
@@ -270,7 +271,7 @@ export default function StockIntakePage() {
                       <td className="py-2 pr-3">{b.product_name}<div className="text-xs text-slate-400">{b.source.replace("_", " ")}</div></td>
                       <td className="pr-3">{b.vendor_name}</td>
                       <td className="pr-3">{b.quantity_remaining} / {b.quantity_in}</td>
-                      <td className="pr-3 whitespace-nowrap">{Number(b.cgst_percent)}% + {Number(b.sgst_percent)}%</td>
+                      <td className="pr-3 whitespace-nowrap">{Number(b.cgst_percent)}% + {Number(b.sgst_percent)}%{b.itc_eligible === false && <div className="text-xs text-amber-600">no GST credit</div>}</td>
                       <td className="pr-3">{inr(b.vendor_amount)}</td>
                       <td className="pr-3">{b.vendor_total_paid !== undefined ? inr(b.vendor_total_paid) : "-"}</td>
                       <td className="pr-3">{inr(b.mrp)}</td><td className="pr-3">{inr(b.msp)}</td>
@@ -304,6 +305,7 @@ export default function StockIntakePage() {
               <div><label className={label}>CGST %</label><input type="number" step="0.01" min={0} max={50} className={field} value={edit.cgst_percent} onChange={(e) => setEdit({ ...edit, cgst_percent: e.target.value })} /></div>
               <div><label className={label}>SGST %</label><input type="number" step="0.01" min={0} max={50} className={field} value={edit.sgst_percent} onChange={(e) => setEdit({ ...edit, sgst_percent: e.target.value })} /></div>
               <EditSplit edit={edit} />
+              <label className="col-span-2 flex items-center gap-2 text-xs text-slate-700 dark:text-zinc-300"><input type="checkbox" checked={edit.itc_eligible !== "no"} onChange={(e) => setEdit({ ...edit, itc_eligible: e.target.checked ? "yes" : "no" })} />GST paid on this lot can be claimed back as credit</label>
               <div><label className={label}>Date of inward</label><input type="date" className={field} value={edit.inward_date} onChange={(e) => setEdit({ ...edit, inward_date: e.target.value })} /></div>
               <div><label className={label}>Month of manufacture</label><input type="month" className={field} value={edit.manufacture_month} onChange={(e) => setEdit({ ...edit, manufacture_month: e.target.value })} /></div>
               <div><label className={label}>Expiry date</label><input type="date" className={field} value={edit.expiry_date} onChange={(e) => setEdit({ ...edit, expiry_date: e.target.value })} /></div>

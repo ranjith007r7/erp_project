@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/ui";
 import { usePagination, PaginationControls } from "@/components/Pagination";
 import { SkeletonList } from "@/components/Skeleton";
 
-type Product = { id: string; name: string; unit_price: string; cgst_percent: string; sgst_percent: string; hsn_code: string | null };
+type Product = { id: string; name: string; unit_price: string; cgst_percent: string; sgst_percent: string; hsn_code: string | null; mrp: string | null; max_discount_percent: string | null };
 type Customer = { id: string; name: string };
 type QuotationItem = { product_id: string; qty: number; unit_price: string; cgst_percent: string; sgst_percent: string };
 type Tax = { subtotal: string; cgst_amount: string; sgst_amount: string };
@@ -34,7 +34,7 @@ export default function SalesPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [productForm, setProductForm] = useState({ name: "", unit_price: "", cgst_percent: "0", sgst_percent: "0", hsn_code: "" });
+  const [productForm, setProductForm] = useState({ name: "", unit_price: "", cgst_percent: "0", sgst_percent: "0", hsn_code: "", mrp: "", max_discount_percent: "0" });
   const [customerForm, setCustomerForm] = useState({ name: "" });
   const [quoteForm, setQuoteForm] = useState({ customer_id: "", product_id: "", qty: "1", unit_price: "", cgst_percent: "0", sgst_percent: "0" });
   const qTaxable = Number(quoteForm.qty || 0) * Number(quoteForm.unit_price || 0);
@@ -59,9 +59,10 @@ export default function SalesPage() {
       method: "POST",
       auth: true,
       body: { name: productForm.name, unit_price: Number(productForm.unit_price), cgst_percent: Number(productForm.cgst_percent || 0),
-              sgst_percent: Number(productForm.sgst_percent || 0), hsn_code: productForm.hsn_code.trim() || null },
+              sgst_percent: Number(productForm.sgst_percent || 0), hsn_code: productForm.hsn_code.trim() || null,
+              mrp: productForm.mrp ? Number(productForm.mrp) : null, max_discount_percent: Number(productForm.max_discount_percent || 0) },
     }).catch((err) => setError(err.message));
-    setProductForm({ name: "", unit_price: "", cgst_percent: "0", sgst_percent: "0", hsn_code: "" });
+    setProductForm({ name: "", unit_price: "", cgst_percent: "0", sgst_percent: "0", hsn_code: "", mrp: "", max_discount_percent: "0" });
     loadAll();
   }
 
@@ -128,9 +129,9 @@ export default function SalesPage() {
     }
   }
 
-  async function saveRates(p: Product, cgst: string, sgst: string) {
+  async function saveRates(p: Product, cgst: string, sgst: string, mrp: string, maxDisc: string) {
     try {
-      await apiRequest(`/api/sales/products/${p.id}`, { method: "PATCH", auth: true, body: { cgst_percent: Number(cgst), sgst_percent: Number(sgst) } });
+      await apiRequest(`/api/sales/products/${p.id}`, { method: "PATCH", auth: true, body: { cgst_percent: Number(cgst), sgst_percent: Number(sgst), mrp: mrp ? Number(mrp) : null, max_discount_percent: Number(maxDisc || 0) } });
       loadAll();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save the GST rates");
@@ -184,6 +185,15 @@ export default function SalesPage() {
               <input value={productForm.hsn_code} onChange={(e) => setProductForm({ ...productForm, hsn_code: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
             </label>
           </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs text-slate-500 dark:text-zinc-500">MRP (GST included, on the pack)
+              <input type="number" min="0" step="0.01" value={productForm.mrp} data-testid="product-mrp" onChange={(e) => setProductForm({ ...productForm, mrp: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+            </label>
+            <label className="text-xs text-slate-500 dark:text-zinc-500">Max discount %
+              <input type="number" min="0" max="100" step="0.01" value={productForm.max_discount_percent} data-testid="product-maxdisc" onChange={(e) => setProductForm({ ...productForm, max_discount_percent: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+            </label>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-zinc-500">Set once here: every stock lot (including those received from a purchase order) inherits the MRP, max discount and GST. MSP (max selling price before GST) = MRP ÷ (1 + GST%).</p>
           <button className="w-full bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 rounded-lg py-2 text-sm font-medium hover:bg-slate-700 dark:hover:bg-zinc-300">
             Add Product
           </button>
@@ -208,7 +218,7 @@ export default function SalesPage() {
         <section className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 mb-8 overflow-x-auto" data-testid="product-list">
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm mb-2">Products <span className="font-normal text-slate-400">· prices exclude GST</span></h2>
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs text-slate-500 dark:text-zinc-500 border-b border-slate-200 dark:border-zinc-800"><th className="py-1 pr-3">Product</th><th className="pr-3 text-right">Price</th><th className="pr-3">HSN</th><th className="pr-3">CGST %</th><th className="pr-3">SGST %</th><th className="pr-3 text-right">Price with GST</th><th /></tr></thead>
+            <thead><tr className="text-left text-xs text-slate-500 dark:text-zinc-500 border-b border-slate-200 dark:border-zinc-800"><th className="py-1 pr-3">Product</th><th className="pr-3 text-right">Price</th><th className="pr-3">HSN</th><th className="pr-3">CGST %</th><th className="pr-3">SGST %</th><th className="pr-3 text-right">Price with GST</th><th className="pr-3 text-right">MRP (incl.)</th><th className="pr-3 text-right">MSP (excl.)</th><th className="pr-3">Max disc. %</th><th /></tr></thead>
             <tbody>{products.map((p) => <ProductRow key={p.id} p={p} onSave={saveRates} />)}</tbody>
           </table>
         </section>
@@ -351,10 +361,13 @@ export default function SalesPage() {
   );
 }
 
-function ProductRow({ p, onSave }: { p: Product; onSave: (p: Product, cgst: string, sgst: string) => void }) {
+function ProductRow({ p, onSave }: { p: Product; onSave: (p: Product, cgst: string, sgst: string, mrp: string, maxDisc: string) => void }) {
   const [c, setC] = useState(String(Number(p.cgst_percent)));
   const [g, setG] = useState(String(Number(p.sgst_percent)));
-  const dirty = Number(c) !== Number(p.cgst_percent) || Number(g) !== Number(p.sgst_percent);
+  const [m, setM] = useState(p.mrp ? String(Number(p.mrp)) : "");
+  const [d, setD] = useState(String(Number(p.max_discount_percent ?? 0)));
+  const dirty = Number(c) !== Number(p.cgst_percent) || Number(g) !== Number(p.sgst_percent) || Number(m || 0) !== Number(p.mrp || 0) || Number(d) !== Number(p.max_discount_percent ?? 0);
+  const msp = Number(m) > 0 ? Number(m) * 100 / (100 + Number(c) + Number(g)) : null;
   const inp = "w-20 border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded px-2 py-1 text-sm";
   return (
     <tr className="border-b last:border-0 border-slate-100 dark:border-zinc-800" data-testid="product-row">
@@ -364,7 +377,10 @@ function ProductRow({ p, onSave }: { p: Product; onSave: (p: Product, cgst: stri
       <td className="pr-3"><input className={inp} type="number" min="0" max="50" step="0.01" value={c} onChange={(e) => setC(e.target.value)} aria-label={`CGST % for ${p.name}`} /></td>
       <td className="pr-3"><input className={inp} type="number" min="0" max="50" step="0.01" value={g} onChange={(e) => setG(e.target.value)} aria-label={`SGST % for ${p.name}`} /></td>
       <td className="pr-3 text-right tabular-nums text-slate-600 dark:text-zinc-300">{inr(Number(p.unit_price) * (1 + (Number(c) + Number(g)) / 100))}</td>
-      <td>{dirty && <button onClick={() => onSave(p, c, g)} className="text-xs bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 px-2 py-1 rounded">Save</button>}</td>
+      <td className="pr-3 text-right"><input className={inp + " text-right"} type="number" min="0" step="0.01" value={m} onChange={(e) => setM(e.target.value)} aria-label={`MRP for ${p.name}`} placeholder="-" /></td>
+      <td className="pr-3 text-right tabular-nums text-slate-600 dark:text-zinc-300">{msp !== null ? inr(msp) : "-"}</td>
+      <td className="pr-3"><input className={inp} type="number" min="0" max="100" step="0.01" value={d} onChange={(e) => setD(e.target.value)} aria-label={`Max discount for ${p.name}`} /></td>
+      <td>{dirty && <button onClick={() => onSave(p, c, g, m, d)} className="text-xs bg-slate-800 dark:bg-zinc-200 text-white dark:text-zinc-900 px-2 py-1 rounded">Save</button>}</td>
     </tr>
   );
 }

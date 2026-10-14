@@ -31,6 +31,9 @@ type ReconRow = {
   work_id: string; work_number: string; work_type?: string; client_name: string; status_label: string; quoted_net: number; received: number;
   booked_in_finance: number; difference: number; state: string; note: string; refunded?: number; kept?: number; refund_number?: string | null;
 };
+type GstMonth = { month: string; output_gst: number; input_credit: number; blocked: number; net_payable: number; out_cgst: number; out_sgst: number; in_cgst: number; in_sgst: number };
+type GstLedger = { batch_id: string; date: string; product_name: string | null; vendor_name: string; po_number: string | null; quantity: number; taxable_value: number; cgst: number; sgst: number; total_gst: number; eligible: boolean };
+type GstSummary = { months: GstMonth[]; ledger: GstLedger[]; totals: { output_gst: number; input_credit: number; blocked: number; net_payable: number } };
 type Refund = {
   id: string; refund_number: string; work_id: string; work_number: string | null; invoice_number: string | null; client_name: string; reason: string | null;
   received_amount: string; charge_percent: string; charge_amount: string; refund_amount: string; status: "pending" | "completed";
@@ -57,6 +60,7 @@ export default function FinancePage() {
   const [recon, setRecon] = useState<{ matched: number; mismatch: number; open: number; works: ReconRow[] } | null>(null);
   const [pricing, setPricing] = useState<{ checked: number; violations: number; works: PricingRow[] } | null>(null);
 
+  const [gstSum, setGstSum] = useState<GstSummary | null>(null);
   const [refunds, setRefunds] = useState<Refund[]>([]);
   const [rfFor, setRfFor] = useState<Refund | null>(null);
   const [rfCharge, setRfCharge] = useState("0");
@@ -85,6 +89,7 @@ export default function FinancePage() {
       apiRequest<Invoice[]>("/api/sales/invoices", { auth: true }).then(setInvoices),
       apiRequest<Payment[]>("/api/finance/payments", { auth: true }).then(setPayments),
       apiRequest<Refund[]>("/api/finance/refunds", { auth: true }).then(setRefunds).catch(() => {}),
+      apiRequest<GstSummary>("/api/finance/gst-summary", { auth: true }).then(setGstSum).catch(() => {}),
       apiRequest<{ matched: number; mismatch: number; open: number; works: ReconRow[] }>("/api/finance/work-reconciliation", { auth: true }).then(setRecon).catch(() => {}),
       apiRequest<{ checked: number; violations: number; works: PricingRow[] }>("/api/finance/pricing-check", { auth: true }).then(setPricing).catch(() => {}),
       apiRequest<LeaveType[]>("/api/finance/leave-types", { auth: true }).then(setLeaveTypes),
@@ -210,6 +215,50 @@ export default function FinancePage() {
         <SkeletonList rows={3} />
       ) : (
         <>
+          {gstSum && (gstSum.months.length > 0) && (
+            <section className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 mb-6" data-testid="gst-summary">
+              <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm mb-1">GST summary</h2>
+              <p className="text-xs text-slate-500 dark:text-zinc-500 mb-3">
+                GST collected from customers belongs to the government; GST you paid vendors is claimed back as credit. You remit only the difference.
+                Collected comes from the books (credit notes and refunds already reduce it); credit comes from the stock lots you bought (Stock Intake / purchase orders).
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                {[["Collected from customers", gstSum.totals.output_gst, ""], ["Credit on purchases", gstSum.totals.input_credit, ""],
+                  [gstSum.totals.net_payable >= 0 ? "Net GST to pay" : "Credit carried forward", Math.abs(gstSum.totals.net_payable), "gst-net-total"], ["GST not claimable (cost)", gstSum.totals.blocked, ""]].map(([t, v, id]) => (
+                  <div key={String(t)} className="rounded-lg bg-slate-50 dark:bg-zinc-800 p-3"><p className="text-xs text-slate-500 dark:text-zinc-400">{t}</p><p className="text-lg font-semibold text-slate-800 dark:text-white" data-testid={String(id) || undefined}>{inr(Number(v))}</p></div>
+                ))}
+              </div>
+              <div className="overflow-x-auto mb-4">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left text-xs text-slate-500 dark:text-zinc-500 border-b border-slate-200 dark:border-zinc-800"><th className="py-2 pr-3">Month</th><th className="pr-3 text-right">Collected (CGST / SGST)</th><th className="pr-3 text-right">Credit (CGST / SGST)</th><th className="pr-3 text-right">Not claimable</th><th className="text-right">Net payable</th></tr></thead>
+                  <tbody>{gstSum.months.map((m) => (
+                    <tr key={m.month} className="border-b border-slate-100 dark:border-zinc-800">
+                      <td className="py-2 pr-3">{m.month}</td>
+                      <td className="pr-3 text-right tabular-nums">{fmt(m.output_gst)} <span className="text-xs text-slate-400">({fmt(m.out_cgst)} / {fmt(m.out_sgst)})</span></td>
+                      <td className="pr-3 text-right tabular-nums">{fmt(m.input_credit)} <span className="text-xs text-slate-400">({fmt(m.in_cgst)} / {fmt(m.in_sgst)})</span></td>
+                      <td className="pr-3 text-right tabular-nums">{fmt(m.blocked)}</td>
+                      <td className={`text-right tabular-nums font-semibold ${m.net_payable < 0 ? "text-emerald-600" : ""}`}>{m.net_payable < 0 ? `${fmt(-m.net_payable)} credit` : fmt(m.net_payable)}</td>
+                    </tr>))}</tbody>
+                </table>
+              </div>
+              {gstSum.ledger.length > 0 && (
+                <details>
+                  <summary className="text-xs font-medium cursor-pointer text-slate-600 dark:text-zinc-300">GST credit ledger ({gstSum.ledger.length} purchase lot{gstSum.ledger.length === 1 ? "" : "s"})</summary>
+                  <div className="overflow-x-auto mt-2">
+                    <table className="w-full text-sm">
+                      <thead><tr className="text-left text-xs text-slate-500 dark:text-zinc-500 border-b border-slate-200 dark:border-zinc-800"><th className="py-2 pr-3">Date</th><th className="pr-3">Product</th><th className="pr-3">Vendor / PO</th><th className="pr-3 text-right">Qty</th><th className="pr-3 text-right">Taxable</th><th className="pr-3 text-right">CGST</th><th className="pr-3 text-right">SGST</th><th>Credit</th></tr></thead>
+                      <tbody>{gstSum.ledger.map((l) => (
+                        <tr key={l.batch_id} className="border-b border-slate-100 dark:border-zinc-800">
+                          <td className="py-1.5 pr-3">{l.date}</td><td className="pr-3">{l.product_name}</td><td className="pr-3">{l.vendor_name}{l.po_number && <span className="text-xs text-slate-400"> · {l.po_number}</span>}</td>
+                          <td className="pr-3 text-right">{l.quantity}</td><td className="pr-3 text-right tabular-nums">{fmt(l.taxable_value)}</td><td className="pr-3 text-right tabular-nums">{fmt(l.cgst)}</td><td className="pr-3 text-right tabular-nums">{fmt(l.sgst)}</td>
+                          <td className={l.eligible ? "text-emerald-600" : "text-amber-600"}>{l.eligible ? "Claimable" : "Not claimable"}</td>
+                        </tr>))}</tbody>
+                    </table>
+                  </div>
+                </details>
+              )}
+            </section>
+          )}
           {refunds.length > 0 && (
             <section className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 mb-6" data-testid="refunds">
               <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm mb-1">Refunds {pendingRefunds.length > 0 && <span className="ml-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 px-2 py-0.5 text-xs">{pendingRefunds.length} pending</span>}</h2>

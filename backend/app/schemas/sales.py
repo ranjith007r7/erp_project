@@ -15,6 +15,8 @@ class ProductCreate(BaseModel):
     cgst_percent: Decimal = Field(Decimal("0"), ge=0, le=50)
     sgst_percent: Decimal = Field(Decimal("0"), ge=0, le=50)
     hsn_code: Optional[str] = None
+    mrp: Optional[Decimal] = Field(None, gt=0)
+    max_discount_percent: Decimal = Field(Decimal("0"), ge=0, le=100)
 
 
 class ProductUpdate(BaseModel):
@@ -25,6 +27,8 @@ class ProductUpdate(BaseModel):
     cgst_percent: Optional[Decimal] = Field(None, ge=0, le=50)
     sgst_percent: Optional[Decimal] = Field(None, ge=0, le=50)
     hsn_code: Optional[str] = None
+    mrp: Optional[Decimal] = Field(None, gt=0)
+    max_discount_percent: Optional[Decimal] = Field(None, ge=0, le=100)
 
 
 class ProductOut(BaseModel):
@@ -37,6 +41,8 @@ class ProductOut(BaseModel):
     cgst_percent: Decimal = Decimal("0")
     sgst_percent: Decimal = Decimal("0")
     hsn_code: Optional[str] = None
+    mrp: Optional[Decimal] = None
+    max_discount_percent: Decimal = Decimal("0")
 
     model_config = {"from_attributes": True}
 

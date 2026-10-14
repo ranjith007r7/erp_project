@@ -29,6 +29,9 @@ class Product(Base):
     cgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
     sgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
     hsn_code = Column(String, nullable=True)
+    # Selling-side master data every lot inherits (so nobody re-types it per receipt). MRP is GST INCLUDED, as printed on the pack.
+    mrp = Column(Numeric(12, 2), nullable=True)
+    max_discount_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

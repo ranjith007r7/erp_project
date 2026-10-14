@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date
 
-from sqlalchemy import Column, String, ForeignKey, DateTime, Date, Numeric, Integer, Text
+from sqlalchemy import Column, String, ForeignKey, DateTime, Date, Numeric, Integer, Text, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base
@@ -31,6 +31,7 @@ class StockBatch(Base):
     mrp = Column(Numeric(12, 2), nullable=False)                    # most it can be sold for, per unit, INCLUDING GST (as printed on the pack)
     # The GST slab of this lot. MRP = MSP (max selling price excl. GST) + CGST + SGST, so MSP = MRP / (1 + rate).
     # The same slab applies when we bought it: total paid to the vendor = vendor_amount x (1 + rate).
+    itc_eligible = Column(Boolean, nullable=False, default=True, server_default="true")   # GST paid on this lot can be claimed back
     cgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
     sgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
     max_discount_percent = Column(Numeric(5, 2), nullable=False, default=0)

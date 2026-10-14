@@ -146,10 +146,35 @@ export default function WorkDetailPage() {
         <Money label="Vendor amount (excl. GST)" value={w.vendor_amount} />
         {Number(w.vendor_gst) > 0 && <Money label="GST paid to vendor" value={w.vendor_gst} />}
         {Number(w.vendor_gst) > 0 && <Money label="Total paid to vendor" value={w.vendor_total_paid} />}
-        <Money label="Profit" value={w.profit} tone={Number(w.profit) < 0 ? "bad" : "good"} />
         <Money label="Received" value={w.received_amount} />
         <Money label="Pending" value={w.pending_amount} tone={Number(w.pending_amount) > 0 ? "warn" : "good"} />
       </div>
+
+      <Card className="p-4 mb-4" data-testid="profit-panel">
+        <h2 className="text-sm font-semibold text-slate-800 dark:text-white mb-3">Profit and GST</h2>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-1.5 text-sm">
+            <Row2 label="Profit before GST effects (taxable value − vendor amount)" value={w.profit_excl_gst} />
+            {Number(w.gst_blocked) > 0 && <Row2 label="Less GST paid to vendor that cannot be claimed" value={`-${Number(w.gst_blocked).toFixed(2)}`} tone="bad" />}
+            <Row2 label="Actual profit" value={w.actual_profit} strong tone={Number(w.actual_profit) < 0 ? "bad" : "good"} testid="actual-profit" />
+            <div className="border-t border-slate-200 dark:border-zinc-800 pt-1.5" />
+            <Row2 label="Client pays (GST included)" value={w.net_payable} />
+            <Row2 label="We paid the vendor (incl. GST)" value={w.vendor_total_paid} />
+            <Row2 label="Margin including GST, before settling GST" value={w.cash_margin_incl_gst} testid="cash-margin" />
+          </div>
+          <div className="rounded-lg bg-slate-50 dark:bg-zinc-800 p-3 text-sm space-y-1.5" data-testid="gst-banner">
+            <p className="font-medium text-slate-800 dark:text-white">GST on this work</p>
+            <Row2 label="Collected from the client (belongs to the government)" value={w.gst_collected} />
+            <Row2 label="Credit for GST paid to the vendor" value={`-${Number(w.gst_credit).toFixed(2)}`} />
+            <Row2 label="Net GST to pay the government" value={w.gst_net_payable} strong testid="gst-net" />
+            <p className="text-xs text-slate-500 dark:text-zinc-400 pt-1">
+              Margin including GST {inr(w.cash_margin_incl_gst)} − net GST {inr(w.gst_net_payable)} = {inr(w.cash_after_gst_settlement)} left, which equals the actual profit.
+              {Number(w.gst_blocked) > 0 ? " Some vendor GST is marked not claimable, so it counts as cost." : " GST collected and credited is never profit or loss."}
+            </p>
+          </div>
+        </div>
+      </Card>
+
 
       {(w.work_type === "sales_order" ? w.sales_invoice?.document_ready : w.invoice_ready) && (
         <div className="flex flex-wrap items-center gap-2 mb-4" data-testid="invoice-actions">
@@ -413,6 +438,7 @@ function EditDialog({ w, onClose, onSaved }: { w: WorkDetail; onClose: () => voi
           <Input label="CGST % (on the discounted amount)" type="number" min="0" max="50" step="0.01" value={f.cgst_percent} disabled={lotBacked} onChange={(e) => setF({ ...f, cgst_percent: e.target.value })} />
           <Input label="SGST %" type="number" min="0" max="50" step="0.01" value={f.sgst_percent} disabled={lotBacked} onChange={(e) => setF({ ...f, sgst_percent: e.target.value })} />
         </div>
+        {!lotBacked && w.items.length > 0 && <p className="text-xs text-slate-500 dark:text-zinc-400">GST and the vendor amount are filled in automatically from the product / stock lots whenever the item list is saved; typing them here is only for goods with no product rate.</p>}
         {lotBacked && <p className="text-xs text-slate-500 dark:text-zinc-400" data-testid="gst-from-lots">GST rate comes from the stock lots this work took (set in Stock Intake), so it cannot be typed here.</p>}
         <label className="block text-sm text-slate-600 dark:text-zinc-300">Client details
           <textarea className="mt-1 w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" rows={3} value={f.client_details} onChange={(e) => setF({ ...f, client_details: e.target.value })} />
@@ -539,5 +565,15 @@ function InventoryCard({ w, canEdit, meta, reload, setW }: { w: WorkDetail; canE
         </>
       )}
     </Card>
+  );
+}
+
+function Row2({ label, value, strong, tone, testid }: { label: string; value: string | number; strong?: boolean; tone?: "good" | "bad"; testid?: string }) {
+  const num = typeof value === "number" ? value : Number(value);
+  return (
+    <div className="flex justify-between gap-3">
+      <span className="text-slate-600 dark:text-zinc-300">{label}</span>
+      <span data-testid={testid} className={`tabular-nums ${strong ? "font-semibold" : ""} ${tone === "bad" ? "text-red-600 dark:text-red-400" : tone === "good" ? "text-emerald-600 dark:text-emerald-400" : "text-slate-800 dark:text-white"}`}>{num < 0 ? "-" : ""}{inr(Math.abs(num))}</span>
+    </div>
   );
 }

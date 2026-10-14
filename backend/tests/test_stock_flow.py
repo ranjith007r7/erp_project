@@ -184,7 +184,7 @@ def test_intake_validation_rules(client, signup):
     p = product(client, h)
     today = date.today()
     ok_body = {"product_id": p["id"], "quantity": 5, "vendor_name": "V", "vendor_amount": 100, "mrp": 200, "max_discount_percent": 10, "inward_date": iso(today)}
-    for missing in ("vendor_amount", "mrp", "max_discount_percent", "vendor_name", "quantity"):
+    for missing in ("vendor_amount", "vendor_name", "quantity"):      # MRP / max discount may be left out: they come from the product
         b = dict(ok_body); b.pop(missing)
         assert client.post(f"{SI}/batches", headers=h, json=b).status_code == 422, missing
     assert client.post(f"{SI}/batches", headers=h, json={**ok_body, "max_discount_percent": 101}).status_code == 422

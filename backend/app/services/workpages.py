@@ -378,7 +378,42 @@ def set_items(db: Session, work: WorkOrder, user: User, items: list[tuple]) -> l
     names = {p.id: p.name for p in db.query(Product).filter(Product.id.in_(list(merged)))} if merged else {}
     log_event(db, work, "items_set", "Required items listed",
               "; ".join(f"{names.get(pid, 'Product')} x {q}" for pid, q in merged.items()) or "No items.", user)
+    autofill_from_items(db, work, user)
     return rows
+
+
+def autofill_from_items(db: Session, work: WorkOrder, user: User | None):
+    """As soon as the items are listed, the work learns its GST slab (and the cost of the stock that would serve it) from the
+    lots Inventory would issue (first-expiry-first-out) or, for goods not in stock, from the product master - nobody types them.
+    Only while the work is still open, is not a Sales order and has no purchase order of its own pricing it."""
+    if is_sales_order(work) or work.status not in ("assigned", "allocated", "po_not_raised") or _active_pos(db, work):
+        return
+    items = _items(db, work)
+    if not items:
+        return
+    lines, product_lines, cost, fully_priced = [], [], Decimal(0), True
+    for it in items:
+        prod = db.get(Product, it.product_id)
+        picks, short = stock_svc.plan_issue(db, work.org_id, it.product_id, it.qty)
+        for b, t in picks:
+            lines.append((t, b.mrp, b.max_discount_percent, b.cgst_percent, b.sgst_percent))
+            cost += Decimal(b.vendor_amount or 0) * t
+        if short:
+            fully_priced = False
+            product_lines.append((short, prod.unit_price if prod else 1, 0, prod.cgst_percent if prod else 0, prod.sgst_percent if prod else 0))
+        elif any(Decimal(b.cgst_percent or 0) + Decimal(b.sgst_percent or 0) == 0 for b, _ in picks) and prod and (prod.cgst_percent or prod.sgst_percent):
+            product_lines.append((it.qty, prod.unit_price or 1, 0, prod.cgst_percent, prod.sgst_percent))   # old lot without a slab: use the product's
+    use = [l for l in lines if (l[3] or l[4])] or product_lines or lines
+    cg, sg = pricing.effective_gst(use) if use else (Decimal(0), Decimal(0))
+    changed = []
+    if (q2(work.cgst_percent) != cg or q2(work.sgst_percent) != sg) and (cg or sg or work.cgst_percent or work.sgst_percent):
+        changed.append(f"GST CGST {cg}% / SGST {sg}% (was {q2(work.cgst_percent)}% / {q2(work.sgst_percent)}%)")
+        work.cgst_percent, work.sgst_percent = cg, sg
+    if lines and fully_priced and cost and q2(work.vendor_amount) != q2(cost):
+        changed.append(f"vendor amount {q2(cost)} excl. GST (was {q2(work.vendor_amount)})")
+        work.vendor_amount = q2(cost)
+    if changed:
+        log_event(db, work, "autofill", "GST and cost filled in from the product / stock lots", "; ".join(changed) + ".", user)
 
 
 def stock_check(db: Session, work: WorkOrder, show_cost: bool = False) -> dict:
@@ -433,10 +468,41 @@ def mark_stock_short(db: Session, work: WorkOrder, user: User, note: str | None 
     return work
 
 
+def vendor_gst_split(db: Session, w: WorkOrder) -> tuple[Decimal, Decimal]:
+    """GST we paid our vendors on the units this work took: (claimable as credit, not claimable). Claimable GST is not a cost;
+    GST on a lot flagged 'not claimable' is part of what the goods really cost us."""
+    ok = bad = Decimal(0)
+    for r in _all_issues(db, w):
+        if not r.batch_id:
+            continue
+        g = Decimal(r.cost_rate or 0) * int(r.qty) * (Decimal(r.cgst_percent or 0) + Decimal(r.sgst_percent or 0)) / 100
+        if r.itc_eligible:
+            ok += g
+        else:
+            bad += g
+    return q2(ok), q2(bad)
+
+
 def vendor_gst(db: Session, w: WorkOrder) -> Decimal:
-    """GST we paid our vendors on the units this work took (claimable, so it is shown but is not part of the cost or the profit)."""
-    return q2(sum((Decimal(r.cost_rate or 0) * int(r.qty) * (Decimal(r.cgst_percent or 0) + Decimal(r.sgst_percent or 0)) / 100
-                   for r in _all_issues(db, w) if r.batch_id), Decimal(0)))
+    ok, bad = vendor_gst_split(db, w)
+    return q2(ok + bad)
+
+
+def gst_position(db: Session, w: WorkOrder) -> dict:
+    """The work's profit with and without GST, and what happens to the GST: collected from the client, claimed back from vendor
+    credit, and the rest owed to the government."""
+    credit, blocked = vendor_gst_split(db, w)
+    c, s_ = gst_amounts(w)
+    collected = q2(c + s_)
+    cost = q2(Decimal(w.vendor_amount or 0))
+    net_gst = q2(collected - credit)
+    return {
+        "gst_collected": collected, "gst_credit": credit, "gst_blocked": blocked, "gst_net_payable": net_gst,
+        "profit_excl_gst": profit(w),                                        # taxable value - vendor base
+        "actual_profit": q2(profit(w) - blocked),                            # minus GST we paid but cannot claim
+        "cash_margin_incl_gst": q2(net_payable(w) - cost - credit - blocked),   # what the client pays less what we paid, before settling GST
+        "cash_after_gst_settlement": q2(net_payable(w) - cost - credit - blocked - net_gst),
+    }
 
 
 def _adopt_lot_gst(db: Session, work: WorkOrder, user: User | None):
@@ -484,7 +550,7 @@ def issue_stock_for_work(db: Session, work: WorkOrder, user: User) -> WorkOrder:
             b.updated_at = datetime.utcnow()
             db.add(WorkStockIssue(org_id=work.org_id, work_id=work.id, batch_id=b.id, product_id=it.product_id, qty=t,
                                   cost_rate=q2(b.vendor_amount), mrp=q2(b.mrp), max_discount_percent=q2(b.max_discount_percent),
-                                  cgst_percent=q2(b.cgst_percent), sgst_percent=q2(b.sgst_percent), issued_by=user.id))
+                                  cgst_percent=q2(b.cgst_percent), sgst_percent=q2(b.sgst_percent), itc_eligible=bool(b.itc_eligible), issued_by=user.id))
             cost_total += Decimal(b.vendor_amount) * t
             detail.append(f"{prod.name} x {t} (bought at {q2(b.vendor_amount)}, MRP {q2(b.mrp)}, from {b.vendor_name})")
         try:
@@ -679,7 +745,7 @@ def _take_purchased_stock(db: Session, work: WorkOrder, user: User) -> list[str]
             cost_total += Decimal(b.vendor_amount or 0) * t
             db.add(WorkStockIssue(org_id=work.org_id, work_id=work.id, batch_id=b.id, product_id=pid, qty=t, source="purchased",
                                   cost_rate=q2(b.vendor_amount), mrp=q2(b.mrp), max_discount_percent=q2(b.max_discount_percent),
-                                  cgst_percent=q2(b.cgst_percent), sgst_percent=q2(b.sgst_percent), issued_by=user.id))
+                                  cgst_percent=q2(b.cgst_percent), sgst_percent=q2(b.sgst_percent), itc_eligible=bool(b.itc_eligible), issued_by=user.id))
         if covered < qty:
             fully_priced = False
         if covered < qty:       # units with no priced lot: remembered so a cancellation can still return them
@@ -850,6 +916,7 @@ def on_invoice_generated(db: Session, order, invoice, user: User | None = None, 
                               mrp=q2(batch.mrp if batch else (prod.unit_price if prod else 0)),
                               max_discount_percent=q2(batch.max_discount_percent if batch else 0),
                               cgst_percent=q2(batch.cgst_percent if batch else 0), sgst_percent=q2(batch.sgst_percent if batch else 0),
+                              itc_eligible=bool(batch.itc_eligible) if batch else True,
                               issued_by=user.id if user else None))
     w.quotation_amount = q2(invoice.amount)
     w.discount_percent = q2(0)
@@ -1192,7 +1259,7 @@ def detail(db: Session, w: WorkOrder) -> dict:
                          for i in _issues(db, w)],
         "purchased_items": _purchased_items(db, w),
         "pricing": {"limits": pricing.limits(issued_lines(db, w)), "violations": pricing_violations(db, w)},
-        "refund": _refund_info(db, w),
+        "refund": _refund_info(db, w), **gst_position(db, w),
         "invoice_number": w.invoice_number, "invoice_ready": bool(received_amount(w) > 0 and w.status != "cancel_pending"),
         "vendor_gst": vendor_gst(db, w), "vendor_total_paid": q2(Decimal(w.vendor_amount or 0) + vendor_gst(db, w)),
         "pending_note": w.pending_note,

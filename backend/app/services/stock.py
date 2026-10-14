@@ -103,11 +103,22 @@ def _vendor_id(db: Session, org_id, name: str):
     return v.id if v else None
 
 
+def product_default_mrp(product: Product | None):
+    """MRP (GST included) a new lot starts at: the product's own MRP, else its list price plus GST, else None."""
+    if product is None:
+        return None
+    if product.mrp and Decimal(product.mrp) > 0:
+        return q2(product.mrp)
+    if Decimal(product.unit_price or 0) > 0:
+        return gst.add_exclusive(product.unit_price, product.cgst_percent, product.sgst_percent)["total"]
+    return None
+
+
 def create_batch(db: Session, org_id, user, *, product_id, quantity: int, vendor_name: str, vendor_amount, mrp,
                  max_discount_percent, inward_date: date | None, manufacture_month: date | None, expiry_date: date | None,
                  source: str = "manual", po_id=None, vendor_id=None, note: str | None = None,
                  already_in_inventory: bool = False, count_stock: bool = True,
-                 cgst_percent=None, sgst_percent=None) -> StockBatch:
+                 cgst_percent=None, sgst_percent=None, itc_eligible: bool = True) -> StockBatch:
     """
     Add a priced lot.
       already_in_inventory=True : the units are already in the Inventory total (old stock being priced now);
@@ -120,6 +131,12 @@ def create_batch(db: Session, org_id, user, *, product_id, quantity: int, vendor
     if int(quantity or 0) <= 0:
         raise StockError("Quantity must be at least 1.")
     quantity = int(quantity)
+    if mrp is None:                    # not typed: the product's own MRP (or its list price + GST)
+        mrp = product_default_mrp(product)
+        if mrp is None:
+            raise StockError("This product has no MRP yet. Type the MRP here, or set it once on the product (Sales > Products) so every lot inherits it.")
+    if max_discount_percent is None:
+        max_discount_percent = product.max_discount_percent or 0
     validate_fields(vendor_name=vendor_name, vendor_amount=vendor_amount, mrp=mrp, max_discount_percent=max_discount_percent,
                     inward_date=inward_date, manufacture_month=manufacture_month, expiry_date=expiry_date)
     if already_in_inventory:
@@ -134,7 +151,7 @@ def create_batch(db: Session, org_id, user, *, product_id, quantity: int, vendor
     if Decimal(cg or 0) < 0 or Decimal(sg or 0) < 0 or Decimal(cg or 0) + Decimal(sg or 0) > 100:
         raise StockError("CGST and SGST must be between 0 and 100 percent together.")
     batch = StockBatch(org_id=org_id, product_id=product_id, vendor_id=vendor_id or _vendor_id(db, org_id, vendor_name),
-                       cgst_percent=q2(cg), sgst_percent=q2(sg),
+                       cgst_percent=q2(cg), sgst_percent=q2(sg), itc_eligible=bool(itc_eligible),
                        vendor_name=vendor_name.strip(), quantity_in=quantity, quantity_remaining=quantity,
                        vendor_amount=q2(vendor_amount), mrp=q2(mrp), max_discount_percent=q2(max_discount_percent),
                        inward_date=inward_date, manufacture_month=manufacture_month, expiry_date=expiry_date,
@@ -207,7 +224,7 @@ def batch_row(db: Session, b: StockBatch, product: Product | None = None, show_c
     ms = gst.split_inclusive(mrp, b.cgst_percent, b.sgst_percent)        # MSP + CGST + SGST = MRP
     fs = gst.split_inclusive(floor, b.cgst_percent, b.sgst_percent)
     row = {
-        "cgst_percent": q2(b.cgst_percent), "sgst_percent": q2(b.sgst_percent),
+        "cgst_percent": q2(b.cgst_percent), "sgst_percent": q2(b.sgst_percent), "itc_eligible": bool(b.itc_eligible),
         "msp": ms["base"], "mrp_cgst": ms["cgst"], "mrp_sgst": ms["sgst"],
         "lowest_selling_price_excl_gst": fs["base"],
         "id": b.id, "product_id": b.product_id, "product_name": product.name if product else None,
@@ -226,19 +243,22 @@ def batch_row(db: Session, b: StockBatch, product: Product | None = None, show_c
 
 
 def batch_from_po(db: Session, org_id, user, po, item) -> StockBatch:
-    """A good Purchase Order receipt also records its lot (stock was already added by the caller).
-    MRP starts at the product's list price and the max discount at 0, so nothing can be discounted
-    until a manager sets the real figures in Stock Intake."""
+    """A good Purchase Order receipt also records its lot (stock was already added by the caller). The selling side (MRP incl. GST and
+    max discount) is inherited from the product master, so nothing has to be typed in Stock Intake afterwards. Only when the product has
+    neither an MRP nor a list price does the lot start at its cost with 0% discount, and the note says so."""
     product = db.get(Product, item.product_id)
     cost = q2(item.unit_price)
-    # placeholder MRP (GST included) until a manager types the real one: the product's list price plus the line's GST
-    mrp = gst.add_exclusive(product.unit_price, item.cgst_percent, item.sgst_percent)["total"] if product and Decimal(product.unit_price or 0) > 0 else max(cost, TWO)
+    mrp = product_default_mrp(product)
+    from_master = mrp is not None
+    if mrp is None:
+        mrp = max(cost, TWO)
     b = StockBatch(org_id=org_id, product_id=item.product_id, vendor_id=po.vendor_id,
                    vendor_name=po.vendor.name if po.vendor else "Vendor", quantity_in=item.qty, quantity_remaining=item.qty,
                    cgst_percent=q2(item.cgst_percent), sgst_percent=q2(item.sgst_percent),
-                   vendor_amount=cost, mrp=mrp, max_discount_percent=Decimal("0.00"), inward_date=date.today(),
+                   vendor_amount=cost, mrp=mrp, max_discount_percent=q2(product.max_discount_percent if product else 0), inward_date=date.today(),
                    source="purchase_order", po_id=po.id, created_by=user.id if user else None,
-                   note=f"Received against {po.po_number}" if po.po_number else "Received against a purchase order")
+                   note=(f"Received against {po.po_number}" if po.po_number else "Received against a purchase order")
+                        + ("" if from_master else ". The product has no MRP set: set it on the product (Sales > Products) or edit this lot."))
     db.add(b)
     db.flush()
     return b

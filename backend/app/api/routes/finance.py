@@ -286,3 +286,10 @@ def complete_refund(refund_id: str, payload: RefundComplete, db: Session = Depen
     db.commit()
     db.refresh(r)
     return _refund_out(db, r)
+
+
+@router.get("/gst-summary", dependencies=[Depends(require_permission("finance", "view"))])
+def gst_summary(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+    """GST collected (from the books), GST credit on purchases (from the stock lots), and the net payable, month by month."""
+    from app.services import gst_report
+    return gst_report.summary(db, org_id)

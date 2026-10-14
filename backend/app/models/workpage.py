@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date
 
-from sqlalchemy import Column, String, ForeignKey, DateTime, Date, Numeric, Text, Integer, UniqueConstraint
+from sqlalchemy import Column, String, ForeignKey, DateTime, Date, Numeric, Text, Integer, UniqueConstraint, Boolean
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
@@ -159,6 +159,7 @@ class WorkStockIssue(Base):
     cost_rate = Column(Numeric(12, 2), nullable=False)
     mrp = Column(Numeric(12, 2), nullable=False)
     max_discount_percent = Column(Numeric(5, 2), nullable=False, default=0)
+    itc_eligible = Column(Boolean, nullable=False, default=True, server_default="true")
     cgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")   # the lot's GST slab when it was issued
     sgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
     issued_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
