@@ -91,7 +91,8 @@ MANAGE_ACCESS_ACTION = "manage_access"
 # ALL_ACTIONS. The Admin role always holds them (self-healed below); any other role holds one only when ticked.
 #   workpage.cancel_approve - approve or reject a work cancellation raised by an employee
 #   procurement.correct_price - amend the prices of a received purchase order (with a reason and a trail)
-SPECIAL_ACTIONS = {("workpage", "cancel_approve"), ("procurement", "correct_price")}
+#   finance.refund - complete a refund to a customer after a cancellation (cancellation charge %, mode, transaction id)
+SPECIAL_ACTIONS = {("workpage", "cancel_approve"), ("procurement", "correct_price"), ("finance", "refund")}
 
 
 def require_permission(module: str, action: str):

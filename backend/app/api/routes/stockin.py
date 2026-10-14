@@ -31,8 +31,22 @@ from app.services import workpages
 router = APIRouter(prefix="/api/stockin", tags=["stock-intake"], dependencies=[Depends(get_current_user)])
 
 TEMPLATE_HEAD = ["sku", "product_name", "quantity", "vendor_name", "vendor_amount", "mrp", "max_discount_percent",
-                 "date_of_inward", "month_of_manufacture", "expiry_date", "already_in_inventory"]
+                 "date_of_inward", "month_of_manufacture", "expiry_date", "already_in_inventory", "cgst_percent", "sgst_percent"]
 MAX_ROWS = 1000
+
+
+def _pct(v):
+    """Optional GST column of the CSV: blank = the product's own rate."""
+    v = (v or "").strip()
+    if not v:
+        return None
+    try:
+        d = Decimal(v)
+    except InvalidOperation:
+        raise svc.StockError("cgst_percent / sgst_percent must be numbers (or left empty to use the product's rate).")
+    if d < 0 or d > 50:
+        raise svc.StockError("cgst_percent / sgst_percent must be between 0 and 50.")
+    return d
 
 
 def _run(db: Session, fn, *a, **kw):
@@ -57,7 +71,8 @@ def _batch(db: Session, org_id, batch_id) -> StockBatch:
 @router.get("/products", dependencies=[Depends(require_permission("stockin", "view"))])
 def products(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
     rows = db.query(Product).filter(Product.org_id == org_id).order_by(Product.name).all()
-    return [{"id": p.id, "name": p.name, "sku": p.sku, "unit_price": p.unit_price} for p in rows]
+    return [{"id": p.id, "name": p.name, "sku": p.sku, "unit_price": p.unit_price,
+             "cgst_percent": p.cgst_percent or 0, "sgst_percent": p.sgst_percent or 0} for p in rows]
 
 
 @router.get("/summary", dependencies=[Depends(require_permission("stockin", "view"))])
@@ -102,7 +117,8 @@ def create_batch(payload: StockBatchIn, db: Session = Depends(get_db), org_id: s
              vendor_name=payload.vendor_name, vendor_amount=payload.vendor_amount, mrp=payload.mrp,
              max_discount_percent=payload.max_discount_percent, inward_date=payload.inward_date or date.today(),
              manufacture_month=month, expiry_date=payload.expiry_date, source="manual", note=payload.note,
-             already_in_inventory=payload.already_in_inventory)
+             already_in_inventory=payload.already_in_inventory,
+             cgst_percent=payload.cgst_percent, sgst_percent=payload.sgst_percent)
     log_audit_event(db, org_id, current_user.id, "stock_intake", "StockBatch", b.id)
     db.commit()
     return svc.batch_row(db, b)
@@ -116,17 +132,20 @@ def update_batch(batch_id: str, payload: StockBatchUpdate, db: Session = Depends
     ch = payload.model_dump(exclude_unset=True)
     if "manufacture_month" in ch:
         ch["manufacture_month"] = _run(db, svc.parse_month, ch["manufacture_month"])
-    before = {"cost": svc.q2(b.vendor_amount), "MRP": svc.q2(b.mrp), "max discount": svc.q2(b.max_discount_percent)}
+    before = {"cost": svc.q2(b.vendor_amount), "MRP": svc.q2(b.mrp), "max discount": svc.q2(b.max_discount_percent),
+              "CGST %": svc.q2(b.cgst_percent), "SGST %": svc.q2(b.sgst_percent)}
     new = {"vendor_name": b.vendor_name, "vendor_amount": b.vendor_amount, "mrp": b.mrp, "max_discount_percent": b.max_discount_percent,
-           "inward_date": b.inward_date, "manufacture_month": b.manufacture_month, "expiry_date": b.expiry_date}
+           "inward_date": b.inward_date, "manufacture_month": b.manufacture_month, "expiry_date": b.expiry_date,
+           "cgst_percent": b.cgst_percent, "sgst_percent": b.sgst_percent}
     new.update({k: v for k, v in ch.items() if k in new})
-    _run(db, svc.validate_fields, **new)
+    _run(db, svc.validate_fields, **{k: v for k, v in new.items() if k not in ("cgst_percent", "sgst_percent")})
     for k, v in new.items():
-        setattr(b, k, svc.q2(v) if k in ("vendor_amount", "mrp", "max_discount_percent") else (v.strip() if k == "vendor_name" else v))
+        setattr(b, k, svc.q2(v) if k in ("vendor_amount", "mrp", "max_discount_percent", "cgst_percent", "sgst_percent") else (v.strip() if k == "vendor_name" else v))
     if "note" in ch:
         b.note = (ch["note"] or "").strip() or None
     b.updated_at = datetime.utcnow()
-    after = {"cost": svc.q2(b.vendor_amount), "MRP": svc.q2(b.mrp), "max discount": svc.q2(b.max_discount_percent)}
+    after = {"cost": svc.q2(b.vendor_amount), "MRP": svc.q2(b.mrp), "max discount": svc.q2(b.max_discount_percent),
+             "CGST %": svc.q2(b.cgst_percent), "SGST %": svc.q2(b.sgst_percent)}
     diffs = [f"{k} {before[k]} -> {after[k]}" for k in before if before[k] != after[k]]
     if diffs:      # a rate change leaves a visible trail on the lot itself, so a correction cannot be quietly hidden
         stamp = f"[{date.today().isoformat()} {current_user.name}: {', '.join(diffs)}]"
@@ -150,7 +169,7 @@ def delete_batch(batch_id: str, db: Session = Depends(get_db), org_id: str = Dep
 # ------------------------------------------------------------------ CSV
 @router.get("/import-template", dependencies=[Depends(require_permission("stockin", "view"))])
 def import_template():
-    sample = ["DSK-002", "Standing Desk", "8", "Bharat Timber & Steel Supplies", "22000", "34999", "10", "2026-09-30", "2026-08", "", "no"]
+    sample = ["DSK-002", "Standing Desk", "8", "Bharat Timber & Steel Supplies", "22000", "34999", "10", "2026-09-30", "2026-08", "", "no", "9", "9"]
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(TEMPLATE_HEAD)
@@ -221,7 +240,8 @@ async def import_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
                                  vendor_amount=vamt, mrp=mrp, max_discount_percent=md,
                                  inward_date=_d(r.get("date_of_inward"), "date_of_inward") or date.today(),
                                  manufacture_month=_m(r.get("month_of_manufacture")), expiry_date=_d(r.get("expiry_date"), "expiry_date"),
-                                 source="csv", already_in_inventory=flag)
+                                 source="csv", already_in_inventory=flag,
+                                 cgst_percent=_pct(r.get("cgst_percent")), sgst_percent=_pct(r.get("sgst_percent")))
             done += 1
         except svc.StockError as e:
             errors.append({"row": i, "reason": str(e)})

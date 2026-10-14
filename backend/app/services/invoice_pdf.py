@@ -101,50 +101,49 @@ def company_block(org, profile) -> dict:
     return {"name": name, "address": addr, "contact": contact, "ids": ids}
 
 
-def invoice_pdf(*, org, profile, customer, invoice, order, items, payments) -> bytes:
-    """items: sales-order lines (with .product). payments: Finance payments of this invoice."""
-    co = company_block(org, profile)
-    paid = gst.q2(sum((Decimal(p.amount) for p in payments), Decimal(0)))
-    total = gst.q2(invoice.amount)
-    balance = max(total - paid, Decimal(0))
-    status = "PAID" if balance == 0 else "PART PAID"
-    number = invoice.invoice_number or f"INV-{str(invoice.id)[:8].upper()}"
-    inv_date = (invoice.created_at or order.order_date)
-    inv_date = inv_date.date() if hasattr(inv_date, "date") else inv_date
-
+def render_invoice(doc: dict) -> bytes:
+    """
+    doc = {company, number, date, order_date, status ("PAID" / "PART PAID" / "CANCELLED"), customer{name, address, gstin, extra},
+           lines[{name, hsn, qty, rate, taxable, cgst_percent, sgst_percent, cgst, sgst, total}],
+           discount{percent, amount} | None, taxable, cgst, sgst, total (net payable), gross (before discount, GST incl.),
+           paid, balance, payments[{date, method, reference, amount}], refunds[{date, method, reference, amount, charge}], notes[]}
+    Vendor prices never appear: only what the customer is charged.
+    """
+    co = doc["company"]
+    cust = doc["customer"]
+    number = doc["number"]
     story = []
     left = [Paragraph(_esc(co["name"]), _CO)] + [Paragraph(_esc(a), _N) for a in co["address"]]
     left += [Paragraph(_esc(" | ".join(co["contact"])), _S)] if co["contact"] else []
     left += [Paragraph("<b>" + _esc("   ".join(co["ids"])) + "</b>", _N)] if co["ids"] else []
     right = [Paragraph("TAX INVOICE", _T),
              Paragraph(f"<b>Invoice No:</b> {_esc(number)}", _R),
-             Paragraph(f"<b>Date:</b> {inv_date:%d %b %Y}", _R),
-             Paragraph(f"<b>Order date:</b> {order.order_date:%d %b %Y}", _R),
-             Paragraph(f"<b>Status:</b> {status}", _R)]
+             Paragraph(f"<b>Date:</b> {doc['date']:%d %b %Y}", _R)]
+    if doc.get("order_date"):
+        right.append(Paragraph(f"<b>Order date:</b> {doc['order_date']:%d %b %Y}", _R))
+    right.append(Paragraph(f"<b>Status:</b> {doc['status']}", _R))
     head = Table([[left, right]], colWidths=[110 * mm, 70 * mm])
     head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LINEBELOW", (0, 0), (-1, 0), 1, INK),
                               ("BOTTOMPADDING", (0, 0), (-1, 0), 6), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
     story += [head, Spacer(1, 8)]
 
-    bill = [Paragraph("BILL TO", _H), Paragraph(f"<b>{_esc(customer.name)}</b>", _N)]
-    if customer.billing_address:
-        bill.append(Paragraph(_esc(customer.billing_address).replace("\n", "<br/>"), _N))
-    if customer.gst_number:
-        bill.append(Paragraph(f"GSTIN: {_esc(customer.gst_number)}", _N))
+    bill = [Paragraph("BILL TO", _H), Paragraph(f"<b>{_esc(cust['name'])}</b>", _N)]
+    for line in (cust.get("address") or "").split("\n"):
+        if line.strip():
+            bill.append(Paragraph(_esc(line.strip()), _N))
+    if cust.get("gstin"):
+        bill.append(Paragraph(f"GSTIN: {_esc(cust['gstin'])}", _N))
     ship = [Paragraph("SUPPLY", _H), Paragraph("Intra-state supply (CGST + SGST)", _N)]
     parties = Table([[bill, ship]], colWidths=[110 * mm, 70 * mm])
     parties.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
     story += [parties, Spacer(1, 8)]
 
-    rows = [["#", "Item", "HSN", "Qty", "Rate", "Taxable", "CGST", "SGST", "Amount"]]
-    for i, it in enumerate(items, 1):
-        taxable, cg, sg = gst.line_tax(it.qty, it.unit_price, it.cgst_percent, it.sgst_percent)
-        name = it.product.name if it.product else "Item"
-        rows.append([str(i), Paragraph(_esc(name), _N), (it.product.hsn_code if it.product and it.product.hsn_code else "-"),
-                     str(it.qty), f"{Decimal(it.unit_price):,.2f}", f"{taxable:,.2f}",
-                     f"{cg:,.2f}\n@{Decimal(it.cgst_percent):g}%", f"{sg:,.2f}\n@{Decimal(it.sgst_percent):g}%",
-                     f"{taxable + cg + sg:,.2f}"])
-    t = Table(rows, colWidths=[7 * mm, 49 * mm, 16 * mm, 10 * mm, 21 * mm, 22 * mm, 20 * mm, 20 * mm, 25 * mm], repeatRows=1)
+    rows = [["#", "Item", "HSN", "Qty", "Price\nexcl. GST", "CGST", "SGST", "Price\nincl. GST"]]
+    for i, ln in enumerate(doc["lines"], 1):
+        rows.append([str(i), Paragraph(_esc(ln["name"]), _N), ln.get("hsn") or "-", str(ln["qty"]),
+                     f"{ln['taxable']:,.2f}", f"{ln['cgst']:,.2f}\n@{Decimal(ln['cgst_percent']):g}%",
+                     f"{ln['sgst']:,.2f}\n@{Decimal(ln['sgst_percent']):g}%", f"{ln['total']:,.2f}"])
+    t = Table(rows, colWidths=[7 * mm, 55 * mm, 18 * mm, 11 * mm, 25 * mm, 22 * mm, 22 * mm, 25 * mm], repeatRows=1)
     t.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), INK), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("FONTSIZE", (0, 0), (-1, -1), 8),
         ("ALIGN", (3, 0), (-1, -1), "RIGHT"), ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -152,26 +151,51 @@ def invoice_pdf(*, org, profile, customer, invoice, order, items, payments) -> b
     ]))
     story += [t, Spacer(1, 6)]
 
-    tot = [["Taxable value", money(invoice.subtotal)], ["CGST", money(invoice.cgst_amount)], ["SGST", money(invoice.sgst_amount)],
-           ["Grand total", money(total)], ["Received", money(paid)], ["Balance due", money(balance)]]
-    tt = Table(tot, colWidths=[35 * mm, 38 * mm])
-    tt.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 8.5), ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-                            ("FONTNAME", (0, 3), (-1, 3), "Helvetica-Bold"), ("LINEABOVE", (0, 3), (-1, 3), 0.8, INK),
-                            ("LINEBELOW", (0, 3), (-1, 3), 0.8, INK), ("FONTNAME", (0, 5), (-1, 5), "Helvetica-Bold")]))
-    words = [Paragraph("AMOUNT IN WORDS", _H), Paragraph(_esc(amount_in_words(total)), _N)]
+    tot = []
+    bold_rows = []
+    if doc.get("discount"):
+        d = doc["discount"]
+        tot += [["Total (GST included)", money(doc["gross"])],
+                [f"Less discount ({Decimal(d['percent']):g}%)", "- " + money(d["amount"])],
+                ["Net amount payable", money(doc["total"])]]
+        bold_rows.append(len(tot) - 1)
+        tot += [["of which: taxable value", money(doc["taxable"])], ["CGST", money(doc["cgst"])], ["SGST", money(doc["sgst"])]]
+    else:
+        tot += [["Taxable value", money(doc["taxable"])], ["CGST", money(doc["cgst"])], ["SGST", money(doc["sgst"])],
+                ["Grand total", money(doc["total"])]]
+        bold_rows.append(len(tot) - 1)
+    tot += [["Received", money(doc["paid"])], ["Balance due", money(doc["balance"])]]
+    tt = Table(tot, colWidths=[40 * mm, 33 * mm])
+    style = [("FONTSIZE", (0, 0), (-1, -1), 8.5), ("ALIGN", (1, 0), (1, -1), "RIGHT"), ("FONTNAME", (0, len(tot) - 1), (-1, len(tot) - 1), "Helvetica-Bold")]
+    for r in bold_rows:
+        style += [("FONTNAME", (0, r), (-1, r), "Helvetica-Bold"), ("LINEABOVE", (0, r), (-1, r), 0.8, INK), ("LINEBELOW", (0, r), (-1, r), 0.8, INK)]
+    tt.setStyle(TableStyle(style))
+    words = [Paragraph("AMOUNT IN WORDS", _H), Paragraph(_esc(amount_in_words(doc["total"])), _N)]
     summary = Table([[words, tt]], colWidths=[107 * mm, 73 * mm])
     summary.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
     story += [KeepTogether([summary]), Spacer(1, 8)]
 
-    if payments:
-        prow = [["Date", "Method", "Reference", "Amount"]]
-        for p in payments:
-            prow.append([f"{p.date:%d %b %Y}" if p.date else "-", {"cash": "Cash", "card": "Card", "gpay": "GPay", "bank_transfer": "Bank transfer"}.get(p.method, p.method),
-                         p.transaction_id or "-", money(p.amount)])
-        pt = Table(prow, colWidths=[30 * mm, 35 * mm, 70 * mm, 35 * mm], repeatRows=1)
+    METHOD = {"cash": "Cash", "card": "Card", "gpay": "GPay / UPI", "bank_transfer": "Bank transfer", "cheque": "Cheque"}
+    if doc["payments"]:
+        prow = [["Date", "Paid via", "Reference no.", "Amount"]]
+        for p in doc["payments"]:
+            prow.append([f"{p['date']:%d %b %Y}" if p.get("date") else "-", METHOD.get(p["method"], p["method"]), p.get("reference") or "-", money(p["amount"])])
+        pt = Table(prow, colWidths=[30 * mm, 35 * mm, 70 * mm, 35 * mm], repeatRows=1, hAlign="LEFT")
         pt.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e5e7eb")), ("FONTSIZE", (0, 0), (-1, -1), 8),
                                 ("ALIGN", (3, 0), (3, -1), "RIGHT"), ("GRID", (0, 0), (-1, -1), 0.3, LINE)]))
-        story += [KeepTogether([Paragraph("PAYMENTS RECEIVED", _H), Spacer(1, 2), pt]), Spacer(1, 14)]
+        story += [KeepTogether([Paragraph("PAYMENTS RECEIVED", _H), Spacer(1, 2), pt]), Spacer(1, 10)]
+    if doc.get("refunds"):
+        rrow = [["Date", "Refunded via", "Reference no.", "Cancellation charge", "Refunded"]]
+        for r in doc["refunds"]:
+            rrow.append([f"{r['date']:%d %b %Y}" if r.get("date") else "-", METHOD.get(r["method"], r["method"] or "-"), r.get("reference") or "-",
+                         money(r["charge"]), money(r["amount"])])
+        rt = Table(rrow, colWidths=[28 * mm, 32 * mm, 50 * mm, 36 * mm, 24 * mm], repeatRows=1, hAlign="LEFT")
+        rt.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#fee2e2")), ("FONTSIZE", (0, 0), (-1, -1), 8),
+                                ("ALIGN", (3, 0), (4, -1), "RIGHT"), ("GRID", (0, 0), (-1, -1), 0.3, LINE)]))
+        story += [KeepTogether([Paragraph("REFUND AFTER CANCELLATION", _H), Spacer(1, 2), rt]), Spacer(1, 10)]
+    for n in doc.get("notes") or []:
+        story.append(Paragraph(_esc(n), _S))
+    story.append(Spacer(1, 8))
 
     sign = Table([[Paragraph("This is a computer-generated invoice and needs no signature.", _S),
                    [Paragraph(f"For <b>{_esc(co['name'])}</b>", _R), Spacer(1, 22), Paragraph("Authorised signatory", _R)]]],

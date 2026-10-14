@@ -124,6 +124,17 @@ export default function WorkDetailPage() {
         </p>
       </Card>}
 
+      {w.refund && (
+        <Card className="p-4 mb-4" data-testid="refund-card">
+          <p className="text-sm font-semibold text-slate-800 dark:text-white">Refund {w.refund.number}: {w.refund.status === "pending" ? "pending in Finance" : "completed"}</p>
+          <p className="text-xs text-slate-600 dark:text-zinc-300 mt-1">
+            {w.refund.status === "pending"
+              ? `${inr(w.refund.received_amount)} was received from the customer. Finance sets the cancellation charge and pays the rest back (Finance > Refunds).`
+              : `Received ${inr(w.refund.received_amount)}; cancellation charge ${inr(w.refund.charge_amount)} (${Number(w.refund.charge_percent)}%); refunded ${inr(w.refund.refund_amount)}${w.refund.method ? ` by ${METHOD_LABEL[w.refund.method] ?? w.refund.method}` : ""}${w.refund.transaction_id ? `, ref ${w.refund.transaction_id}` : ""}.`}
+          </p>
+        </Card>
+      )}
+
       {/* money */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 mb-4" data-testid="money">
         {w.work_type !== "sales_order" && <Money label="Quotation" value={w.quotation_amount} />}
@@ -132,11 +143,26 @@ export default function WorkDetailPage() {
         <Money label={`CGST (${Number(w.cgst_percent)}%)`} value={w.cgst_amount} />
         <Money label={`SGST (${Number(w.sgst_percent)}%)`} value={w.sgst_amount} />
         <Money label="Net payable (GST incl.)" value={w.net_payable} />
-        <Money label="Vendor amount" value={w.vendor_amount} />
+        <Money label="Vendor amount (excl. GST)" value={w.vendor_amount} />
+        {Number(w.vendor_gst) > 0 && <Money label="GST paid to vendor" value={w.vendor_gst} />}
+        {Number(w.vendor_gst) > 0 && <Money label="Total paid to vendor" value={w.vendor_total_paid} />}
         <Money label="Profit" value={w.profit} tone={Number(w.profit) < 0 ? "bad" : "good"} />
         <Money label="Received" value={w.received_amount} />
         <Money label="Pending" value={w.pending_amount} tone={Number(w.pending_amount) > 0 ? "warn" : "good"} />
       </div>
+
+      {(w.work_type === "sales_order" ? w.sales_invoice?.document_ready : w.invoice_ready) && (
+        <div className="flex flex-wrap items-center gap-2 mb-4" data-testid="invoice-actions">
+          <Button variant="secondary" data-testid="work-tax-invoice" onClick={async () => {
+            try {
+              const url = w.work_type === "sales_order" ? `/api/sales/invoices/${w.sales_invoice!.id}/pdf` : `/api/workpage/works/${w.id}/invoice-pdf`;
+              openBlob(await apiBlob(url), `${(w.work_type === "sales_order" ? w.sales_invoice!.invoice_number : w.invoice_number) || w.work_number}.pdf`);
+              if (w.work_type !== "sales_order") load();
+            } catch (e) { showToast(e instanceof Error ? e.message : "Could not open the invoice", "error"); }
+          }}>Download tax invoice</Button>
+          <span className="text-xs text-slate-500 dark:text-zinc-400">Company header, customer, GST split, discount and the payment references are filled in from the records. Vendor prices never appear on it.</span>
+        </div>
+      )}
 
       {/* actions */}
       {canEdit && (
@@ -149,7 +175,6 @@ export default function WorkDetailPage() {
           )}
           {w.can_cancel && <Button variant="danger" onClick={() => setDialog("cancel")} data-testid="cancel-work">Cancel work</Button>}
           {w.work_type === "sales_order" && w.status === "delivered" && <span className="self-center text-xs text-slate-500 dark:text-zinc-400" data-testid="so-note">Sales order: record the payment against its invoice in Finance ({inr(w.pending_amount)} pending). This work closes by itself when the invoice is paid.</span>}
-          {w.sales_invoice?.document_ready && <Button variant="secondary" data-testid="work-tax-invoice" onClick={async () => { try { openBlob(await apiBlob(`/api/sales/invoices/${w.sales_invoice!.id}/pdf`), `${w.sales_invoice!.invoice_number}.pdf`); } catch (e) { showToast(e instanceof Error ? e.message : "Could not open the invoice", "error"); } }}>Download tax invoice</Button>}
           {w.work_type !== "sales_order" && w.status === "delivered" && !w.can_close && <span className="self-center text-xs text-slate-500 dark:text-zinc-400">Closing needs the full payment ({inr(w.pending_amount)} pending).</span>}
         </div>
       )}
@@ -363,12 +388,14 @@ function EditDialog({ w, onClose, onSaved }: { w: WorkDetail; onClose: () => voi
   const { showToast } = useToast();
   const [f, setF] = useState({ client_name: w.client_name, domain: w.domain ?? "", client_details: w.client_details ?? "", quotation_amount: String(Number(w.quotation_amount)), vendor_amount: String(Number(w.vendor_amount)), discount_percent: String(Number(w.discount_percent)), cgst_percent: String(Number(w.cgst_percent)), sgst_percent: String(Number(w.sgst_percent)) });
   const [busy, setBusy] = useState(false);
+  const lotBacked = w.stock_issues.length > 0;
   async function save(e: React.FormEvent) {
     e.preventDefault(); setBusy(true);
     try {
       const d = await apiRequest<WorkDetail>(`/api/workpage/works/${w.id}`, { method: "PATCH", auth: true, body: {
         client_name: f.client_name, domain: f.domain, client_details: f.client_details,
-        quotation_amount: Number(f.quotation_amount), vendor_amount: Number(f.vendor_amount), discount_percent: Number(f.discount_percent), cgst_percent: Number(f.cgst_percent), sgst_percent: Number(f.sgst_percent) } });
+        quotation_amount: Number(f.quotation_amount), vendor_amount: Number(f.vendor_amount), discount_percent: Number(f.discount_percent),
+        ...(lotBacked ? {} : { cgst_percent: Number(f.cgst_percent), sgst_percent: Number(f.sgst_percent) }) } });
       onSaved(d);
     } catch (err) { showToast(err instanceof Error ? err.message : "Could not save", "error"); } finally { setBusy(false); }
   }
@@ -383,9 +410,10 @@ function EditDialog({ w, onClose, onSaved }: { w: WorkDetail; onClose: () => voi
           <Input label="Client discount %" type="number" min="0" max="100" step="0.01" value={f.discount_percent} onChange={(e) => setF({ ...f, discount_percent: e.target.value })} />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Input label="CGST % (on the discounted amount)" type="number" min="0" max="50" step="0.01" value={f.cgst_percent} onChange={(e) => setF({ ...f, cgst_percent: e.target.value })} />
-          <Input label="SGST %" type="number" min="0" max="50" step="0.01" value={f.sgst_percent} onChange={(e) => setF({ ...f, sgst_percent: e.target.value })} />
+          <Input label="CGST % (on the discounted amount)" type="number" min="0" max="50" step="0.01" value={f.cgst_percent} disabled={lotBacked} onChange={(e) => setF({ ...f, cgst_percent: e.target.value })} />
+          <Input label="SGST %" type="number" min="0" max="50" step="0.01" value={f.sgst_percent} disabled={lotBacked} onChange={(e) => setF({ ...f, sgst_percent: e.target.value })} />
         </div>
+        {lotBacked && <p className="text-xs text-slate-500 dark:text-zinc-400" data-testid="gst-from-lots">GST rate comes from the stock lots this work took (set in Stock Intake), so it cannot be typed here.</p>}
         <label className="block text-sm text-slate-600 dark:text-zinc-300">Client details
           <textarea className="mt-1 w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" rows={3} value={f.client_details} onChange={(e) => setF({ ...f, client_details: e.target.value })} />
         </label>
@@ -437,7 +465,8 @@ function InventoryCard({ w, canEdit, meta, reload, setW }: { w: WorkDetail; canE
           ))}</tbody></table>
         {lim && (
           <p className={`mt-3 text-xs rounded-lg px-3 py-2 ${w.pricing.violations.length ? "bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300" : "bg-green-50 dark:bg-green-950/30 text-green-800 dark:text-green-300"}`} data-testid="pricing-note">
-            Billing limits for this stock: not above MRP total {inr(lim.ceiling)}, and not below {inr(lim.floor)} (MRP less the maximum discount). Net payable now {inr(w.net_payable)}.
+            Billing limits for this stock (GST included): not above the MRP total {inr(lim.ceiling)}, and not below {inr(lim.floor)} (MRP less the maximum discount). Before GST that is {inr(lim.floor_excl_gst ?? lim.floor)} to {inr(lim.ceiling_excl_gst ?? lim.ceiling)} at CGST {Number(lim.cgst_percent ?? 0)}% + SGST {Number(lim.sgst_percent ?? 0)}%.
+            {" "}Now: {inr(w.taxable_net)} + GST {inr(Number(w.cgst_amount) + Number(w.sgst_amount))} = {inr(w.net_payable)}.
             {w.pricing.violations.length ? ` ${w.pricing.violations.join(" ")}` : " Within limits."}
           </p>
         )}

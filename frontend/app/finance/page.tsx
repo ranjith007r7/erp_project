@@ -6,6 +6,7 @@ import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { SkeletonList } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
+import { useCurrentUser } from "@/components/AppShell";
 
 type Account = { id: string; code: string; name: string; account_type: string };
 type JournalLine = { account_id: string; debit: string; credit: string };
@@ -20,13 +21,20 @@ type DeductionRow = {
 };
 type Method = "cash" | "card" | "gpay";
 
-const METHOD_LABEL: Record<string, string> = { cash: "Cash", card: "Card", gpay: "GPay", bank_transfer: "Bank transfer" };
+const METHOD_LABEL: Record<string, string> = { cash: "Cash", card: "Card", gpay: "GPay", bank_transfer: "Bank transfer", cheque: "Cheque" };
+const REFUND_METHODS = ["cash", "card", "gpay", "bank_transfer", "cheque"] as const;
+const fmt = (v: string | number) => Number(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
-const RECON_LABEL: Record<string, string> = { matched: "Matched", mismatch: "Mismatch", awaiting_payment: "Awaiting payment", part_paid: "Part paid", not_started: "Not started", paid_awaiting_delivery: "Paid, awaiting delivery", cancelled: "Cancelled", cancelled_refund_due: "Cancelled, refund due" };
+const RECON_LABEL: Record<string, string> = { matched: "Matched", mismatch: "Mismatch", awaiting_payment: "Awaiting payment", part_paid: "Part paid", not_started: "Not started", paid_awaiting_delivery: "Paid, awaiting delivery", cancelled: "Cancelled", cancelled_refund_due: "Cancelled, refund due", cancelled_refunded: "Cancelled, refunded" };
 type ReconRow = {
   work_id: string; work_number: string; work_type?: string; client_name: string; status_label: string; quoted_net: number; received: number;
-  booked_in_finance: number; difference: number; state: string; note: string;
+  booked_in_finance: number; difference: number; state: string; note: string; refunded?: number; kept?: number; refund_number?: string | null;
+};
+type Refund = {
+  id: string; refund_number: string; work_id: string; work_number: string | null; invoice_number: string | null; client_name: string; reason: string | null;
+  received_amount: string; charge_percent: string; charge_amount: string; refund_amount: string; status: "pending" | "completed";
+  method: string | null; transaction_id: string | null; note: string | null; refund_date: string | null; completed_by_name: string | null; kind: string;
 };
 type PricingRow = {
   work_id: string; work_number: string; client_name: string; status_label: string; net_payable: number; mrp_total: number;
@@ -35,6 +43,7 @@ type PricingRow = {
 
 export default function FinancePage() {
   const { showToast } = useToast();
+  const { can } = useCurrentUser();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -47,6 +56,15 @@ export default function FinancePage() {
   const [loading, setLoading] = useState(true);
   const [recon, setRecon] = useState<{ matched: number; mismatch: number; open: number; works: ReconRow[] } | null>(null);
   const [pricing, setPricing] = useState<{ checked: number; violations: number; works: PricingRow[] } | null>(null);
+
+  const [refunds, setRefunds] = useState<Refund[]>([]);
+  const [rfFor, setRfFor] = useState<Refund | null>(null);
+  const [rfCharge, setRfCharge] = useState("0");
+  const [rfMethod, setRfMethod] = useState<(typeof REFUND_METHODS)[number]>("cash");
+  const [rfTxn, setRfTxn] = useState("");
+  const [rfNote, setRfNote] = useState("");
+  const [rfBusy, setRfBusy] = useState(false);
+  const [rfError, setRfError] = useState<string | null>(null);
 
   const [payFor, setPayFor] = useState<Invoice | null>(null);
   const [payAmount, setPayAmount] = useState("");
@@ -66,6 +84,7 @@ export default function FinancePage() {
       apiRequest<JournalEntry[]>("/api/finance/journal-entries", { auth: true }).then(setEntries),
       apiRequest<Invoice[]>("/api/sales/invoices", { auth: true }).then(setInvoices),
       apiRequest<Payment[]>("/api/finance/payments", { auth: true }).then(setPayments),
+      apiRequest<Refund[]>("/api/finance/refunds", { auth: true }).then(setRefunds).catch(() => {}),
       apiRequest<{ matched: number; mismatch: number; open: number; works: ReconRow[] }>("/api/finance/work-reconciliation", { auth: true }).then(setRecon).catch(() => {}),
       apiRequest<{ checked: number; violations: number; works: PricingRow[] }>("/api/finance/pricing-check", { auth: true }).then(setPricing).catch(() => {}),
       apiRequest<LeaveType[]>("/api/finance/leave-types", { auth: true }).then(setLeaveTypes),
@@ -105,6 +124,35 @@ export default function FinancePage() {
       setPayError(err instanceof Error ? err.message : "Failed to record payment");
     }
     setPaying(false);
+  }
+
+  const rfCp = Math.min(100, Math.max(0, Number(rfCharge) || 0));
+  const rfReceived = rfFor ? Number(rfFor.received_amount) : 0;
+  const rfCharged = Math.round(rfReceived * rfCp) / 100;
+  const rfPay = Math.round((rfReceived - rfCharged) * 100) / 100;
+  const rfNeedsTxn = rfPay > 0 && rfMethod !== "cash";
+  const rfTxnOk = !rfNeedsTxn || /^[A-Za-z0-9._\-/]{4,64}$/.test(rfTxn.trim());
+  const pendingRefunds = refunds.filter((r) => r.status === "pending");
+
+  function openRefund(r: Refund) {
+    setRfFor(r); setRfCharge("0"); setRfMethod("cash"); setRfTxn(""); setRfNote(""); setRfError(null);
+  }
+
+  async function completeRefund() {
+    if (!rfFor) return;
+    setRfBusy(true); setRfError(null);
+    try {
+      await apiRequest(`/api/finance/refunds/${rfFor.id}/complete`, {
+        method: "POST", auth: true,
+        body: { charge_percent: rfCp, method: rfPay > 0 ? rfMethod : null, transaction_id: rfNeedsTxn ? rfTxn.trim() : null, note: rfNote.trim() || null },
+      });
+      setRfFor(null);
+      showToast("Refund completed", "success");
+      loadAll();
+    } catch (err) {
+      setRfError(err instanceof Error ? err.message : "Could not complete the refund");
+    }
+    setRfBusy(false);
   }
 
   const unpaidInvoices = invoices.filter((inv) => inv.status !== "paid");
@@ -162,6 +210,38 @@ export default function FinancePage() {
         <SkeletonList rows={3} />
       ) : (
         <>
+          {refunds.length > 0 && (
+            <section className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 mb-6" data-testid="refunds">
+              <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm mb-1">Refunds {pendingRefunds.length > 0 && <span className="ml-1 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 px-2 py-0.5 text-xs">{pendingRefunds.length} pending</span>}</h2>
+              <p className="text-xs text-slate-500 dark:text-zinc-500 mb-3">
+                A cancelled work (or a cancelled Sales order after its invoice, which is reversed with a credit note) that had received money lands here. Set the cancellation charge in percent, choose how it is paid back, paste the transaction id for anything that is not cash, and mark it completed.
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-left text-xs text-slate-500 dark:text-zinc-500 border-b border-slate-200 dark:border-zinc-800"><th className="py-2 pr-3">Refund</th><th className="pr-3">Work</th><th className="pr-3">Client</th><th className="pr-3 text-right">Received</th><th className="pr-3 text-right">Charge</th><th className="pr-3 text-right">Refunded</th><th className="pr-3">Paid via</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {refunds.map((r) => (
+                      <tr key={r.id} className="border-b border-slate-100 dark:border-zinc-800 align-top" data-testid={`refund-${r.refund_number}`}>
+                        <td className="py-2 pr-3">{r.refund_number}{r.kind === "sales_invoice" && <div className="text-xs text-indigo-600 dark:text-indigo-300">Credit note {r.invoice_number}</div>}</td>
+                        <td className="pr-3">{r.work_number}</td><td className="pr-3">{r.client_name}{r.reason && <div className="text-xs text-slate-500">{r.reason}</div>}</td>
+                        <td className="pr-3 text-right tabular-nums">{fmt(r.received_amount)}</td>
+                        <td className="pr-3 text-right tabular-nums">{r.status === "completed" ? `${fmt(r.charge_amount)} (${Number(r.charge_percent)}%)` : "-"}</td>
+                        <td className="pr-3 text-right tabular-nums">{r.status === "completed" ? fmt(r.refund_amount) : "-"}</td>
+                        <td className="pr-3">{r.method ? METHOD_LABEL[r.method] ?? r.method : "-"}{r.transaction_id && <div className="text-xs text-slate-500">Ref {r.transaction_id}</div>}</td>
+                        <td>
+                          {r.status === "pending" ? (
+                            can("finance", "refund")
+                              ? <Button size="sm" onClick={() => openRefund(r)} data-testid={`refund-open-${r.refund_number}`}>Process refund</Button>
+                              : <span className="text-amber-600 text-xs">Pending (needs refund permission)</span>
+                          ) : <span className="text-emerald-600 font-semibold">Completed</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
           {recon && recon.works.length > 0 && (
             <section className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 mb-6" data-testid="work-reconciliation">
               <h2 className="font-semibold text-slate-700 dark:text-zinc-200 text-sm mb-1">Work payment reconciliation</h2>
@@ -180,7 +260,7 @@ export default function FinancePage() {
                         <td className="pr-3 text-right tabular-nums">{Number(r.received).toLocaleString("en-IN")}</td>
                         <td className="pr-3 text-right tabular-nums">{Number(r.booked_in_finance).toLocaleString("en-IN")}</td>
                         <td className="pr-3 text-right tabular-nums">{Number(r.difference).toLocaleString("en-IN")}</td>
-                        <td className={r.state === "matched" ? "text-emerald-600" : r.state === "mismatch" ? "text-red-600" : "text-amber-600"}><span className="font-semibold">{RECON_LABEL[r.state] ?? r.state}</span>{r.state !== "matched" && <span className="block text-xs">{r.note}</span>}</td>
+                        <td className={r.state === "matched" || r.state === "cancelled_refunded" ? "text-emerald-600" : r.state === "mismatch" ? "text-red-600" : "text-amber-600"}><span className="font-semibold">{RECON_LABEL[r.state] ?? r.state}</span>{r.state !== "matched" && <span className="block text-xs">{r.note}</span>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -366,6 +446,42 @@ export default function FinancePage() {
             </div>
           </section>
         </>
+      )}
+
+      {rfFor && (
+        <Modal title={`Refund ${rfFor.refund_number}`} onClose={() => setRfFor(null)}>
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600 dark:text-zinc-300">{rfFor.work_number} · {rfFor.client_name}. The customer had paid <b>{inr(rfFor.received_amount)}</b> (GST included).</p>
+            <Input label="Cancellation charge (% of the amount received, 0 = full refund)" type="number" min="0" max="100" step="0.01" value={rfCharge} onChange={(e) => setRfCharge(e.target.value)} data-testid="refund-charge" />
+            <div className="rounded-lg bg-slate-50 dark:bg-zinc-800 p-3 text-sm space-y-1" data-testid="refund-split">
+              <div className="flex justify-between"><span>Amount received</span><span className="tabular-nums">{fmt(rfReceived)}</span></div>
+              <div className="flex justify-between text-red-600"><span>Less cancellation charge ({rfCp}%)</span><span className="tabular-nums">- {fmt(rfCharged)}</span></div>
+              <div className="flex justify-between font-semibold border-t border-slate-200 dark:border-zinc-700 pt-1"><span>Refund to customer</span><span className="tabular-nums">{fmt(rfPay)}</span></div>
+            </div>
+            {rfPay > 0 ? (
+              <>
+                <fieldset>
+                  <legend className="text-sm text-slate-600 dark:text-zinc-300 mb-1">Refund paid by</legend>
+                  <div className="flex flex-wrap gap-2">
+                    {REFUND_METHODS.map((m) => (
+                      <label key={m} className={`cursor-pointer rounded-lg border px-3 py-2 text-sm ${rfMethod === m ? "border-slate-800 dark:border-zinc-200 bg-slate-100 dark:bg-zinc-800 font-medium" : "border-slate-300 dark:border-zinc-700"} text-slate-800 dark:text-zinc-100`}>
+                        <input type="radio" name="rfmethod" className="sr-only" checked={rfMethod === m} onChange={() => setRfMethod(m)} />
+                        {METHOD_LABEL[m]}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                {rfNeedsTxn && <Input label="Transaction / reference id (required)" placeholder="e.g. GPAY99887766" value={rfTxn} onChange={(e) => setRfTxn(e.target.value)} data-testid="refund-txn" />}
+              </>
+            ) : <p className="text-xs text-slate-500 dark:text-zinc-400">Nothing is paid out: the whole amount is kept as the cancellation charge.</p>}
+            <Input label="Note (optional)" value={rfNote} onChange={(e) => setRfNote(e.target.value)} />
+            {rfError && <p className="text-sm text-red-600 dark:text-red-400">{rfError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setRfFor(null)}>Cancel</Button>
+              <Button onClick={completeRefund} disabled={!rfTxnOk || rfBusy} data-testid="refund-complete">{rfBusy ? "Saving…" : "Mark refund completed"}</Button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {payFor && (

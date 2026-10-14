@@ -63,6 +63,11 @@ class WorkOrder(Base):
     handling_department_id = Column(UUID(as_uuid=True), ForeignKey("departments.id"), nullable=True)
     allocated_employee_id = Column(UUID(as_uuid=True), ForeignKey("employees.id"), nullable=True)
 
+    # Tax invoice number ("INV-0007", same series as Sales invoices), given the first time the invoice is generated
+    # (needs at least one payment). Direct Sales orders use their Sales invoice instead.
+    invoice_number = Column(String, nullable=True)
+    invoiced_on = Column(Date, nullable=True)
+
     delivered_on = Column(Date, nullable=True)
     delivery_note = Column(Text, nullable=True)
     closed_at = Column(DateTime, nullable=True)
@@ -154,5 +159,7 @@ class WorkStockIssue(Base):
     cost_rate = Column(Numeric(12, 2), nullable=False)
     mrp = Column(Numeric(12, 2), nullable=False)
     max_discount_percent = Column(Numeric(5, 2), nullable=False, default=0)
+    cgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")   # the lot's GST slab when it was issued
+    sgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
     issued_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -92,3 +92,35 @@ class RunSummary(BaseModel):
     status: str
 
     model_config = {"from_attributes": True}
+
+
+class RefundOut(BaseModel):
+    id: UUID
+    refund_number: str
+    work_id: UUID
+    work_number: Optional[str] = None
+    invoice_id: Optional[UUID] = None
+    invoice_number: Optional[str] = None
+    client_name: str
+    reason: Optional[str] = None
+    received_amount: Decimal
+    charge_percent: Decimal
+    charge_amount: Decimal
+    refund_amount: Decimal
+    status: str
+    method: Optional[str] = None
+    transaction_id: Optional[str] = None
+    note: Optional[str] = None
+    refund_date: Optional[date] = None
+    created_at: Optional[datetime] = None
+    completed_by_name: Optional[str] = None
+    completed_at: Optional[datetime] = None
+    kind: str = "work"            # work / sales_invoice (credit note)
+
+
+class RefundComplete(BaseModel):
+    charge_percent: Decimal = Field(default=Decimal(0), ge=0, le=100)
+    method: Optional[str] = None
+    transaction_id: Optional[str] = None
+    note: Optional[str] = None
+    refund_date: Optional[date] = None

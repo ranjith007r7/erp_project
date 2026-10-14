@@ -13,6 +13,8 @@ class StockBatchIn(BaseModel):
     vendor_amount: Decimal = Field(ge=0, le=Decimal("99999999"))      # rate bought at, per unit
     mrp: Decimal = Field(gt=0, le=Decimal("99999999"))                # most it can be sold for, per unit
     max_discount_percent: Decimal = Field(ge=0, le=100)
+    cgst_percent: Optional[Decimal] = Field(default=None, ge=0, le=50)  # the lot's GST slab; left out = the product's
+    sgst_percent: Optional[Decimal] = Field(default=None, ge=0, le=50)
     inward_date: Optional[date] = None                                  # defaults to today
     manufacture_month: Optional[str] = Field(default=None, pattern=r"^\d{4}-\d{2}(-\d{2})?$")
     expiry_date: Optional[date] = None
@@ -25,6 +27,8 @@ class StockBatchUpdate(BaseModel):
     vendor_amount: Optional[Decimal] = Field(default=None, ge=0, le=Decimal("99999999"))
     mrp: Optional[Decimal] = Field(default=None, gt=0, le=Decimal("99999999"))
     max_discount_percent: Optional[Decimal] = Field(default=None, ge=0, le=100)
+    cgst_percent: Optional[Decimal] = Field(default=None, ge=0, le=50)
+    sgst_percent: Optional[Decimal] = Field(default=None, ge=0, le=50)
     inward_date: Optional[date] = None
     manufacture_month: Optional[str] = Field(default=None, pattern=r"^(\d{4}-\d{2}(-\d{2})?)?$")
     expiry_date: Optional[date] = None

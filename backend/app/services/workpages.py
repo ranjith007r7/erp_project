@@ -39,7 +39,7 @@ from app.models.finance import Payment
 from app.models.user import User
 from app.models.sales import Product
 from app.models.workpage import WorkOrder, WorkEvent, WorkPayment, WorkItem, WorkStockIssue
-from app.services import pricing, stock as stock_svc
+from app.services import pricing, gst, stock as stock_svc
 from app.services.accounting import post_work_receipt_journal_entry
 from app.services.inventory import issue_stock, receive_stock
 
@@ -342,16 +342,15 @@ def _ensure_live(work: WorkOrder):
         raise WorkError("This work is cancelled; it can no longer be changed.")
 
 def issued_lines(db: Session, work: WorkOrder):
-    return [(i.qty, i.mrp, i.max_discount_percent) for i in _issues(db, work)]
+    return [(i.qty, i.mrp, i.max_discount_percent, i.cgst_percent, i.sgst_percent) for i in _issues(db, work)]
 
 
 def pricing_violations(db: Session, work: WorkOrder, quotation_amount=None, discount_percent=None) -> list[str]:
-    """The MRP / max-discount rule for stock this work took from inventory (see app/services/pricing.py)."""
-    # MRP includes GST by law, so the bill is compared with it GST-inclusive.
-    factor = 1 + (Decimal(work.cgst_percent or 0) + Decimal(work.sgst_percent or 0)) / 100
-    return pricing.violations(Decimal(work.quotation_amount if quotation_amount is None else quotation_amount) * factor,
+    """The MRP / max-discount rule for stock this work took from inventory (see app/services/pricing.py).
+    The amount typed on the work excludes GST; the lots' GST slab is added before it meets the (GST-inclusive) MRP."""
+    return pricing.violations(work.quotation_amount if quotation_amount is None else quotation_amount,
                               work.discount_percent if discount_percent is None else discount_percent,
-                              issued_lines(db, work))
+                              issued_lines(db, work), fallback_gst=(work.cgst_percent, work.sgst_percent))
 
 
 def set_items(db: Session, work: WorkOrder, user: User, items: list[tuple]) -> list[WorkItem]:
@@ -397,13 +396,15 @@ def stock_check(db: Session, work: WorkOrder, show_cost: bool = False) -> dict:
                "required": it.qty, "available": avail, "on_hand": total, "short_by": short, "ok": ok,
                "unpriced": stock_svc.unpriced(db, work.org_id, it.product_id),
                "batches": [{"batch_id": b.id, "take": t, "mrp": q2(b.mrp), "max_discount_percent": q2(b.max_discount_percent),
+                            "cgst_percent": q2(b.cgst_percent), "sgst_percent": q2(b.sgst_percent),
+                            "msp": gst.split_inclusive(b.mrp, b.cgst_percent, b.sgst_percent)["base"],
                             "expiry_date": b.expiry_date, "inward_date": b.inward_date,
                             **({"vendor_name": b.vendor_name, "vendor_amount": q2(b.vendor_amount)} if show_cost else {})}
                            for b, t in picks]}
         out_items.append(row)
     has_items = bool(out_items)
-    lines = [(t, b.mrp, b.max_discount_percent) for b, t in picks_all]
-    viol = pricing.violations(work.quotation_amount, work.discount_percent, lines) if (has_items and all_ok) else []
+    lines = [(t, b.mrp, b.max_discount_percent, b.cgst_percent, b.sgst_percent) for b, t in picks_all]
+    viol = pricing.violations(work.quotation_amount, work.discount_percent, lines, fallback_gst=(work.cgst_percent, work.sgst_percent)) if (has_items and all_ok) else []
     lim = pricing.limits(lines) if lines else None
     return {"items": out_items, "has_items": has_items, "all_available": has_items and all_ok,
             "pricing": {"limits": lim, "violations": viol, "ok": not viol},
@@ -432,6 +433,26 @@ def mark_stock_short(db: Session, work: WorkOrder, user: User, note: str | None 
     return work
 
 
+def vendor_gst(db: Session, w: WorkOrder) -> Decimal:
+    """GST we paid our vendors on the units this work took (claimable, so it is shown but is not part of the cost or the profit)."""
+    return q2(sum((Decimal(r.cost_rate or 0) * int(r.qty) * (Decimal(r.cgst_percent or 0) + Decimal(r.sgst_percent or 0)) / 100
+                   for r in _all_issues(db, w) if r.batch_id), Decimal(0)))
+
+
+def _adopt_lot_gst(db: Session, work: WorkOrder, user: User | None):
+    """The GST slab of a work that took stock comes from its lots (the product's HSN rate), not from what someone typed."""
+    db.flush()
+    rows = [r for r in _all_issues(db, work) if r.batch_id]
+    if not rows:
+        return
+    cg, sg = pricing.effective_gst([(r.qty, r.mrp, r.max_discount_percent, r.cgst_percent, r.sgst_percent) for r in rows])
+    if (cg or sg) and (q2(work.cgst_percent) != cg or q2(work.sgst_percent) != sg):
+        old = f"{q2(work.cgst_percent)}% / {q2(work.sgst_percent)}%"
+        work.cgst_percent, work.sgst_percent = cg, sg
+        log_event(db, work, "gst_from_lots", "GST rate taken from the stock lots",
+                  f"CGST {cg}% / SGST {sg}% (was {old}). The rate comes from the lots' GST slab, so it cannot be typed over.", user)
+
+
 def issue_stock_for_work(db: Session, work: WorkOrder, user: User) -> WorkOrder:
     """Take the needed stock out of inventory: rates come from the batch, never typed. The work is delivered at once."""
     if is_sales_order(work):
@@ -452,8 +473,8 @@ def issue_stock_for_work(db: Session, work: WorkOrder, user: User) -> WorkOrder:
             have = it.qty - short
             raise WorkError(f"Not enough stock for {prod.name if prod else 'a product'}: {have} available, {it.qty} needed.")
         plan.append((it, prod, picks))
-        lines += [(t, b.mrp, b.max_discount_percent) for b, t in picks]
-    viol = pricing.violations(work.quotation_amount, work.discount_percent, lines)
+        lines += [(t, b.mrp, b.max_discount_percent, b.cgst_percent, b.sgst_percent) for b, t in picks]
+    viol = pricing.violations(work.quotation_amount, work.discount_percent, lines, fallback_gst=(work.cgst_percent, work.sgst_percent))
     if viol:
         raise WorkError(" ".join(viol) + " Ask a manager to correct the quotation amount or the discount first.")
     cost_total, detail = Decimal(0), []
@@ -463,7 +484,7 @@ def issue_stock_for_work(db: Session, work: WorkOrder, user: User) -> WorkOrder:
             b.updated_at = datetime.utcnow()
             db.add(WorkStockIssue(org_id=work.org_id, work_id=work.id, batch_id=b.id, product_id=it.product_id, qty=t,
                                   cost_rate=q2(b.vendor_amount), mrp=q2(b.mrp), max_discount_percent=q2(b.max_discount_percent),
-                                  issued_by=user.id))
+                                  cgst_percent=q2(b.cgst_percent), sgst_percent=q2(b.sgst_percent), issued_by=user.id))
             cost_total += Decimal(b.vendor_amount) * t
             detail.append(f"{prod.name} x {t} (bought at {q2(b.vendor_amount)}, MRP {q2(b.mrp)}, from {b.vendor_name})")
         try:
@@ -471,6 +492,7 @@ def issue_stock_for_work(db: Session, work: WorkOrder, user: User) -> WorkOrder:
         except ValueError as e:
             raise WorkError(str(e))
     work.vendor_amount = q2(cost_total)
+    _adopt_lot_gst(db, work, user)
     work.pending_note = None
     work.delivered_on = date.today()
     work.delivery_note = "Served from existing inventory"
@@ -492,9 +514,6 @@ def request_cancellation(db: Session, work: WorkOrder, user: User, reason: str, 
         raise WorkError("This work is already cancelled.")
     if work.status == "closed":
         raise WorkError("This work is done (delivered and fully paid) and can no longer be cancelled.")
-    if is_sales_order(work) and sales_invoice(db, work) is not None:
-        raise WorkError("An invoice has already been issued for this sales order, so the stock has left Inventory and the sale is booked in Finance. "
-                        "It cannot be cancelled from here.")
     if reason not in CANCEL_REASONS:
         raise WorkError("Pick one of the listed reasons for the cancellation.")
     remark = (remark or "").strip() or None
@@ -546,6 +565,10 @@ def decide_cancellation(db: Session, work: WorkOrder, user: User, approve: bool,
         log_event(db, work, "cancel_rejected", "Cancellation rejected",
                   f"Rejected by {user.name}." + (f" {note}" if note else "") + f" The work is back to '{STATUSES[work.status]['label']}'.", user)
         return work
+    from app.services import refunds as refunds_svc
+    credit_note = None
+    if is_sales_order(work):
+        credit_note = refunds_svc.credit_note_for_sales_order(db, work, user)     # reverse the invoice before the stock goes back
     returned = _return_stock(db, work)
     open_pos = [p.po_number or "a PO" for p in _active_pos(db, work) if p.status == "pending"]
     _set_status(db, work, "cancelled")
@@ -553,11 +576,14 @@ def decide_cancellation(db: Session, work: WorkOrder, user: User, approve: bool,
     if returned:
         detail += " Returned to Inventory: " + "; ".join(returned) + "."
     paid = received_amount(work)
+    if credit_note is not None:
+        detail += f" The invoice {credit_note.invoice_number or ''} was cancelled with a credit note."
     if paid > 0:
-        detail += f" {paid} had already been received from the customer: it must be refunded outside the system (Finance shows it as 'refund due')."
+        detail += f" {paid} had already been received from the customer: Finance now has a pending refund for it (Finance > Refunds)."
     if open_pos:
         detail += f" Purchase order(s) still open: {', '.join(open_pos)}; cancel or reject them in Procurement if the goods are no longer needed."
     log_event(db, work, "cancelled", "Work cancelled", detail, user, {"returned": returned})
+    refunds_svc.create_pending(db, work, user)
     return work
 
 
@@ -652,7 +678,8 @@ def _take_purchased_stock(db: Session, work: WorkOrder, user: User) -> list[str]
             covered += t
             cost_total += Decimal(b.vendor_amount or 0) * t
             db.add(WorkStockIssue(org_id=work.org_id, work_id=work.id, batch_id=b.id, product_id=pid, qty=t, source="purchased",
-                                  cost_rate=q2(b.vendor_amount), mrp=q2(b.mrp), max_discount_percent=q2(b.max_discount_percent), issued_by=user.id))
+                                  cost_rate=q2(b.vendor_amount), mrp=q2(b.mrp), max_discount_percent=q2(b.max_discount_percent),
+                                  cgst_percent=q2(b.cgst_percent), sgst_percent=q2(b.sgst_percent), issued_by=user.id))
         if covered < qty:
             fully_priced = False
         if covered < qty:       # units with no priced lot: remembered so a cancellation can still return them
@@ -661,6 +688,8 @@ def _take_purchased_stock(db: Session, work: WorkOrder, user: User) -> list[str]
         done.append(f"{name} x {qty}")
     if need and fully_priced and cost_total:      # the real cost of the units handed over (old stock + bought goods)
         work.vendor_amount = q2(cost_total)
+    db.flush()
+    _adopt_lot_gst(db, work, user)
     for pid in need:                              # other works still waiting on goods now see different lots
         resync_vendor_for_product(db, work.org_id, pid, exclude=work.id)
     return done
@@ -800,7 +829,7 @@ def on_quotation_accepted(db: Session, quotation: Quotation, order, user: User |
     return work
 
 
-def on_invoice_generated(db: Session, order, invoice, user: User | None = None, cost=None):
+def on_invoice_generated(db: Session, order, invoice, user: User | None = None, cost=None, picks=None):
     """Sales: the invoice for a direct sale was generated. Sales has already taken the stock out of Inventory,
     so the sales-order work is Delivered; it becomes Work done when the invoice is paid in Finance."""
     w = (db.query(WorkOrder).filter(WorkOrder.org_id == invoice.org_id, WorkOrder.sales_order_id == order.id,
@@ -811,6 +840,17 @@ def on_invoice_generated(db: Session, order, invoice, user: User | None = None, 
         log_event(db, w, "invoice_after_cancel", "Invoice issued after cancellation",
                   "Sales generated the invoice although this work was cancelled; the sale is booked in Finance.", user)
         return w
+    # remember which units/lots left Inventory so a later cancellation can put them back
+    for product_id, batch, qty in (picks or []):
+        if qty <= 0:
+            continue
+        prod = db.get(Product, product_id)
+        db.add(WorkStockIssue(org_id=w.org_id, work_id=w.id, batch_id=batch.id if batch else None, product_id=product_id, qty=int(qty),
+                              source="sales", cost_rate=q2(batch.vendor_amount if batch else 0),
+                              mrp=q2(batch.mrp if batch else (prod.unit_price if prod else 0)),
+                              max_discount_percent=q2(batch.max_discount_percent if batch else 0),
+                              cgst_percent=q2(batch.cgst_percent if batch else 0), sgst_percent=q2(batch.sgst_percent if batch else 0),
+                              issued_by=user.id if user else None))
     w.quotation_amount = q2(invoice.amount)
     w.discount_percent = q2(0)
     # profit: what the units really cost (first-expiry-first-out lots) at the moment Sales issued them
@@ -962,14 +1002,22 @@ def reconciliation_report(db: Session, org_id) -> list[dict]:
                 .group_by(JournalEntry.reference).all())
         for ref, amt in rows:
             booked[mapping[ref]] = booked.get(mapping[ref], Decimal(0)) + Decimal(amt)
+    from app.services import refunds as refunds_svc
+    rf = refunds_svc.totals_for_works(db, org_id)
     out = []
     for w in works:
         quoted, got, books = net_payable(w), received_amount(w), q2(booked.get(w.id, Decimal(0)))
+        r = rf.get(w.id)
+        refunded, kept = q2(r["refunded"]) if r else q2(0), q2(r["kept"]) if r else q2(0)
         so = is_sales_order(w)
         where = "against the Sales invoice" if so else "on the work"
         if w.status == "cancelled":
             if got != books:
                 state, note = "mismatch", f"Received {got} {where} but Finance has booked {books}."
+            elif got > 0 and r and r["pending"] == 0 and (refunded + kept) == got:
+                state = "cancelled_refunded"
+                note = (f"Cancelled; {refunded} refunded" + (f" by {r['method']}" if r["method"] else "") + (f" (ref {r['reference']})" if r["reference"] else "")
+                        + (f", {kept} kept as cancellation charge." if kept else ", in full."))
             elif got > 0:
                 state, note = "cancelled_refund_due", f"Cancelled, but {got} was received from the customer and is still to be refunded."
             else:
@@ -995,7 +1043,8 @@ def reconciliation_report(db: Session, org_id) -> list[dict]:
             state, note = "mismatch", f"Received {got} is above the quoted {quoted}."
         out.append({"work_id": w.id, "work_number": w.work_number, "client_name": w.client_name, "status_label": STATUSES[w.status]["label"],
                     "work_type": w.work_type, "quoted_net": quoted, "received": got, "booked_in_finance": books,
-                    "difference": q2(quoted - got), "state": state, "note": note})
+                    "difference": q2(quoted - got), "state": state, "note": note,
+                    "refunded": refunded, "kept": kept, "refund_number": r["number"] if r else None})
     return out
 
 
@@ -1019,6 +1068,16 @@ def pricing_report(db: Session, org_id) -> list[dict]:
 # ------------------------------------------------------------ presentation
 def _name(u) -> str | None:
     return u.name if u else None
+
+
+def _refund_info(db: Session, w: WorkOrder):
+    from app.models.finance import Refund
+    r = db.query(Refund).filter(Refund.work_id == w.id).first()
+    if not r:
+        return None
+    return {"number": r.refund_number, "status": r.status, "received_amount": q2(r.received_amount), "charge_percent": q2(r.charge_percent),
+            "charge_amount": q2(r.charge_amount), "refund_amount": q2(r.refund_amount), "method": r.method, "transaction_id": r.transaction_id,
+            "refund_date": r.refund_date}
 
 
 def pending_reason(db: Session, w: WorkOrder) -> str:
@@ -1133,8 +1192,11 @@ def detail(db: Session, w: WorkOrder) -> dict:
                          for i in _issues(db, w)],
         "purchased_items": _purchased_items(db, w),
         "pricing": {"limits": pricing.limits(issued_lines(db, w)), "violations": pricing_violations(db, w)},
+        "refund": _refund_info(db, w),
+        "invoice_number": w.invoice_number, "invoice_ready": bool(received_amount(w) > 0 and w.status != "cancel_pending"),
+        "vendor_gst": vendor_gst(db, w), "vendor_total_paid": q2(Decimal(w.vendor_amount or 0) + vendor_gst(db, w)),
         "pending_note": w.pending_note,
-        "can_cancel": w.status not in ("closed", "cancelled", "cancel_pending") and not (is_sales_order(w) and sales_invoice(db, w) is not None),
+        "can_cancel": w.status not in ("closed", "cancelled", "cancel_pending"),
         "sales_invoice": ({"id": sales_invoice(db, w).id, "amount": q2(sales_invoice(db, w).amount), "status": sales_invoice(db, w).status,
                           "invoice_number": sales_invoice(db, w).invoice_number, "document_ready": received_amount(w) > 0} if is_sales_order(w) and sales_invoice(db, w) else None),
         "cancellation": ({

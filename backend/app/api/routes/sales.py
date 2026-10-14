@@ -28,7 +28,7 @@ from app.schemas.sales import (
     InvoiceOut,
 )
 from app.services.accounting import post_invoice_journal_entry
-from app.services.invoice_pdf import invoice_pdf
+from app.services.invoicing import next_invoice_number, sales_invoice_pdf, InvoiceError
 from app.models.finance import Payment
 from app.models.organization import Organization, OrganizationProfile
 from app.services.inventory import issue_stock
@@ -181,19 +181,6 @@ def list_orders(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)
     )
 
 
-def next_invoice_number(db: Session, org_id) -> str:
-    """INV-0001, 0002 ... per organization. The org row is locked so two simultaneous invoices cannot share a number."""
-    from sqlalchemy import func
-    from app.models.organization import Organization
-    db.query(Organization).filter(Organization.id == org_id).with_for_update().first()
-    n = db.query(func.count(Invoice.id)).filter(Invoice.org_id == org_id).scalar() or 0
-    while True:
-        n += 1
-        number = f"INV-{n:04d}"
-        if not db.query(Invoice.id).filter(Invoice.org_id == org_id, Invoice.invoice_number == number).first():
-            return number
-
-
 @router.post("/orders/{order_id}/invoice", response_model=InvoiceOut, status_code=201, dependencies=[Depends(require_permission("sales", "edit"))])
 def generate_invoice(order_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     """
@@ -220,6 +207,7 @@ def generate_invoice(order_id: str, db: Session = Depends(get_db), org_id: str =
     # item doesn't have enough stock, we fail here and nothing else about
     # this order (invoice, journal entry, status) gets touched at all.
     issued_cost = Decimal(0)
+    issue_picks = []
     for item in order.items:
         try:
             issue_stock(
@@ -232,8 +220,13 @@ def generate_invoice(order_id: str, db: Session = Depends(get_db), org_id: str =
             )
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+        covered = 0
         for b, take in stock_svc.consume_best_effort(db, org_id, item.product_id, item.qty):   # keep the priced lots in step with the total
             issued_cost += Decimal(b.vendor_amount or 0) * take
+            issue_picks.append((item.product_id, b, take))
+            covered += take
+        if item.qty - covered > 0:
+            issue_picks.append((item.product_id, None, item.qty - covered))      # units with no priced lot still go back on a cancel
 
     invoice = Invoice(
         org_id=org_id,
@@ -252,7 +245,7 @@ def generate_invoice(order_id: str, db: Session = Depends(get_db), org_id: str =
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    workpages.safe(db, workpages.on_invoice_generated, order, invoice, current_user, issued_cost)
+    workpages.safe(db, workpages.on_invoice_generated, order, invoice, current_user, issued_cost, issue_picks)
     log_audit_event(db, org_id, current_user.id, "generate_invoice", "Invoice", invoice.id)
     db.commit()
     db.refresh(invoice)
@@ -282,14 +275,9 @@ def invoice_document(invoice_id: str, db: Session = Depends(get_db), org_id: str
     inv = db.query(Invoice).filter(Invoice.id == invoice_id, Invoice.org_id == org_id).first()
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    payments = db.query(Payment).filter(Payment.invoice_id == inv.id).order_by(Payment.created_at).all()
-    if not payments:
-        raise HTTPException(status_code=409, detail="The tax invoice is issued once a payment has been recorded against this invoice. Record the payment in Finance first.")
-    order = (db.query(SalesOrder).options(joinedload(SalesOrder.items).joinedload(SalesOrderItem.product))
-             .filter(SalesOrder.id == inv.order_id, SalesOrder.org_id == org_id).first())
-    customer = db.query(Customer).filter(Customer.id == inv.customer_id, Customer.org_id == org_id).first()
-    org = db.query(Organization).filter(Organization.id == org_id).first()
-    profile = db.query(OrganizationProfile).filter(OrganizationProfile.org_id == org_id).first()
-    data = invoice_pdf(org=org, profile=profile, customer=customer, invoice=inv, order=order, items=order.items, payments=payments)
+    try:
+        data = sales_invoice_pdf(db, org_id, inv)
+    except InvoiceError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     name = (inv.invoice_number or "invoice") + ".pdf"
     return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})

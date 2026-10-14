@@ -27,8 +27,12 @@ class StockBatch(Base):
     vendor_name = Column(String, nullable=False)
     quantity_in = Column(Integer, nullable=False)
     quantity_remaining = Column(Integer, nullable=False)
-    vendor_amount = Column(Numeric(12, 2), nullable=False)          # rate we bought it at, per unit
-    mrp = Column(Numeric(12, 2), nullable=False)                    # most it can be sold for, per unit
+    vendor_amount = Column(Numeric(12, 2), nullable=False)          # rate we bought it at, per unit, EXCLUDING GST (input GST is claimable)
+    mrp = Column(Numeric(12, 2), nullable=False)                    # most it can be sold for, per unit, INCLUDING GST (as printed on the pack)
+    # The GST slab of this lot. MRP = MSP (max selling price excl. GST) + CGST + SGST, so MSP = MRP / (1 + rate).
+    # The same slab applies when we bought it: total paid to the vendor = vendor_amount x (1 + rate).
+    cgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
+    sgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
     max_discount_percent = Column(Numeric(5, 2), nullable=False, default=0)
     inward_date = Column(Date, nullable=False, default=date.today)
     manufacture_month = Column(Date, nullable=True)                 # always the 1st of the month

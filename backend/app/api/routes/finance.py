@@ -12,10 +12,12 @@ from app.api.deps import get_current_user, get_org_id, require_permission
 import re
 from decimal import Decimal
 
-from app.models.finance import ChartOfAccounts, JournalEntry, Payment
+from app.models.finance import ChartOfAccounts, JournalEntry, Payment, Refund
+from app.models.user import User
+from app.models.workpage import WorkOrder
 from app.models.sales import Invoice
 from app.schemas.finance import (
-    AccountOut, JournalEntryOut, PaymentCreate, PaymentOut, METHODS_NEEDING_REFERENCE,
+    AccountOut, JournalEntryOut, RefundOut, RefundComplete, PaymentCreate, PaymentOut, METHODS_NEEDING_REFERENCE,
     DeductionProfileIn, DeductionRow, LopIn, LeaveTypeOut, RunSummary,
 )
 from app.models.hr import Employee, EmployeePayrollProfile, PayrollRun, PayrollInput
@@ -58,6 +60,8 @@ def record_payment(payload: PaymentCreate, db: Session = Depends(get_db), org_id
         raise HTTPException(status_code=404, detail="Invoice not found")
     if invoice.status == "paid":
         raise HTTPException(status_code=400, detail="This invoice is already fully paid.")
+    if invoice.status == "cancelled":
+        raise HTTPException(status_code=400, detail="This invoice was cancelled with a credit note; no payment can be recorded against it.")
 
     paid_so_far = Decimal(db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(Payment.invoice_id == invoice.id).scalar() or 0)
     due = Decimal(invoice.amount) - paid_so_far
@@ -231,3 +235,54 @@ def set_lop_days(run_id: str, employee_id: str, payload: LopIn, db: Session = De
     log_audit_event(db, org_id, current_user.id, "set_payroll_lop_days", "PayrollRun", run.id)
     db.commit()
     return payload
+
+
+# ---------------------------------------------------------------- refunds (after a cancellation)
+def _refund_out(db: Session, r: Refund) -> dict:
+    w = db.get(WorkOrder, r.work_id)
+    inv = db.get(Invoice, r.invoice_id) if r.invoice_id else None
+    by = db.get(User, r.completed_by) if r.completed_by else None
+    return {"id": r.id, "refund_number": r.refund_number, "work_id": r.work_id, "work_number": w.work_number if w else None,
+            "invoice_id": r.invoice_id, "invoice_number": inv.invoice_number if inv else None, "client_name": r.client_name,
+            "reason": r.reason, "received_amount": r.received_amount, "charge_percent": r.charge_percent, "charge_amount": r.charge_amount,
+            "refund_amount": r.refund_amount, "status": r.status, "method": r.method, "transaction_id": r.transaction_id, "note": r.note,
+            "refund_date": r.refund_date, "created_at": r.created_at, "completed_by_name": by.name if by else None,
+            "completed_at": r.completed_at, "kind": "sales_invoice" if r.invoice_id else "work"}
+
+
+@router.get("/refunds", response_model=list[RefundOut], dependencies=[Depends(require_permission("finance", "view"))])
+def list_refunds(status: str | None = None, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+    """Refunds owed to customers after a cancellation (pending first), with the ones already paid back."""
+    from app.services import refunds as refunds_svc
+    if refunds_svc.heal_pending(db, org_id):
+        db.commit()
+    q = db.query(Refund).filter(Refund.org_id == org_id)
+    if status in ("pending", "completed"):
+        q = q.filter(Refund.status == status)
+    rows = q.order_by(Refund.status.desc(), Refund.created_at.desc()).all()      # "pending" sorts after "completed" descending, so flip below
+    rows.sort(key=lambda r: (r.status != "pending", -(r.created_at.timestamp() if r.created_at else 0)))
+    return [_refund_out(db, r) for r in rows]
+
+
+@router.post("/refunds/{refund_id}/complete", response_model=RefundOut, dependencies=[Depends(require_permission("finance", "refund"))])
+def complete_refund(refund_id: str, payload: RefundComplete, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    """Finance records the cancellation charge (%), how the rest was paid back and its transaction id, and completes the refund."""
+    from app.services import refunds as refunds_svc
+    r = db.query(Refund).filter(Refund.id == refund_id, Refund.org_id == org_id).with_for_update().first()
+    if not r:
+        raise HTTPException(status_code=404, detail="Refund not found")
+    try:
+        refunds_svc.complete(db, r, current_user, charge_percent=payload.charge_percent, method=payload.method,
+                             transaction_id=payload.transaction_id, note=payload.note, refund_date=payload.refund_date)
+    except refunds_svc.RefundError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    log_audit_event(db, org_id, current_user.id, "complete_refund", "Refund", r.id)
+    notify_role(db, org_id, "Admin", f"Refund {r.refund_number} completed: {r.refund_amount} paid back to {r.client_name}"
+                + (f", {r.charge_amount} kept as cancellation charge" if r.charge_amount else "") + ".")
+    db.commit()
+    db.refresh(r)
+    return _refund_out(db, r)

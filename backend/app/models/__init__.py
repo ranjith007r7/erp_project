@@ -12,7 +12,7 @@ from app.models.notification import Notification
 from app.models.custom_field import CustomField, CustomFieldValue
 from app.models.crm import Account, Contact, Lead, Opportunity
 from app.models.sales import Product, Customer, Quotation, QuotationItem, SalesOrder, SalesOrderItem, Invoice
-from app.models.finance import ChartOfAccounts, JournalEntry, JournalLine, Payment
+from app.models.finance import ChartOfAccounts, JournalEntry, JournalLine, Payment, Refund
 from app.models.inventory import ProductCategory, Warehouse, StockLevel, StockMovement
 from app.models.procurement import Vendor, PurchaseOrder, PurchaseOrderItem, GoodsReceipt, GoodsReceiptFile, ProcurementEmailLog
 from app.models.hr import Department, Employee, Attendance, LeaveRequest, PayrollRun, Payslip, Position, LeaveType, EmployeePayrollProfile, PayrollInput
@@ -47,6 +47,7 @@ __all__ = [
     "JournalEntry",
     "JournalLine",
     "Payment",
+    "Refund",
     "ProductCategory",
     "Warehouse",
     "StockLevel",

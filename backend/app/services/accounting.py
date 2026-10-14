@@ -33,6 +33,8 @@ DEFAULT_ACCOUNTS = [
     # GST collected from customers on sales: owed to the government until it is paid over, so liabilities.
     ("2210", "CGST Payable", "liability"),
     ("2220", "SGST Payable", "liability"),
+    # the part of a customer's money kept when they cancel (a % of what they paid)
+    ("4100", "Cancellation Charges", "revenue"),
 ]
 
 
@@ -160,6 +162,51 @@ def post_work_receipt_journal_entry(db: Session, org_id: str, payment_id: str, a
         entry.lines.append(JournalLine(account_id=get_account(db, org_id, "2210").id, debit=0, credit=cgst))
     if sgst:
         entry.lines.append(JournalLine(account_id=get_account(db, org_id, "2220").id, debit=0, credit=sgst))
+    db.add(entry)
+    return entry
+
+
+def post_credit_note_journal_entry(db: Session, org_id: str, invoice_id: str, amount, cgst=0, sgst=0) -> JournalEntry:
+    """A cancelled Sales invoice is reversed in full (nothing was supplied):
+        Debit  Sales Revenue (taxable value) and CGST / SGST Payable    Credit Accounts Receivable (gross)"""
+    amount, cgst, sgst = Decimal(amount), Decimal(cgst or 0), Decimal(sgst or 0)
+    entry = JournalEntry(org_id=org_id, entry_number=next_entry_number(db, org_id), reference=f"CN-{invoice_id}",
+                         description="Credit note: invoice cancelled")
+    entry.lines.append(JournalLine(account_id=get_account(db, org_id, "4000").id, debit=amount - cgst - sgst, credit=0))
+    if cgst:
+        entry.lines.append(JournalLine(account_id=get_account(db, org_id, "2210").id, debit=cgst, credit=0))
+    if sgst:
+        entry.lines.append(JournalLine(account_id=get_account(db, org_id, "2220").id, debit=sgst, credit=0))
+    entry.lines.append(JournalLine(account_id=get_account(db, org_id, "1100").id, debit=0, credit=amount))
+    db.add(entry)
+    return entry
+
+
+def post_refund_journal_entry(db: Session, org_id: str, refund_id: str, received, refund_amount, charge_amount, *,
+                              against_invoice: bool, cgst_percent=0, sgst_percent=0, note: str | None = None) -> JournalEntry:
+    """Money going back to a customer after a cancellation.
+    Cancelled work paid straight on the work (revenue and GST were booked with each receipt): reverse them,
+        Debit  Sales Revenue + CGST / SGST Payable (everything received)
+        Credit Cash (refund paid out)   Credit Cancellation Charges (the part kept)
+    Cancelled Sales order: the credit note already reversed the sale, so the debit lands on Accounts Receivable instead."""
+    received, refund_amount, charge_amount = Decimal(received), Decimal(refund_amount), Decimal(charge_amount)
+    entry = JournalEntry(org_id=org_id, entry_number=next_entry_number(db, org_id), reference=f"RFND-{refund_id}",
+                         description="Refund to customer" + (f" ({note})" if note else ""))
+    if against_invoice:
+        entry.lines.append(JournalLine(account_id=get_account(db, org_id, "1100").id, debit=received, credit=0))
+    else:
+        c, s_ = Decimal(cgst_percent or 0), Decimal(sgst_percent or 0)
+        cg = (received * c / (100 + c + s_)).quantize(Decimal("0.01")) if c else Decimal(0)
+        sg = (received * s_ / (100 + c + s_)).quantize(Decimal("0.01")) if s_ else Decimal(0)
+        entry.lines.append(JournalLine(account_id=get_account(db, org_id, "4000").id, debit=received - cg - sg, credit=0))
+        if cg:
+            entry.lines.append(JournalLine(account_id=get_account(db, org_id, "2210").id, debit=cg, credit=0))
+        if sg:
+            entry.lines.append(JournalLine(account_id=get_account(db, org_id, "2220").id, debit=sg, credit=0))
+    if refund_amount:
+        entry.lines.append(JournalLine(account_id=get_account(db, org_id, "1000").id, debit=0, credit=refund_amount))
+    if charge_amount:
+        entry.lines.append(JournalLine(account_id=get_account(db, org_id, "4100").id, debit=0, credit=charge_amount))
     db.add(entry)
     return entry
 

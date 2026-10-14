@@ -42,6 +42,8 @@ const SPECIAL_APPROVALS = [
     help: "Approve POs raised for works and stock, and reject them." },
   { module: "procurement", action: "correct_price", label: "Correct prices on received purchase orders",
     help: "Amend a wrongly keyed price after goods are received. Needs a reason; the old price stays on record." },
+  { module: "finance", action: "refund", label: "Complete refunds to customers",
+    help: "Record the cancellation charge, the refund mode and transaction id in Finance > Refunds and mark a refund completed. Viewing refunds only needs Finance view." },
   { module: "workpage", action: "approve", label: "Close works manually",
     help: "Mark a work as done by hand when it cannot close automatically." },
 ];

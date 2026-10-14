@@ -37,7 +37,6 @@ def test_direct_sale_is_its_own_type_and_follows_invoice_and_payment(client, sig
     # nothing can be typed in on the work: money and delivery belong to Sales / Finance
     assert client.post(f"{W}/{work['id']}/payments", headers=admin, json={"amount": 10, "method": "cash"}).status_code == 400
     assert client.post(f"{W}/{work['id']}/take-from-inventory", headers=admin).status_code == 400
-    assert client.post(f"{W}/{work['id']}/cancel-request", headers=admin, json={"reason": "Customer cancelled the order"}).status_code == 400
 
     # part payment: still delivered, invoice still unpaid; overpayment refused
     assert client.post("/api/finance/payments", headers=admin, json={"invoice_id": inv["id"], "amount": 100}).status_code == 201

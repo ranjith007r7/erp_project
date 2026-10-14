@@ -38,3 +38,20 @@ def set_po_totals(po) -> None:
     """po.total stays the taxable value (it is the cost basis everything else reads); GST and the payable total sit beside it."""
     t = summarize(item_lines(po.items))
     po.total, po.cgst_amount, po.sgst_amount, po.grand_total = t["subtotal"], t["cgst"], t["sgst"], t["total"]
+
+
+def split_inclusive(amount, cgst_percent, sgst_percent) -> dict:
+    """GST-inclusive amount (an MRP, a total paid) -> base + CGST + SGST that add back EXACTLY to the amount.
+    60000 at 10% + 10% -> 50000 + 5000 + 5000."""
+    amount = q2(amount)
+    c, s = pct(cgst_percent), pct(sgst_percent)
+    base = q2(amount * 100 / (100 + c + s))
+    cg = q2(base * c / 100)
+    return {"base": base, "cgst": cg, "sgst": amount - base - cg, "total": amount}
+
+
+def add_exclusive(base, cgst_percent, sgst_percent) -> dict:
+    """GST-exclusive base (a vendor rate) -> the same split with GST added on top: 50000 -> 50000 + 5000 + 5000 = 60000."""
+    base = q2(base)
+    cg, sg = q2(base * pct(cgst_percent) / 100), q2(base * pct(sgst_percent) / 100)
+    return {"base": base, "cgst": cg, "sgst": sg, "total": base + cg + sg}

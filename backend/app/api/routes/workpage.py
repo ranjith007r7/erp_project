@@ -137,6 +137,8 @@ def update_work(work_id: str, payload: WorkUpdate, db: Session = Depends(get_db)
     changes = payload.model_dump(exclude_unset=True)
     if svc.is_sales_order(w) and ({"quotation_amount", "discount_percent", "cgst_percent", "sgst_percent"} & set(changes)):
         raise HTTPException(400, "This is a Sales order: its amounts and GST come from the Sales order and invoice and cannot be changed here.")
+    if {"cgst_percent", "sgst_percent"} & set(changes) and any(r.batch_id for r in svc._all_issues(db, w)):
+        raise HTTPException(400, "The GST rate of this work comes from the stock lots it took and cannot be typed over. Correct the lot's GST in Stock Intake instead.")
     if "vendor_amount" in changes and svc._issues(db, w) and svc.q2(changes["vendor_amount"]) != svc.q2(w.vendor_amount):
         raise HTTPException(400, "The vendor amount comes from the stock batches taken from inventory and cannot be typed over.")
     money = {"quotation_amount": "Quoted amount", "vendor_amount": "Vendor amount", "discount_percent": "Client discount %",
@@ -167,6 +169,22 @@ def update_work(work_id: str, payload: WorkUpdate, db: Session = Depends(get_db)
     log_audit_event(db, org_id, current_user.id, "update_work", "WorkOrder", w.id)
     db.commit()
     return svc.detail(db, _load(db, org_id, work_id))
+
+
+@router.get("/works/{work_id}/invoice-pdf", dependencies=[Depends(require_permission("workpage", "view"))])
+def invoice_pdf(work_id: str, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    """Printable tax invoice of this work (needs a payment). The invoice number is assigned the first time it is generated."""
+    from fastapi.responses import Response
+    from app.services import invoicing
+    w = _load(db, org_id, work_id)
+    try:
+        data = invoicing.work_invoice_pdf(db, w)
+    except invoicing.InvoiceError as e:
+        raise HTTPException(409, str(e))
+    log_audit_event(db, org_id, current_user.id, "work_invoice_generated", "WorkOrder", w.id)
+    db.commit()
+    name = (w.invoice_number or "invoice") + ".pdf"
+    return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
 
 
 @router.post("/works/{work_id}/allocate", dependencies=[Depends(require_permission("workpage", "edit"))])

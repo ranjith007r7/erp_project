@@ -199,25 +199,34 @@ export default function ProcurementPage() {
                       : <>{chosenWork.work_number} has no item list, or what it needs is already in stock or on order. Nothing more to order for it.</>}
                   </p>
                 )}
-                {lines.map((l, i) => (
-                  <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                    <Select required aria-label="Product" className="col-span-4" value={l.product_id}
-                      onChange={(e) => {
-                        const p = products.find((x) => x.id === e.target.value);
-                        setLine(i, { product_id: e.target.value, unit_price: l.unit_price || (p ? String(Number(p.unit_price)) : ""), cgst_percent: p ? String(Number(p.cgst_percent)) : "0", sgst_percent: p ? String(Number(p.sgst_percent)) : "0" });
-                      }}>
-                      <option value="">Product...</option>
-                      {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </Select>
-                    <Input aria-label="Qty" className="col-span-2" type="number" min={1} max={chosenWork ? toOrder.find((n) => n.product_id === l.product_id)?.remaining : undefined} required value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} />
-                    <Input aria-label="Unit cost" className="col-span-2" type="number" min={0} step="0.01" required placeholder="Unit cost (excl. GST)" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} />
-                    <Input aria-label="CGST %" className="col-span-1" type="number" min={0} max={50} step="0.01" placeholder="CGST %" value={l.cgst_percent} onChange={(e) => setLine(i, { cgst_percent: e.target.value })} />
-                    <Input aria-label="SGST %" className="col-span-1" type="number" min={0} max={50} step="0.01" placeholder="SGST %" value={l.sgst_percent} onChange={(e) => setLine(i, { sgst_percent: e.target.value })} />
-                    <button type="button" aria-label="Remove line" disabled={lines.length === 1}
-                      onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))}
-                      className="col-span-1 text-slate-400 hover:text-red-600 disabled:opacity-30"><Trash2 size={16} /></button>
+                {lines.map((l, i) => {
+                  const base = (Number(l.qty) || 0) * (Number(l.unit_price) || 0);
+                  const gstAmt = Math.round(base * ((Number(l.cgst_percent) || 0) + (Number(l.sgst_percent) || 0))) / 100;
+                  return (
+                  <div key={i} className="rounded-lg border border-slate-200 dark:border-zinc-700 p-3 space-y-2">
+                    <div className="grid grid-cols-12 gap-2 items-end">
+                      <div className="col-span-12 sm:col-span-8"><Select required label="Product" aria-label="Product" value={l.product_id}
+                        onChange={(e) => {
+                          const p = products.find((x) => x.id === e.target.value);
+                          setLine(i, { product_id: e.target.value, unit_price: l.unit_price || (p ? String(Number(p.unit_price)) : ""), cgst_percent: p ? String(Number(p.cgst_percent)) : "0", sgst_percent: p ? String(Number(p.sgst_percent)) : "0" });
+                        }}>
+                        <option value="">Product...</option>
+                        {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </Select></div>
+                      <div className="col-span-8 sm:col-span-3"><Input label="Qty" aria-label="Qty" type="number" min={1} max={chosenWork ? toOrder.find((n) => n.product_id === l.product_id)?.remaining : undefined} required value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} /></div>
+                      <button type="button" aria-label="Remove line" disabled={lines.length === 1}
+                        onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))}
+                        className="col-span-4 sm:col-span-1 pb-2 text-slate-400 hover:text-red-600 disabled:opacity-30 flex justify-center"><Trash2 size={16} /></button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Input label="Unit cost (excl. GST)" aria-label="Unit cost" type="number" min={0} step="0.01" required value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} />
+                      <Input label="CGST %" aria-label="CGST %" type="number" min={0} max={50} step="0.01" value={l.cgst_percent} onChange={(e) => setLine(i, { cgst_percent: e.target.value })} />
+                      <Input label="SGST %" aria-label="SGST %" type="number" min={0} max={50} step="0.01" value={l.sgst_percent} onChange={(e) => setLine(i, { sgst_percent: e.target.value })} />
+                    </div>
+                    {base > 0 && <p className="text-xs text-slate-500 dark:text-zinc-400" data-testid="po-line-total">{inr(base)} + GST {inr(gstAmt)} = <b>{inr(base + gstAmt)}</b> to pay the vendor for this line</p>}
                   </div>
-                ))}
+                  );
+                })}
                 <div className="flex justify-between items-center">
                   <button type="button" onClick={() => setLines((ls) => [...ls, NEWLINE])}
                     className="text-xs flex items-center gap-1 text-slate-600 dark:text-zinc-300 hover:underline"><Plus size={14} /> Add another product</button>

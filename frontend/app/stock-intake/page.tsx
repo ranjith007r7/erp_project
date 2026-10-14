@@ -6,7 +6,7 @@ import { PageHeader, Button } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { SkeletonList } from "@/components/Skeleton";
 
-type Product = { id: string; name: string; sku: string | null };
+type Product = { id: string; name: string; sku: string | null; cgst_percent?: number; sgst_percent?: number };
 type SummaryRow = { product_id: string; product_name: string; sku: string | null; on_hand: number; priced: number; unpriced: number; usable: number; expired: number; value_at_cost: number };
 type Summary = { products: SummaryRow[]; vendor_names: string[]; totals: { units_priced: number; units_unpriced: number; value_at_cost: number } };
 type Batch = {
@@ -14,13 +14,15 @@ type Batch = {
   mrp: number; max_discount_percent: number; lowest_selling_price: number; quantity_in: number; quantity_remaining: number;
   inward_date: string; manufacture_month: string | null; expiry_date: string | null; expired: boolean; expiring_soon: boolean;
   source: string; note: string | null; sold_below_cost_warning?: boolean;
+  cgst_percent: number; sgst_percent: number; msp: number; mrp_cgst: number; mrp_sgst: number; lowest_selling_price_excl_gst: number;
+  vendor_cgst?: number; vendor_sgst?: number; vendor_total_paid?: number;
 };
 
 const inr = (n: number) => "Rs. " + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const field = "w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm";
 const label = "block text-xs font-medium text-slate-600 dark:text-zinc-400 mb-1";
 const today = () => new Date().toISOString().slice(0, 10);
-const EMPTY = { product_id: "", quantity: "", vendor_name: "", vendor_amount: "", mrp: "", max_discount_percent: "", inward_date: today(), manufacture_month: "", expiry_date: "", already_in_inventory: false, note: "" };
+const EMPTY = { product_id: "", quantity: "", vendor_name: "", vendor_amount: "", mrp: "", max_discount_percent: "", cgst_percent: "", sgst_percent: "", inward_date: today(), manufacture_month: "", expiry_date: "", already_in_inventory: false, note: "" };
 
 export default function StockIntakePage() {
   const { showToast } = useToast();
@@ -53,6 +55,16 @@ export default function StockIntakePage() {
     const m = Number(form.mrp), d = Number(form.max_discount_percent);
     return m > 0 && form.max_discount_percent !== "" && d >= 0 && d <= 100 ? m * (100 - d) / 100 : null;
   }, [form.mrp, form.max_discount_percent]);
+  const split = useMemo(() => {
+    const c = Number(form.cgst_percent) || 0, s = Number(form.sgst_percent) || 0, m = Number(form.mrp), v = Number(form.vendor_amount);
+    const r2 = (x: number) => Math.round(x * 100) / 100;
+    const base = m > 0 ? r2((m * 100) / (100 + c + s)) : null;
+    const cg = base !== null ? r2((base * c) / 100) : null;
+    const sg = base !== null && cg !== null ? r2(m - base - cg) : null;     // remainder keeps MSP + CGST + SGST = MRP exactly
+    const vc = form.vendor_amount !== "" ? r2((v * c) / 100) : null, vs = form.vendor_amount !== "" ? r2((v * s) / 100) : null;
+    return { c, s, base, cg, sg, vc, vs, vtotal: vc !== null && vs !== null ? r2(v + vc + vs) : null,
+             floorBase: floor !== null ? r2((floor * 100) / (100 + c + s)) : null };
+  }, [form.cgst_percent, form.sgst_percent, form.mrp, form.vendor_amount, floor]);
   const belowCost = floor !== null && form.vendor_amount !== "" && floor < Number(form.vendor_amount);
   const picked = summary?.products.find((p) => p.product_id === form.product_id);
 
@@ -65,6 +77,7 @@ export default function StockIntakePage() {
         body: {
           product_id: form.product_id, quantity: Number(form.quantity), vendor_name: form.vendor_name.trim(),
           vendor_amount: Number(form.vendor_amount), mrp: Number(form.mrp), max_discount_percent: Number(form.max_discount_percent),
+          cgst_percent: Number(form.cgst_percent) || 0, sgst_percent: Number(form.sgst_percent) || 0,
           inward_date: form.inward_date || null, manufacture_month: form.manufacture_month || null, expiry_date: form.expiry_date || null,
           already_in_inventory: form.already_in_inventory, note: form.note.trim() || null,
         },
@@ -81,6 +94,7 @@ export default function StockIntakePage() {
     setEditing(b);
     setEdit({
       vendor_name: b.vendor_name, vendor_amount: String(b.vendor_amount), mrp: String(b.mrp), max_discount_percent: String(b.max_discount_percent),
+      cgst_percent: String(Number(b.cgst_percent)), sgst_percent: String(Number(b.sgst_percent)),
       inward_date: b.inward_date, manufacture_month: b.manufacture_month ? b.manufacture_month.slice(0, 7) : "", expiry_date: b.expiry_date ?? "", note: b.note ?? "",
     });
   }
@@ -92,6 +106,7 @@ export default function StockIntakePage() {
         method: "PATCH", auth: true,
         body: {
           vendor_name: edit.vendor_name, vendor_amount: Number(edit.vendor_amount), mrp: Number(edit.mrp), max_discount_percent: Number(edit.max_discount_percent),
+          cgst_percent: Number(edit.cgst_percent) || 0, sgst_percent: Number(edit.sgst_percent) || 0,
           inward_date: edit.inward_date || null, manufacture_month: edit.manufacture_month || "", expiry_date: edit.expiry_date || null, note: edit.note,
         },
       });
@@ -146,7 +161,10 @@ export default function StockIntakePage() {
               <div className="grid sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
                   <label className={label}>Product *</label>
-                  <select required className={field} value={form.product_id} onChange={(e) => f("product_id", e.target.value)}>
+                  <select required className={field} value={form.product_id} onChange={(e) => {
+                    const p = products.find((x) => x.id === e.target.value);
+                    setForm((s) => ({ ...s, product_id: e.target.value, cgst_percent: String(Number(p?.cgst_percent ?? 0)), sgst_percent: String(Number(p?.sgst_percent ?? 0)) }));
+                  }}>
                     <option value="">Select product…</option>
                     {products.map((p) => <option key={p.id} value={p.id}>{p.name}{p.sku ? ` (${p.sku})` : ""}</option>)}
                   </select>
@@ -161,6 +179,9 @@ export default function StockIntakePage() {
                 <div><label className={label}>Vendor amount - rate bought at, per unit, excluding GST *</label><input required type="number" min={0} step="0.01" className={field} value={form.vendor_amount} onChange={(e) => f("vendor_amount", e.target.value)} /></div>
                 <div><label className={label}>MRP - can be sold at, per unit, GST included (as printed on the pack) *</label><input required type="number" min={0.01} step="0.01" className={field} value={form.mrp} onChange={(e) => f("mrp", e.target.value)} /></div>
                 <div><label className={label}>Max discount for this part (%) *</label><input required type="number" min={0} max={100} step="0.01" className={field} value={form.max_discount_percent} onChange={(e) => f("max_discount_percent", e.target.value)} /></div>
+                <div><label className={label}>CGST % (on this lot)</label><input type="number" min={0} max={50} step="0.01" className={field} value={form.cgst_percent} onChange={(e) => f("cgst_percent", e.target.value)} data-testid="lot-cgst" /></div>
+                <div><label className={label}>SGST % (on this lot)</label><input type="number" min={0} max={50} step="0.01" className={field} value={form.sgst_percent} onChange={(e) => f("sgst_percent", e.target.value)} data-testid="lot-sgst" /></div>
+                <div className="hidden sm:block" />
                 <div><label className={label}>Date of inward</label><input type="date" max={today()} className={field} value={form.inward_date} onChange={(e) => f("inward_date", e.target.value)} /></div>
                 <div><label className={label}>Month of manufacture</label><input type="month" className={field} value={form.manufacture_month} onChange={(e) => f("manufacture_month", e.target.value)} /></div>
                 <div><label className={label}>Expiry date</label><input type="date" className={field} value={form.expiry_date} onChange={(e) => f("expiry_date", e.target.value)} /></div>
@@ -170,6 +191,28 @@ export default function StockIntakePage() {
                 <input type="checkbox" className="mt-1" checked={form.already_in_inventory} onChange={(e) => f("already_in_inventory", e.target.checked)} />
                 <span>These units are <b>already counted</b> in Inventory - only attach the rates (does not add to the stock count).</span>
               </label>
+              {(split.base !== null || split.vtotal !== null) && (
+                <div className="grid sm:grid-cols-2 gap-3 text-xs" data-testid="lot-split">
+                  {split.base !== null && (
+                    <div className="rounded-lg bg-slate-50 dark:bg-zinc-800 p-3 space-y-0.5">
+                      <p className="font-semibold text-slate-700 dark:text-zinc-200">Selling price per unit (MRP is GST included)</p>
+                      <p>MSP (max selling price, excl. GST): <b>{inr(split.base)}</b></p>
+                      <p>+ CGST {split.c}%: {inr(split.cg ?? 0)} &nbsp;+ SGST {split.s}%: {inr(split.sg ?? 0)}</p>
+                      <p className="border-t border-slate-200 dark:border-zinc-700 pt-0.5">= MRP: <b>{inr(Number(form.mrp))}</b></p>
+                      {floor !== null && split.floorBase !== null && <p className="text-slate-500">Lowest selling price: {inr(split.floorBase)} excl. GST = {inr(floor)} incl. GST</p>}
+                    </div>
+                  )}
+                  {split.vtotal !== null && (
+                    <div className="rounded-lg bg-slate-50 dark:bg-zinc-800 p-3 space-y-0.5">
+                      <p className="font-semibold text-slate-700 dark:text-zinc-200">Vendor price per unit</p>
+                      <p>Base (excl. GST): <b>{inr(Number(form.vendor_amount))}</b></p>
+                      <p>+ CGST {split.c}%: {inr(split.vc ?? 0)} &nbsp;+ SGST {split.s}%: {inr(split.vs ?? 0)}</p>
+                      <p className="border-t border-slate-200 dark:border-zinc-700 pt-0.5">Total paid to vendor: <b>{inr(split.vtotal)}</b></p>
+                      <p className="text-slate-500">Cost and profit use the base only; the GST paid is not part of profit.</p>
+                    </div>
+                  )}
+                </div>
+              )}
               {floor !== null && (
                 <p className={`text-xs ${belowCost ? "text-red-600" : "text-slate-500 dark:text-zinc-500"}`}>
                   Lowest allowed selling price: <b>{inr(floor)}</b> per unit.{belowCost && " This is below your buying rate - billing at the floor would lose money."}
@@ -220,16 +263,19 @@ export default function StockIntakePage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="text-left text-xs text-slate-500 dark:text-zinc-500 border-b border-slate-200 dark:border-zinc-800">
-                  <th className="py-2 pr-3">Product</th><th className="pr-3">Vendor</th><th className="pr-3">Left / in</th><th className="pr-3">Cost</th><th className="pr-3">MRP</th><th className="pr-3">Max disc.</th><th className="pr-3">Floor</th><th className="pr-3">Inward</th><th className="pr-3">Mfg</th><th className="pr-3">Expiry</th><th></th></tr></thead>
+                  <th className="py-2 pr-3">Product</th><th className="pr-3">Vendor</th><th className="pr-3">Left / in</th><th className="pr-3">GST</th><th className="pr-3">Cost (excl. GST)</th><th className="pr-3">Total paid</th><th className="pr-3">MRP (incl.)</th><th className="pr-3">MSP (excl.)</th><th className="pr-3">Max disc.</th><th className="pr-3">Floor (incl. / excl.)</th><th className="pr-3">Inward</th><th className="pr-3">Mfg</th><th className="pr-3">Expiry</th><th></th></tr></thead>
                 <tbody>
                   {shown.map((b) => (
                     <tr key={b.id} className="border-b border-slate-100 dark:border-zinc-800 align-top">
                       <td className="py-2 pr-3">{b.product_name}<div className="text-xs text-slate-400">{b.source.replace("_", " ")}</div></td>
                       <td className="pr-3">{b.vendor_name}</td>
                       <td className="pr-3">{b.quantity_remaining} / {b.quantity_in}</td>
-                      <td className="pr-3">{inr(b.vendor_amount)}</td><td className="pr-3">{inr(b.mrp)}</td>
+                      <td className="pr-3 whitespace-nowrap">{Number(b.cgst_percent)}% + {Number(b.sgst_percent)}%</td>
+                      <td className="pr-3">{inr(b.vendor_amount)}</td>
+                      <td className="pr-3">{b.vendor_total_paid !== undefined ? inr(b.vendor_total_paid) : "-"}</td>
+                      <td className="pr-3">{inr(b.mrp)}</td><td className="pr-3">{inr(b.msp)}</td>
                       <td className="pr-3">{b.max_discount_percent}%</td>
-                      <td className={`pr-3 ${b.sold_below_cost_warning ? "text-red-600" : ""}`} title={b.sold_below_cost_warning ? "Floor is below cost" : ""}>{inr(b.lowest_selling_price)}</td>
+                      <td className={`pr-3 ${b.sold_below_cost_warning ? "text-red-600" : ""}`} title={b.sold_below_cost_warning ? "Floor is below cost" : ""}>{inr(b.lowest_selling_price)}<div className="text-xs text-slate-400">{inr(b.lowest_selling_price_excl_gst)}</div></td>
                       <td className="pr-3">{b.inward_date}</td>
                       <td className="pr-3">{b.manufacture_month ? b.manufacture_month.slice(0, 7) : "-"}</td>
                       <td className={`pr-3 ${b.expired ? "text-red-600 font-medium" : b.expiring_soon ? "text-amber-600" : ""}`}>{b.expiry_date ? b.expiry_date + (b.expired ? " (expired)" : "") : "-"}</td>
@@ -237,7 +283,7 @@ export default function StockIntakePage() {
                         {b.source !== "purchase_order" && b.quantity_remaining === b.quantity_in && <button className="text-xs underline text-red-600" onClick={() => remove(b)}>Undo</button>}</td>
                     </tr>
                   ))}
-                  {!shown.length && <tr><td colSpan={11} className="py-4 text-slate-500">No lots found.</td></tr>}
+                  {!shown.length && <tr><td colSpan={14} className="py-4 text-slate-500">No lots found.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -255,6 +301,9 @@ export default function StockIntakePage() {
               <div><label className={label}>Vendor amount</label><input required type="number" step="0.01" min={0} className={field} value={edit.vendor_amount} onChange={(e) => setEdit({ ...edit, vendor_amount: e.target.value })} /></div>
               <div><label className={label}>MRP</label><input required type="number" step="0.01" min={0.01} className={field} value={edit.mrp} onChange={(e) => setEdit({ ...edit, mrp: e.target.value })} /></div>
               <div><label className={label}>Max discount %</label><input required type="number" step="0.01" min={0} max={100} className={field} value={edit.max_discount_percent} onChange={(e) => setEdit({ ...edit, max_discount_percent: e.target.value })} /></div>
+              <div><label className={label}>CGST %</label><input type="number" step="0.01" min={0} max={50} className={field} value={edit.cgst_percent} onChange={(e) => setEdit({ ...edit, cgst_percent: e.target.value })} /></div>
+              <div><label className={label}>SGST %</label><input type="number" step="0.01" min={0} max={50} className={field} value={edit.sgst_percent} onChange={(e) => setEdit({ ...edit, sgst_percent: e.target.value })} /></div>
+              <EditSplit edit={edit} />
               <div><label className={label}>Date of inward</label><input type="date" className={field} value={edit.inward_date} onChange={(e) => setEdit({ ...edit, inward_date: e.target.value })} /></div>
               <div><label className={label}>Month of manufacture</label><input type="month" className={field} value={edit.manufacture_month} onChange={(e) => setEdit({ ...edit, manufacture_month: e.target.value })} /></div>
               <div><label className={label}>Expiry date</label><input type="date" className={field} value={edit.expiry_date} onChange={(e) => setEdit({ ...edit, expiry_date: e.target.value })} /></div>
@@ -274,5 +323,17 @@ function Stat({ t, v, warn, hint }: { t: string; v: string; warn?: boolean; hint
       <p className="text-xs text-slate-500 dark:text-zinc-500">{t}</p>
       <p className={`text-lg font-semibold ${warn ? "text-amber-600" : "text-slate-800 dark:text-white"}`}>{v}</p>
     </div>
+  );
+}
+
+function EditSplit({ edit }: { edit: Record<string, string> }) {
+  const c = Number(edit.cgst_percent) || 0, s = Number(edit.sgst_percent) || 0, m = Number(edit.mrp), v = Number(edit.vendor_amount);
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  const base = m > 0 ? r2((m * 100) / (100 + c + s)) : 0;
+  const paid = r2(v * (100 + c + s) / 100);
+  return (
+    <p className="col-span-2 text-xs text-slate-500 dark:text-zinc-400 rounded-lg bg-slate-50 dark:bg-zinc-800 p-2">
+      MSP (excl. GST) {inr(base)} + CGST {inr(r2(base * c / 100))} + SGST {inr(r2(m - base - r2(base * c / 100)))} = MRP {inr(m)}. Vendor base {inr(v)} + GST = {inr(paid)} paid.
+    </p>
   );
 }

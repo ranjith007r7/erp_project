@@ -85,3 +85,34 @@ class Payment(Base):
     recorded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     date = Column(Date, default=date.today)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Refund(Base):
+    """
+    Money going back to a customer after a cancellation. Raised automatically when a work that had received money is
+    cancelled (status "pending"); Finance then records the cancellation charge (a % of what was received), pays the rest
+    back by cash / card / GPay / bank transfer with its transaction id, and marks it "completed". Completing posts the
+    journal entry and is reflected in the work's payment reconciliation.
+    """
+    __tablename__ = "refunds"
+    __table_args__ = (UniqueConstraint("org_id", "refund_number", name="uq_refund_number"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    refund_number = Column(String, nullable=False)                       # RF-0001
+    work_id = Column(UUID(as_uuid=True), ForeignKey("work_orders.id"), nullable=False)
+    invoice_id = Column(UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=True)   # set for a cancelled Sales order
+    client_name = Column(String, nullable=False)
+    reason = Column(String, nullable=True)                               # why the work was cancelled
+    received_amount = Column(Numeric(14, 2), nullable=False)             # what the customer had paid (GST included)
+    charge_percent = Column(Numeric(5, 2), nullable=False, default=0)    # cancellation charge, % of the amount received
+    charge_amount = Column(Numeric(14, 2), nullable=False, default=0)
+    refund_amount = Column(Numeric(14, 2), nullable=False)               # received - charge: what goes back
+    status = Column(String, nullable=False, default="pending")           # pending / completed
+    method = Column(String, nullable=True)
+    transaction_id = Column(String, nullable=True)
+    note = Column(String, nullable=True)
+    refund_date = Column(Date, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    completed_at = Column(DateTime, nullable=True)

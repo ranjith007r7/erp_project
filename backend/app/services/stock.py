@@ -26,6 +26,7 @@ from app.models.procurement import Vendor
 from app.models.sales import Product
 from app.models.stock import StockBatch
 from app.services.inventory import receive_stock, issue_stock
+from app.services import gst
 
 TWO = Decimal("0.01")
 SOURCES = ("manual", "csv", "purchase_order", "priced_existing")
@@ -105,7 +106,8 @@ def _vendor_id(db: Session, org_id, name: str):
 def create_batch(db: Session, org_id, user, *, product_id, quantity: int, vendor_name: str, vendor_amount, mrp,
                  max_discount_percent, inward_date: date | None, manufacture_month: date | None, expiry_date: date | None,
                  source: str = "manual", po_id=None, vendor_id=None, note: str | None = None,
-                 already_in_inventory: bool = False, count_stock: bool = True) -> StockBatch:
+                 already_in_inventory: bool = False, count_stock: bool = True,
+                 cgst_percent=None, sgst_percent=None) -> StockBatch:
     """
     Add a priced lot.
       already_in_inventory=True : the units are already in the Inventory total (old stock being priced now);
@@ -126,7 +128,13 @@ def create_batch(db: Session, org_id, user, *, product_id, quantity: int, vendor
             raise StockError(f"Only {left} unit(s) of {product.name} are in Inventory without rates; you entered {quantity}. "
                              f"Untick 'already in Inventory' to add new stock instead.")
         source = "priced_existing"
+    # the lot's GST slab: typed, else the product's own
+    cg = product.cgst_percent if cgst_percent is None else cgst_percent
+    sg = product.sgst_percent if sgst_percent is None else sgst_percent
+    if Decimal(cg or 0) < 0 or Decimal(sg or 0) < 0 or Decimal(cg or 0) + Decimal(sg or 0) > 100:
+        raise StockError("CGST and SGST must be between 0 and 100 percent together.")
     batch = StockBatch(org_id=org_id, product_id=product_id, vendor_id=vendor_id or _vendor_id(db, org_id, vendor_name),
+                       cgst_percent=q2(cg), sgst_percent=q2(sg),
                        vendor_name=vendor_name.strip(), quantity_in=quantity, quantity_remaining=quantity,
                        vendor_amount=q2(vendor_amount), mrp=q2(mrp), max_discount_percent=q2(max_discount_percent),
                        inward_date=inward_date, manufacture_month=manufacture_month, expiry_date=expiry_date,
@@ -196,7 +204,12 @@ def batch_row(db: Session, b: StockBatch, product: Product | None = None, show_c
     cost = q2(b.vendor_amount)
     mrp = q2(b.mrp)
     floor = q2(mrp * (Decimal(100) - Decimal(b.max_discount_percent or 0)) / 100)
+    ms = gst.split_inclusive(mrp, b.cgst_percent, b.sgst_percent)        # MSP + CGST + SGST = MRP
+    fs = gst.split_inclusive(floor, b.cgst_percent, b.sgst_percent)
     row = {
+        "cgst_percent": q2(b.cgst_percent), "sgst_percent": q2(b.sgst_percent),
+        "msp": ms["base"], "mrp_cgst": ms["cgst"], "mrp_sgst": ms["sgst"],
+        "lowest_selling_price_excl_gst": fs["base"],
         "id": b.id, "product_id": b.product_id, "product_name": product.name if product else None,
         "sku": product.sku if product else None, "quantity_in": b.quantity_in, "quantity_remaining": b.quantity_remaining,
         "mrp": mrp, "max_discount_percent": q2(b.max_discount_percent), "lowest_selling_price": floor,
@@ -205,8 +218,10 @@ def batch_row(db: Session, b: StockBatch, product: Product | None = None, show_c
         "created_at": b.created_at,
     }
     if show_cost:
+        paid = gst.add_exclusive(cost, b.cgst_percent, b.sgst_percent)     # what we really paid per unit
         row.update({"vendor_name": b.vendor_name, "vendor_amount": cost,
-                    "sold_below_cost_warning": floor < cost})
+                    "vendor_cgst": paid["cgst"], "vendor_sgst": paid["sgst"], "vendor_total_paid": paid["total"],
+                    "sold_below_cost_warning": fs["base"] < cost})
     return row
 
 
@@ -216,9 +231,11 @@ def batch_from_po(db: Session, org_id, user, po, item) -> StockBatch:
     until a manager sets the real figures in Stock Intake."""
     product = db.get(Product, item.product_id)
     cost = q2(item.unit_price)
-    mrp = q2(product.unit_price) if product and Decimal(product.unit_price or 0) > 0 else max(cost, TWO)
+    # placeholder MRP (GST included) until a manager types the real one: the product's list price plus the line's GST
+    mrp = gst.add_exclusive(product.unit_price, item.cgst_percent, item.sgst_percent)["total"] if product and Decimal(product.unit_price or 0) > 0 else max(cost, TWO)
     b = StockBatch(org_id=org_id, product_id=item.product_id, vendor_id=po.vendor_id,
                    vendor_name=po.vendor.name if po.vendor else "Vendor", quantity_in=item.qty, quantity_remaining=item.qty,
+                   cgst_percent=q2(item.cgst_percent), sgst_percent=q2(item.sgst_percent),
                    vendor_amount=cost, mrp=mrp, max_discount_percent=Decimal("0.00"), inward_date=date.today(),
                    source="purchase_order", po_id=po.id, created_by=user.id if user else None,
                    note=f"Received against {po.po_number}" if po.po_number else "Received against a purchase order")
