@@ -101,3 +101,20 @@ def test_finance_gst_summary_nets_collected_against_credit(client, signup):
     assert len(s["months"]) == 1 and s["ledger"][0]["po_number"] and D(s["ledger"][0]["total_gst"]) == 40000 and s["ledger"][0]["eligible"] is True
     other = signup()
     assert client.get("/api/finance/gst-summary", headers=other).json()["totals"]["output_gst"] in (0, "0.00", 0.0)
+
+
+def test_vendor_gst_is_shown_before_stock_is_taken_as_an_estimate(client, signup):
+    h = signup()
+    # no stock, no PO: the vendor amount typed on the work gets the work's own slab (25,000 + 20% = 30,000)
+    w = client.post(W, headers=h, json={"client_name": "Acme", "quotation_amount": 40000, "vendor_amount": 25000, "cgst_percent": 10, "sgst_percent": 10}).json()
+    got = client.get(f"{W}/{w['id']}", headers=h).json()
+    assert D(got["vendor_gst"]) == 5000 and D(got["vendor_total_paid"]) == 30000 and got["vendor_gst_estimated"] is True
+    assert D(got["gst_credit"]) == 5000 and D(got["gst_net_payable"]) == 3000 and D(got["actual_profit"]) == 15000
+    # once stock is taken the figure comes from the lots and is no longer an estimate
+    prod = _product(client, h)
+    _received_lot(client, h, prod)
+    w2 = _work(client, h, prod)
+    assert client.get(f"{W}/{w2['id']}", headers=h).json()["vendor_gst_estimated"] is True
+    assert D(client.get(f"{W}/{w2['id']}", headers=h).json()["vendor_total_paid"]) == 48000
+    client.post(f"{W}/{w2['id']}/take-from-inventory", headers=h)
+    assert client.get(f"{W}/{w2['id']}", headers=h).json()["vendor_gst_estimated"] is False

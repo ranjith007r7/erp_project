@@ -159,13 +159,13 @@ export default function WorkDetailPage() {
             <Row2 label="Actual profit" value={w.actual_profit} strong tone={Number(w.actual_profit) < 0 ? "bad" : "good"} testid="actual-profit" />
             <div className="border-t border-slate-200 dark:border-zinc-800 pt-1.5" />
             <Row2 label="Client pays (GST included)" value={w.net_payable} />
-            <Row2 label="We paid the vendor (incl. GST)" value={w.vendor_total_paid} />
+            <Row2 label={`We paid the vendor (incl. GST)${w.vendor_gst_estimated ? " - estimate until the stock is taken or the PO is received" : ""}`} value={w.vendor_total_paid} />
             <Row2 label="Margin including GST, before settling GST" value={w.cash_margin_incl_gst} testid="cash-margin" />
           </div>
           <div className="rounded-lg bg-slate-50 dark:bg-zinc-800 p-3 text-sm space-y-1.5" data-testid="gst-banner">
             <p className="font-medium text-slate-800 dark:text-white">GST on this work</p>
             <Row2 label="Collected from the client (belongs to the government)" value={w.gst_collected} />
-            <Row2 label="Credit for GST paid to the vendor" value={`-${Number(w.gst_credit).toFixed(2)}`} />
+            <Row2 label={`Credit for GST paid to the vendor${w.vendor_gst_estimated ? " (estimate)" : ""}`} value={`-${Number(w.gst_credit).toFixed(2)}`} />
             <Row2 label="Net GST to pay the government" value={w.gst_net_payable} strong testid="gst-net" />
             <p className="text-xs text-slate-500 dark:text-zinc-400 pt-1">
               Margin including GST {inr(w.cash_margin_incl_gst)} − net GST {inr(w.gst_net_payable)} = {inr(w.cash_after_gst_settlement)} left, which equals the actual profit.

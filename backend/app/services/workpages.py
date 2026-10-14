@@ -468,19 +468,42 @@ def mark_stock_short(db: Session, work: WorkOrder, user: User, note: str | None 
     return work
 
 
-def vendor_gst_split(db: Session, w: WorkOrder) -> tuple[Decimal, Decimal]:
-    """GST we paid our vendors on the units this work took: (claimable as credit, not claimable). Claimable GST is not a cost;
-    GST on a lot flagged 'not claimable' is part of what the goods really cost us."""
+def _vendor_gst_parts(db: Session, w: WorkOrder) -> tuple[Decimal, Decimal, bool]:
+    """(claimable, not claimable, estimated). Real figures come from the lots the work took. Before stock is taken the best
+    available figure is used and flagged as an estimate: the GST on the work's live purchase orders, else the slab of the
+    lots Inventory would issue, else the work's own rate applied to the vendor amount."""
     ok = bad = Decimal(0)
-    for r in _all_issues(db, w):
-        if not r.batch_id:
-            continue
+    rows = [r for r in _all_issues(db, w) if r.batch_id]
+    for r in rows:
         g = Decimal(r.cost_rate or 0) * int(r.qty) * (Decimal(r.cgst_percent or 0) + Decimal(r.sgst_percent or 0)) / 100
         if r.itc_eligible:
             ok += g
         else:
             bad += g
-    return q2(ok), q2(bad)
+    if rows or is_sales_order(w) or w.status in ("cancelled",):
+        return q2(ok), q2(bad), False
+    if not Decimal(w.vendor_amount or 0):
+        return q2(0), q2(0), False
+    pos = _active_pos(db, w)
+    if pos:
+        return q2(sum((Decimal(p.cgst_amount or 0) + Decimal(p.sgst_amount or 0) for p in pos), Decimal(0))), q2(0), True
+    planned, covered = Decimal(0), Decimal(0)
+    for it in _items(db, w):
+        picks, _short = stock_svc.plan_issue(db, w.org_id, it.product_id, it.qty)
+        for b, t in picks:
+            base = Decimal(b.vendor_amount or 0) * t
+            covered += base
+            planned += base * (Decimal(b.cgst_percent or 0) + Decimal(b.sgst_percent or 0)) / 100
+    if covered and q2(covered) == q2(w.vendor_amount):
+        return q2(planned), q2(0), True
+    return q2(Decimal(w.vendor_amount) * (Decimal(w.cgst_percent or 0) + Decimal(w.sgst_percent or 0)) / 100), q2(0), True
+
+
+def vendor_gst_split(db: Session, w: WorkOrder) -> tuple[Decimal, Decimal]:
+    """GST we paid our vendors on this work: (claimable as credit, not claimable). Claimable GST is not a cost;
+    GST on a lot flagged 'not claimable' is part of what the goods really cost us."""
+    ok, bad, _ = _vendor_gst_parts(db, w)
+    return ok, bad
 
 
 def vendor_gst(db: Session, w: WorkOrder) -> Decimal:
@@ -491,13 +514,13 @@ def vendor_gst(db: Session, w: WorkOrder) -> Decimal:
 def gst_position(db: Session, w: WorkOrder) -> dict:
     """The work's profit with and without GST, and what happens to the GST: collected from the client, claimed back from vendor
     credit, and the rest owed to the government."""
-    credit, blocked = vendor_gst_split(db, w)
+    credit, blocked, estimated = _vendor_gst_parts(db, w)
     c, s_ = gst_amounts(w)
     collected = q2(c + s_)
     cost = q2(Decimal(w.vendor_amount or 0))
     net_gst = q2(collected - credit)
     return {
-        "gst_collected": collected, "gst_credit": credit, "gst_blocked": blocked, "gst_net_payable": net_gst,
+        "vendor_gst_estimated": estimated, "gst_collected": collected, "gst_credit": credit, "gst_blocked": blocked, "gst_net_payable": net_gst,
         "profit_excl_gst": profit(w),                                        # taxable value - vendor base
         "actual_profit": q2(profit(w) - blocked),                            # minus GST we paid but cannot claim
         "cash_margin_incl_gst": q2(net_payable(w) - cost - credit - blocked),   # what the client pays less what we paid, before settling GST

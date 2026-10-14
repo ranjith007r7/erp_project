@@ -25,7 +25,7 @@ export type WorkDetail = WorkRow & {
   client_details: string | null; description: string | null; delivered_on: string | null; delivery_note: string | null;
   can_close: boolean; pending_note: string | null; can_cancel: boolean;
   refund: { number: string; status: "pending" | "completed"; received_amount: string; charge_percent: string; charge_amount: string; refund_amount: string; method: string | null; transaction_id: string | null; refund_date: string | null } | null;
-  gst_collected: string; gst_credit: string; gst_blocked: string; gst_net_payable: string;
+  vendor_gst_estimated: boolean; gst_collected: string; gst_credit: string; gst_blocked: string; gst_net_payable: string;
   profit_excl_gst: string; actual_profit: string; cash_margin_incl_gst: string; cash_after_gst_settlement: string;
   invoice_number: string | null; invoice_ready: boolean; vendor_gst: string; vendor_total_paid: string;
   cancellation: { reason: string; remark: string | null; status_before: string | null; status_before_label: string | null; requested_by: string | null; requested_at: string | null; decided_by: string | null; decided_at: string | null; decision_note: string | null } | null;
