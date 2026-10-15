@@ -872,6 +872,17 @@ def close(db: Session, work: WorkOrder, user: User) -> WorkOrder:
 
 
 # ------------------------------------------------------- cross-module hooks
+def works_for_leads(db: Session, org_id, lead_ids) -> dict:
+    """lead id -> {work_id, work_number, status, status_label} for the works opened from those converted leads (CRM's Converted list)."""
+    ids = list(lead_ids)
+    if not ids:
+        return {}
+    out = {}
+    for w in db.query(WorkOrder).filter(WorkOrder.org_id == org_id, WorkOrder.lead_id.in_(ids)).order_by(WorkOrder.created_at).all():
+        out[w.lead_id] = {"work_id": str(w.id), "work_number": w.work_number, "status": w.status, "status_label": STATUSES[w.status]["label"]}
+    return out
+
+
 def on_lead_converted(db: Session, lead, opportunity, user: User | None = None):
     """CRM: a quotation that came in was converted. Opens the work as Assigned (once per lead)."""
     if db.query(WorkOrder.id).filter(WorkOrder.org_id == lead.org_id, WorkOrder.lead_id == lead.id).first():

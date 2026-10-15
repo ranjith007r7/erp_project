@@ -12,6 +12,7 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -26,6 +27,9 @@ from app.schemas.crm import (
     OpportunityCreate, OpportunityOut, OpportunityStageUpdate,
     BulkDeleteRequest, clean_mobile,
 )
+
+CONVERTED_DELETE_MSG = ("Converted quotations can't be deleted: they are now a job. It ends as Work completed or Cancelled "
+                        "on its work page, and stays in CRM's Converted list as the record.")
 
 router = APIRouter(prefix="/api/crm", tags=["crm"], dependencies=[Depends(get_current_user)])
 
@@ -71,8 +75,29 @@ def create_lead(payload: LeadCreate, db: Session = Depends(get_db), org_id: str 
 
 
 @router.get("/leads", response_model=list[LeadOut], dependencies=[Depends(require_permission("crm", "view"))])
-def list_leads(db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
-    return db.query(Lead).filter(Lead.org_id == org_id).order_by(Lead.created_at.desc()).all()
+def list_leads(converted: bool | None = None, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+    """?converted=false -> quotations still waiting (the CRM page); ?converted=true -> the converted ones; no filter -> all."""
+    q = db.query(Lead).filter(Lead.org_id == org_id)
+    if converted is True:
+        q = q.filter(Lead.status == "converted")
+    elif converted is False:
+        q = q.filter(Lead.status != "converted")
+    return q.order_by(Lead.created_at.desc()).all()
+
+
+@router.get("/leads/converted", dependencies=[Depends(require_permission("crm", "view"))])
+def converted_list(page: int = 1, page_size: int = 15, q: str | None = None, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+    """The Converted list: quotations that became works, newest conversion first, with the work each one opened."""
+    page, page_size = max(1, page), min(max(1, page_size), 100)
+    query = db.query(Lead).filter(Lead.org_id == org_id, Lead.status == "converted")
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        query = query.filter(or_(Lead.name.ilike(like), Lead.company_name.ilike(like), Lead.phone.ilike(like)))
+    total = query.count()
+    rows = query.order_by(Lead.converted_at.desc().nullslast(), Lead.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    works = workpages.works_for_leads(db, org_id, [r.id for r in rows])
+    items = [{**LeadOut.model_validate(r).model_dump(mode="json"), "work": works.get(r.id)} for r in rows]
+    return {"total": total, "page": page, "page_size": page_size, "total_pages": max(1, -(-total // page_size)), "items": items}
 
 
 @router.patch("/leads/{lead_id}", response_model=LeadOut, dependencies=[Depends(require_permission("crm", "edit"))])
@@ -106,6 +131,8 @@ def delete_lead(lead_id: str, db: Session = Depends(get_db), org_id: str = Depen
     lead = db.query(Lead).filter(Lead.id == lead_id, Lead.org_id == org_id).first()
     if not lead:
         raise HTTPException(404, "Lead not found")
+    if lead.status == "converted":
+        raise HTTPException(409, CONVERTED_DELETE_MSG)
     db.delete(lead)
     log_audit_event(db, org_id, current_user.id, "delete_lead", "Lead", lead_id)
     db.commit()
@@ -125,16 +152,20 @@ def bulk_delete_leads(payload: BulkDeleteRequest, db: Session = Depends(get_db),
     """
     deleted_ids: list[str] = []
     not_found_ids: list[str] = []
+    blocked: list[dict] = []
     for lead_id in payload.ids:
         lead = db.query(Lead).filter(Lead.id == lead_id, Lead.org_id == org_id).first()
         if not lead:
             not_found_ids.append(lead_id)
             continue
+        if lead.status == "converted":
+            blocked.append({"id": lead_id, "name": lead.name})      # a converted quotation is a job now: kept, reported
+            continue
         db.delete(lead)
         log_audit_event(db, org_id, current_user.id, "delete_lead", "Lead", lead_id)
         deleted_ids.append(lead_id)
     db.commit()
-    return {"deleted": deleted_ids, "not_found": not_found_ids}
+    return {"deleted": deleted_ids, "not_found": not_found_ids, "blocked_converted": blocked, "message": CONVERTED_DELETE_MSG if blocked else None}
 
 
 @router.patch("/leads/{lead_id}/status", response_model=LeadOut, dependencies=[Depends(require_permission("crm", "edit"))])

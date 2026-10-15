@@ -36,6 +36,7 @@ export default function CRMPage() {
   const { showToast } = useToast();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [leadsLoading, setLeadsLoading] = useState(true);
+  const [convertedCount, setConvertedCount] = useState<number | null>(null);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [form, setForm] = useState({ name: "", company_name: "", phone: "", estimated_amount: "", industry: "", email: "", source: "" });
   const [error, setError] = useState<string | null>(null);
@@ -77,8 +78,9 @@ export default function CRMPage() {
     if (!window.confirm(`Delete ${selectedLeadIds.size} selected lead(s)? This can't be undone.`)) return;
     setError(null);
     try {
-      await apiRequest("/api/crm/leads/bulk-delete", { method: "POST", auth: true, body: { ids: Array.from(selectedLeadIds) } });
-      showToast(`Deleted ${selectedLeadIds.size} lead(s).`, "success");
+      const r = await apiRequest<{ deleted: string[]; blocked_converted: { id: string; name: string }[]; message: string | null }>("/api/crm/leads/bulk-delete", { method: "POST", auth: true, body: { ids: Array.from(selectedLeadIds) } });
+      if (r.blocked_converted?.length) showToast(`${r.blocked_converted.length} converted job(s) were not deleted. ${r.message ?? ""}`, "info");
+      if (r.deleted.length) showToast(`Deleted ${r.deleted.length} quotation(s).`, "success");
       setSelectedLeadIds(new Set());
       loadAll();
     } catch (err) {
@@ -124,11 +126,12 @@ export default function CRMPage() {
   }
 
   function loadAll() {
-    apiRequest<Lead[]>("/api/crm/leads", { auth: true })
+    apiRequest<Lead[]>("/api/crm/leads?converted=false", { auth: true })
       .then(setLeads)
       .catch((e) => setError(e.message))
       .finally(() => setLeadsLoading(false));
     apiRequest<Opportunity[]>("/api/crm/opportunities", { auth: true }).then(setOpportunities).catch(() => {});
+    apiRequest<{ total: number }>("/api/crm/leads/converted?page_size=1", { auth: true }).then((r) => setConvertedCount(r.total)).catch(() => {});
   }
 
   useEffect(loadAll, []);
@@ -329,10 +332,14 @@ export default function CRMPage() {
                   </SwipeToDelete>
                 );
               })}
-              {leads.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No leads yet.</p>}
+              {leads.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No quotations waiting. New entries stay here until they are converted.</p>}
             </div>
           )}
           <PaginationControls page={leadPage} totalPages={leadTotalPages} onChange={setLeadPage} />
+          <Link href="/crm/converted" data-testid="open-converted" className="block mt-4 bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
+            <p className="font-medium text-slate-800 dark:text-white">Converted list →</p>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{convertedCount ?? "…"} quotation{convertedCount === 1 ? "" : "s"} converted into jobs. A quotation moves here the moment it is converted; its work is tracked on the work page.</p>
+          </Link>
         </section>
 
         {/* Opportunities */}
