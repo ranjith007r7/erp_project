@@ -88,7 +88,7 @@ def test_no_context_means_zero_rows_in_every_single_view(uil_env, seeded_orgs):
 
 @pytest.mark.parametrize("key", ["a", "b"])
 def test_every_view_returns_exactly_this_orgs_rows_and_no_others(uil_env, seeded_orgs, key):
-    """All 33 views, including the 10 child tables that have no org_id of their own."""
+    """All views, including the 10 child tables that have no org_id of their own."""
     org_id = seeded_orgs[key]["org_id"]
     conn = _connect()
     try:

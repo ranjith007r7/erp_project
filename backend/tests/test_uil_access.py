@@ -46,7 +46,7 @@ def test_salary_exists_in_exactly_one_view():
 
 
 def test_every_access_rule_names_only_real_modules():
-    known = {"crm", "sales", "finance", "inventory", "hr", "procurement", "projects", "core"}
+    known = {"crm", "sales", "finance", "inventory", "hr", "procurement", "projects", "core", "workpage"}
     for name, (modules, _restricted) in ACCESS.items():
         assert modules and set(modules) <= known, name
 

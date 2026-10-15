@@ -201,6 +201,37 @@ _RAW_VIEWS: tuple = (
          _cols("id:uuid", "po_id:uuid:-> purchase_orders.id", "received_date:date"),
          base="goods_receipts"),
 
+    # -------------------------------------------------------- WORKPAGE (jobs)
+    View("work_orders", "Workpage",
+         "JOBS (works). A converted CRM quotation or accepted sale becomes a work: this is where a client's deal, price, vendor cost, "
+         "status and who handles it live. For \"what did <client> buy / order / get\" or anything about a client's deal, look HERE "
+         "(client_name) as well as sales_orders.",
+         _cols("id:uuid", "work_number:text:e.g. WK-0001", "client_name:text:the client or company; use ILIKE",
+               "domain:text:client's industry", "description:text", 
+               "status:text:'assigned','allocated','po_not_raised','po_raised','in_transit','waiting_new_po','po_received',"
+               "'delivered' (delivered, payment pending),'closed' (= Work done, fully paid),'cancel_pending','cancelled'",
+               "work_type:text:'project' or 'sales_order' (a direct sale)",
+               "quotation_amount:numeric:price to the client BEFORE discount and GST",
+               "vendor_amount:numeric:what we pay vendors, excl. GST",
+               "discount_percent:numeric", "cgst_percent:numeric", "sgst_percent:numeric",
+               "customer_id:uuid:-> customers.id", "lead_id:uuid:-> crm_leads.id", "opportunity_id:uuid:-> crm_opportunities.id",
+               "handling_department_id:uuid:-> departments.id", "allocated_employee_id:uuid:-> employees.id (who handles it)",
+               "invoice_number:text", "invoiced_on:date", "delivered_on:date", "cancel_reason:text", "closed_at:timestamp",
+               "created_at:timestamp"),
+         base="work_orders"),
+    View("work_items", "Workpage", "Products a work needs (the requirement list, before stock is taken).",
+         _cols("id:uuid", "work_id:uuid:-> work_orders.id", "product_id:uuid:-> products.id", "qty:integer"),
+         base="work_items"),
+    View("work_stock_issues", "Workpage", "Products actually supplied to a work from stock (what the client received) with their cost.",
+         _cols("id:uuid", "work_id:uuid:-> work_orders.id", "product_id:uuid:-> products.id", "qty:integer",
+               "source:text:'inventory' or 'purchased'", "cost_rate:numeric:our cost per unit excl. GST",
+               "mrp:numeric:per unit, incl. GST", "created_at:timestamp"),
+         base="work_stock_issues"),
+    View("work_payments", "Workpage", "Payments received from the client against a work.",
+         _cols("id:uuid", "work_id:uuid:-> work_orders.id", "amount:numeric:amount received, incl. GST",
+               "method:text:'cash','card','gpay','bank_transfer' or 'cheque'", "paid_on:date", "created_at:timestamp"),
+         base="work_payments"),
+
     # -------------------------------------------------------- PROJECTS
     View("projects", "Projects", "Client or internal projects.",
          _cols("id:uuid", "name:text", "client_account_id:uuid:-> crm_accounts.id", "start_date:date",
@@ -278,6 +309,10 @@ ACCESS: dict = {
     "purchase_orders": (("procurement",), False),
     "purchase_order_items": (("procurement",), False),
     "goods_receipts": (("procurement",), False),
+    "work_orders": (("workpage",), False),
+    "work_items": (("workpage",), False),
+    "work_stock_issues": (("workpage",), False),
+    "work_payments": (("workpage",), False),
     "projects": (("projects",), False),
     "tasks": (("projects",), False),
     "time_logs": (("projects",), False),
@@ -299,7 +334,7 @@ ALL_MODULES = frozenset(m for v in VIEWS for m in v.access)
 
 MODULE_LABELS = {
     "crm": "CRM", "sales": "Sales", "finance": "Finance", "inventory": "Inventory", "hr": "HR",
-    "procurement": "Procurement", "projects": "Projects", "core": "Users & Roles",
+    "procurement": "Procurement", "workpage": "Workpage", "projects": "Projects", "core": "Users & Roles",
 }
 
 
@@ -321,6 +356,15 @@ GLOSSARY_ENTRIES: tuple = (
     (frozenset({"stock_levels"}), "Stock on hand for a product = SUM(stock_levels.quantity) across warehouses."),
     (frozenset({"products", "stock_levels"}),
      "Low stock = product reorder_level > 0 AND on-hand quantity <= reorder_level."),
+    (frozenset({"work_orders"}),
+     "A client's deals are WORKS (work_orders), not only sales_orders. Questions like \"what did X buy\", \"what did X order\", "
+     "\"how much did X pay\" must check work_orders (client_name ILIKE) and, for the parts supplied, work_stock_issues; "
+     "also sales_orders if available. Never answer \"no data\" without checking work_orders."),
+    (frozenset({"work_orders"}),
+     "Work value (before GST) = quotation_amount - quotation_amount * discount_percent / 100. Profit on a work = that value - vendor_amount. "
+     "GST on a work = value * (cgst_percent + sgst_percent) / 100; client pays value + GST. 'Work done' / completed = status 'closed'."),
+    (frozenset({"work_payments", "work_orders"}),
+     "Received from a client = SUM(work_payments.amount) for that work (includes GST). Balance due = value + GST - payments."),
     (frozenset({"employees"}), "Headcount = employees with status = 'active'."),
     (frozenset({"employee_pay"}), "An employee's salary is employee_pay.salary (monthly); join employee_pay.employee_id = employees.id."),
     (frozenset({"payslips", "payroll_runs"}),
@@ -387,6 +431,15 @@ EXAMPLES: tuple = (
     ("How many leads came from each source?",
      "SELECT COALESCE(source, 'Unknown') AS source, COUNT(*) AS leads FROM crm_leads GROUP BY 1 ORDER BY 2 DESC",
      frozenset({"crm_leads"})),
+    ("What did Acme buy?",
+     "SELECT w.work_number, w.status, p.name AS product_name, si.qty FROM work_orders w "
+     "LEFT JOIN work_stock_issues si ON si.work_id = w.id LEFT JOIN products p ON p.id = si.product_id "
+     "WHERE w.client_name ILIKE '%acme%' ORDER BY w.work_number",
+     frozenset({"work_orders", "work_stock_issues", "products"})),
+    ("What is the profit on each completed work?",
+     "SELECT w.work_number, w.client_name, ROUND(w.quotation_amount - w.quotation_amount * w.discount_percent / 100 - w.vendor_amount, 2) AS profit "
+     "FROM work_orders w WHERE w.status = 'closed' ORDER BY profit DESC",
+     frozenset({"work_orders"})),
     ("What was our total payroll cost for March 2026?",
      "SELECT SUM(ps.net_pay) AS total_net_pay FROM payslips ps "
      "JOIN payroll_runs pr ON pr.id = ps.payroll_run_id WHERE pr.year = 2026 AND pr.month = 3",

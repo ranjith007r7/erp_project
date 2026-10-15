@@ -15,7 +15,7 @@ from app.services.intelligence.manifest import (
 )
 from app.services.intelligence.pipeline import _gate_prompt, _sql_prompt
 
-PG_TYPE = {"uuid": "uuid", "character varying": "text", "numeric": "numeric", "integer": "integer",
+PG_TYPE = {"uuid": "uuid", "character varying": "text", "text": "text", "numeric": "numeric", "integer": "integer",
            "date": "date", "timestamp without time zone": "timestamp", "time without time zone": "time"}
 
 
