@@ -48,6 +48,22 @@ def list_journal_entries(db: Session = Depends(get_db), org_id: str = Depends(ge
     )
 
 
+@router.get("/journal-entries/page", dependencies=[Depends(require_permission("finance", "view"))])
+def journal_entries_page(page: int = 1, page_size: int = 15, q: str | None = None, db: Session = Depends(get_db), org_id: str = Depends(get_org_id)):
+    """One page of the journal (newest first) for the Journal Entries page; q searches number, reference and description."""
+    from math import ceil
+    page, page_size = max(1, page), min(max(1, page_size), 100)
+    base = db.query(JournalEntry).filter(JournalEntry.org_id == org_id)
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        base = base.filter((JournalEntry.entry_number.ilike(like)) | (JournalEntry.reference.ilike(like)) | (JournalEntry.description.ilike(like)))
+    total = base.count()
+    rows = (base.options(joinedload(JournalEntry.lines)).order_by(JournalEntry.date.desc(), JournalEntry.entry_number.desc())
+            .offset((page - 1) * page_size).limit(page_size).all())
+    return {"total": total, "page": page, "page_size": page_size, "total_pages": max(1, ceil(total / page_size)),
+            "items": [JournalEntryOut.model_validate(r).model_dump(mode="json") for r in rows]}
+
+
 @router.post("/payments", response_model=PaymentOut, status_code=201, dependencies=[Depends(require_permission("finance", "create"))])
 def record_payment(payload: PaymentCreate, db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
     """

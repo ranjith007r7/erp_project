@@ -84,7 +84,7 @@ function SearchResultsContent() {
                   <button
                     key={`${r.type}-${r.id}`}
                     onClick={() => router.push(MODULE_PATHS[r.module] || "/dashboard")}
-                    className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
+                    className="w-full text-left font-normal px-4 py-3 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors"
                   >
                     <p className="text-sm text-slate-800 dark:text-white">{r.title}</p>
                     <p className="text-xs text-slate-400 dark:text-zinc-500">

@@ -45,12 +45,17 @@ export function getToken(): string | null {
   return localStorage.getItem("erp_token");
 }
 
+export const ACTIVITY_KEY = "erp_last_activity";
+
 export function setToken(token: string) {
   localStorage.setItem("erp_token", token);
+  try { sessionStorage.removeItem("erp_idle_notice"); } catch { /* ignore */ }
+  try { localStorage.setItem(ACTIVITY_KEY, String(Date.now())); } catch { /* ignore */ }   // a fresh login starts the idle clock
 }
 
 export function clearToken() {
   localStorage.removeItem("erp_token");
+  try { localStorage.removeItem(ACTIVITY_KEY); } catch { /* ignore */ }
 }
 
 type RequestOptions = {

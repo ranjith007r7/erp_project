@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { OrgBranding } from "@/components/OrgBranding";
 import { AppShell } from "@/components/AppShell";
 import { BRAND } from "@/lib/brand";
+import { FaviconLoader } from "@/components/FaviconLoader";
 
 export const metadata: Metadata = {
   title: { default: BRAND.productName, template: `%s · ${BRAND.productName}` },
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               pages before login (no token yet, e.g. /login, /signup) -
               harmless, just shows no background there, which is correct.
             */}
+            <FaviconLoader />
             <OrgBranding><AppShell>{children}</AppShell></OrgBranding>
           </ToastProvider>
         </ThemeProvider>

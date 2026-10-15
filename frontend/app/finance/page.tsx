@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, apiBlob, openBlob } from "@/lib/api";
 import { Button, Card, Input, PageHeader, Select } from "@/components/ui";
@@ -342,85 +343,19 @@ export default function FinancePage() {
               </div>
             </section>
           )}
-          <div className="grid md:grid-cols-3 gap-6">
-            <section>
-              <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-1">Chart of Accounts</h2>
-              <p className="text-xs text-slate-500 dark:text-zinc-400 mb-3">
-                The fixed list of ledger buckets every entry posts into. It is created for you and extends itself: the first time a feature needs a new account (for example payroll deductions) it appears here.
-              </p>
-              <Card className="divide-y divide-slate-100 dark:divide-zinc-800">
-                {accounts.map((a) => (
-                  <div key={a.id} className="p-3 flex justify-between text-sm">
-                    <span className="text-slate-800 dark:text-white">{a.code} · {a.name}</span>
-                    <span className="text-slate-400 dark:text-zinc-500 text-xs">{a.account_type}</span>
-                  </div>
-                ))}
-              </Card>
-            </section>
-
-            <section>
-              <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-3">Unpaid Invoices</h2>
-              <div className="space-y-2">
-                {unpaidInvoices.map((inv) => (
-                  <Card key={inv.id} className="p-3 flex justify-between items-center">
-                    <div>
-                      <p className="text-sm font-medium text-slate-800 dark:text-white">{inv.invoice_number} · {inr(inv.amount)}</p>
-                      <p className="text-xs text-slate-500 dark:text-zinc-500">{inv.status} · taxable {inr(inv.subtotal)} + CGST {inr(inv.cgst_amount)} + SGST {inr(inv.sgst_amount)}</p>
-                      <p className="text-xs text-slate-500 dark:text-zinc-500">received {inr(inv.paid_amount)} · due {inr(inv.balance)}</p>
-                    </div>
-                    <Button size="sm" onClick={() => openPay(inv)}>Record Payment</Button>
-                  </Card>
-                ))}
-                {unpaidInvoices.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No unpaid invoices.</p>}
-              </div>
-
-              <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mt-6 mb-3">Tax Invoices <span className="font-normal text-xs text-slate-400">· issued once a payment is recorded</span></h2>
-              <div className="space-y-2" data-testid="tax-invoices">
-                {taxInvoices.map((inv) => (
-                  <Card key={inv.id} className="p-3 flex justify-between items-center">
-                    <div>
-                      <p className="text-sm font-medium text-slate-800 dark:text-white">{inv.invoice_number} · {inr(inv.amount)}</p>
-                      <p className="text-xs text-slate-500 dark:text-zinc-500">{Number(inv.balance) > 0 ? `part paid, ${inr(inv.balance)} due` : "paid"}</p>
-                    </div>
-                    <Button size="sm" variant="secondary" onClick={() => openTaxInvoice(inv)} data-testid="open-tax-invoice">Download PDF</Button>
-                  </Card>
-                ))}
-                {taxInvoices.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">None yet.</p>}
-              </div>
-
-              <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mt-6 mb-3">Payments Received</h2>
-              <div className="space-y-2">
-                {payments.map((p) => (
-                  <Card key={p.id} className="p-3 text-sm" >
-                    <div className="flex justify-between"><span className="font-medium text-slate-800 dark:text-white">{inr(p.amount)}</span><span className="text-xs text-slate-500 dark:text-zinc-400">{p.date}</span></div>
-                    <p className="text-xs text-slate-500 dark:text-zinc-400">{METHOD_LABEL[p.method] || p.method}{p.transaction_id ? ` · Txn ${p.transaction_id}` : ""}</p>
-                  </Card>
-                ))}
-                {payments.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No payments yet.</p>}
-              </div>
-            </section>
-
-            <section>
-              <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-3">Journal Entries</h2>
-              <div className="space-y-2">
-                {entries.map((entry) => (
-                  <Card key={entry.id} className="p-3">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-sm font-semibold text-slate-800 dark:text-white">{entry.entry_number || "-"}</span>
-                      <span className="text-xs text-slate-400 dark:text-zinc-500">{entry.date}</span>
-                    </div>
-                    <p className="text-sm text-slate-700 dark:text-zinc-200 mb-2">{entry.description}</p>
-                    {entry.lines.map((line, i) => (
-                      <p key={i} className="text-xs text-slate-500 dark:text-zinc-500 flex justify-between">
-                        <span>{accountName(line.account_id)}</span>
-                        <span>{Number(line.debit) > 0 ? `Dr ${inr(line.debit)}` : `Cr ${inr(line.credit)}`}</span>
-                      </p>
-                    ))}
-                  </Card>
-                ))}
-                {entries.length === 0 && <p className="text-sm text-slate-400 dark:text-zinc-500">No journal entries yet.</p>}
-              </div>
-            </section>
+          <div className="grid md:grid-cols-3 gap-4" data-testid="finance-launchers">
+            {[
+              { href: "/finance/accounts", id: "open-accounts", t: "Chart of Accounts", s: `${accounts.length} accounts` },
+              { href: "/finance/invoices", id: "open-invoices", t: "Invoices", s: `${invoices.length} invoices · ${payments.length} payments` },
+              { href: "/finance/journal", id: "open-journal", t: "Journal Entries", s: `${entries.length}+ entries` },
+            ].map((c) => (
+              <Link key={c.href} href={c.href} data-testid={c.id}
+                className="block rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 hover:border-indigo-400 transition">
+                <div className="font-semibold text-slate-700 dark:text-zinc-200">{c.t}</div>
+                <div className="text-sm text-slate-500 dark:text-zinc-400 mt-1">{c.s}</div>
+                <div className="text-xs text-indigo-600 dark:text-indigo-400 mt-2">Open →</div>
+              </Link>
+            ))}
           </div>
 
           <section className="mt-10" data-testid="deductions">

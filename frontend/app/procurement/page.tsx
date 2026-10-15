@@ -259,7 +259,7 @@ export default function ProcurementPage() {
                       <div role="menu" className="absolute right-0 mt-1 w-60 z-20 rounded-lg border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-lg py-1">
                         {([["pending", "Pending items only"], ["approved", "Approved items only"], ["all", "All items"]] as const).map(([scope, label], i) => (
                           <button key={scope} role="menuitem" onClick={() => downloadVendorPdf(scope)}
-                            className="w-full text-left px-3 py-2 text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 flex justify-between">
+                            className="w-full text-left font-normal px-3 py-2 text-sm text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 flex justify-between">
                             <span>{i + 1}. {label}</span><span className="text-slate-400">{counts[scope]}</span>
                           </button>
                         ))}

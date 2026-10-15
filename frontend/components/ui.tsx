@@ -39,7 +39,7 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 export function Button({ variant = "primary", size = "md", className = "", ...props }: ButtonProps) {
-  const base = variant === "ghost" ? "" : "rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors";
+  const base = variant === "ghost" ? "" : "rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-colors";
   const sizeClass = variant === "ghost" ? "text-sm" : BUTTON_SIZES[size];
   return (
     <button

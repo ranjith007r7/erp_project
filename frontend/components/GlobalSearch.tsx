@@ -107,7 +107,7 @@ export function GlobalSearch() {
               <button
                 key={`${r.type}-${r.id}`}
                 onClick={() => handleResultClick(r)}
-                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-zinc-800 border-b border-slate-50 dark:border-zinc-800 last:border-0"
+                className="w-full text-left font-normal px-3 py-2 hover:bg-slate-50 dark:hover:bg-zinc-800 border-b border-slate-50 dark:border-zinc-800 last:border-0"
               >
                 <p className="text-sm text-slate-800 dark:text-white">{r.title}</p>
                 <p className="text-xs text-slate-400 dark:text-zinc-500">

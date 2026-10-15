@@ -169,7 +169,7 @@ export default function HRPage() {
           )}
           <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm divide-y divide-slate-100 dark:divide-zinc-800">
             {pagedEmployees.map((e) => (
-              <button key={e.id} onClick={() => setSelected(e)} className="w-full text-left p-3 text-sm hover:bg-slate-50 dark:hover:bg-zinc-800">
+              <button key={e.id} onClick={() => setSelected(e)} className="w-full text-left font-normal p-3 text-sm hover:bg-slate-50 dark:hover:bg-zinc-800">
                 <p className="text-slate-800 dark:text-white font-medium">{e.name} <span className="text-xs font-normal text-slate-400 dark:text-zinc-500">{e.employee_code}</span></p>
                 <p className="text-xs text-slate-500 dark:text-zinc-500">{e.designation || "—"}{e.department_name ? ` · ${e.department_name}` : ""} · ₹{Number(e.salary).toLocaleString("en-IN")}/mo</p>
               </button>

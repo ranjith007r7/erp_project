@@ -11,7 +11,7 @@
  * sign-in / sign-up / reset pages are rendered bare. The sidebar's open/closed choice is
  * remembered per browser (nice-to-have only: it works without storage).
  */
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -19,6 +19,7 @@ import {
   BarChart3, Sparkles, ClipboardList, PackagePlus, PanelLeftClose, PanelLeftOpen, Menu, X,
 } from "lucide-react";
 import { apiRequest, clearToken, getToken } from "@/lib/api";
+import { IdleLogout } from "@/components/IdleLogout";
 import { BRAND } from "@/lib/brand";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -123,6 +124,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     setSignedIn(false);
     router.push("/login");
   }
+  const idleSignOut = useCallback(() => {
+    clearToken();
+    try { sessionStorage.setItem("erp_idle_notice", "1"); } catch { /* ignore */ }   // pages may redirect to /login themselves; the notice must survive that
+    setUser(null);
+    setSignedIn(false);
+    router.push("/login?idle=1");
+  }, [router]);
   const perms = new Set(user?.permissions ?? []);
   const can = (module: string, action = "view") => !user ? false : (user.is_admin || perms.has(`${module}:${action}`));
   const ctx: Ctx = { user, can, signOut };
@@ -139,6 +147,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <UserContext.Provider value={ctx}>
       <RouteProgress />
+      <IdleLogout onTimeout={idleSignOut} />
       <div className="min-h-screen flex">
         {/* desktop sidebar */}
         <aside

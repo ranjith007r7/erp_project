@@ -107,7 +107,7 @@ export function NotificationBell() {
                 <button
                   key={n.id}
                   onClick={() => !n.is_read && markOneRead(n.id)}
-                  className={`w-full text-left px-4 py-3 border-b border-slate-50 dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-800 ${
+                  className={`w-full text-left font-normal px-4 py-3 border-b border-slate-50 dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-800 ${
                     n.is_read ? "opacity-60" : ""
                   }`}
                 >

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiRequest, apiDownload, apiUpload } from "@/lib/api";
 import { CustomFieldsSection } from "@/components/CustomFieldsSection";
@@ -337,21 +338,10 @@ export default function CRMPage() {
         {/* Opportunities */}
         <section>
           <h2 className="text-lg font-semibold text-slate-700 dark:text-zinc-200 mb-3">Opportunities</h2>
-          <div className="space-y-2">
-            {opportunities.map((opp) => (
-              <div key={opp.id} className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-3">
-                <p className="font-medium text-slate-800 dark:text-white">{opp.name}</p>
-                <p className="text-xs text-slate-500 dark:text-zinc-500">
-                  Stage: {opp.stage} · Value: ₹{Number(opp.value).toLocaleString("en-IN")}
-                </p>
-              </div>
-            ))}
-            {opportunities.length === 0 && (
-              <p className="text-sm text-slate-400 dark:text-zinc-500">
-                No opportunities yet — convert a lead to create one.
-              </p>
-            )}
-          </div>
+          <Link href="/crm/opportunities" data-testid="open-opportunities" className="block bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
+            <p className="font-medium text-slate-800 dark:text-white">Open opportunities →</p>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">{opportunities.length} deal{opportunities.length === 1 ? "" : "s"} · ₹{opportunities.reduce((s, o) => s + Number(o.value || 0), 0).toLocaleString("en-IN")} total. Opens a searchable list, 15 per page.</p>
+          </Link>
         </section>
       </div>
 

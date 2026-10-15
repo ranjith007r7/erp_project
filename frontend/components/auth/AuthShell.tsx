@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BRAND } from "@/lib/brand";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { BrandMark } from "./BrandMark";
@@ -22,6 +22,12 @@ export function AuthShell({
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  const [idle, setIdle] = useState(false);
+  useEffect(() => { 
+    let flag = false;
+    try { flag = sessionStorage.getItem("erp_idle_notice") === "1"; } catch { /* ignore */ }   // cleared by the next sign-in, not here: dev strict mode runs effects twice
+    setIdle(flag || new URLSearchParams(window.location.search).get("idle") === "1");
+  }, []);
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-black lg:grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
       <BrandPanel />
@@ -45,6 +51,11 @@ export function AuthShell({
             <div className="rounded-2xl bg-white/85 p-7 shadow-xl shadow-indigo-900/5 ring-1 ring-slate-200/80 backdrop-blur motion-safe:animate-fade-up dark:bg-zinc-900/80 dark:shadow-none dark:ring-white/10 sm:p-9">
               <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">{title}</h1>
               {subtitle && <p className="mt-1.5 text-sm text-slate-500 dark:text-zinc-400">{subtitle}</p>}
+              {idle && (
+                <p role="status" data-testid="idle-notice" className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/30">
+                  You were signed out after a period of inactivity. Please sign in again.
+                </p>
+              )}
               <div className="mt-7">{children}</div>
             </div>
             {footer && (

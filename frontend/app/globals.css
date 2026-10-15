@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Every button label is semibold by default (raw <button>s as well as the shared Button), so nothing
+   looks lighter than its neighbours. Written in the base layer so an explicit font-* class on a button
+   (e.g. a whole clickable row that should stay regular weight) still wins. */
+@layer base {
+  button, [role="button"], input[type="button"], input[type="submit"] { font-weight: 600; }
+}
+
 body {
   background-color: #f4f6f8;
 }
@@ -52,3 +59,6 @@ input:-webkit-autofill:focus {
 @media (prefers-reduced-motion: reduce) {
   .page-enter, .page-enter main > * { animation: none !important; }
 }
+
+/* Many buttons carry an explicit "font-medium"; unlayered so it beats that utility: button labels are semibold everywhere. */
+button.font-medium, [role="button"].font-medium { font-weight: 600; }

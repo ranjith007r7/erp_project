@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.api.deps import get_current_user, get_org_id, require_permission
+from app.api.deps import get_current_user, get_org_id, require_permission, user_has_permission
 from app.models.inventory import ProductCategory, Warehouse, StockLevel, StockMovement
 from app.models.sales import Product
 from app.schemas.inventory import (
@@ -63,3 +63,25 @@ def list_movements(db: Session = Depends(get_db), org_id: str = Depends(get_org_
         .order_by(StockMovement.created_at.desc())
         .all()
     )
+
+
+@router.get("/movements/page", dependencies=[Depends(require_permission("inventory", "view"))])
+def movements_page(page: int = 1, page_size: int = 15, product_id: str | None = None, direction: str | None = None,
+                   db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user)):
+    """One page of the stock ledger (newest first), each row with who/what/which job. Profit is shown only to users who may see works."""
+    from math import ceil
+    from app.services import movement_details
+    page, page_size = max(1, page), min(max(1, page_size), 100)
+    q = db.query(StockMovement).filter(StockMovement.org_id == org_id)
+    if product_id:
+        q = q.filter(StockMovement.product_id == product_id)
+    if direction in ("in", "out"):
+        q = q.filter(StockMovement.movement_type == direction)
+    total = q.count()
+    rows = q.order_by(StockMovement.created_at.desc(), StockMovement.id).offset((page - 1) * page_size).limit(page_size).all()
+    names = {p.id: p.name for p in db.query(Product.id, Product.name).filter(Product.org_id == org_id, Product.id.in_({r.product_id for r in rows}))} if rows else {}
+    info = movement_details.describe(db, org_id, rows, user_has_permission(db, current_user, "workpage", "view"))
+    return {"total": total, "page": page, "page_size": page_size, "total_pages": max(1, ceil(total / page_size)),
+            "items": [{"id": r.id, "product_id": r.product_id, "product_name": names.get(r.product_id, "Unknown product"),
+                       "movement_type": r.movement_type, "qty": r.qty, "ref_type": r.ref_type, "date": r.date, "created_at": r.created_at,
+                       **info.get(r.id, {"title": (r.ref_type or "Movement").replace("_", " ").capitalize(), "details": [], "link": None})} for r in rows]}

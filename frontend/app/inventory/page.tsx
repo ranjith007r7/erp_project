@@ -11,13 +11,11 @@ import { SkeletonList } from "@/components/Skeleton";
 type Category = { id: string; name: string };
 type Product = { id: string; name: string; sku: string | null; unit_price: string; reorder_level: number; cgst_percent: string; sgst_percent: string; hsn_code: string | null };
 type StockLevel = { product_id: string; quantity: number };
-type Movement = { id: string; product_id: string; movement_type: string; qty: number; ref_type: string | null; date: string };
 
 export default function InventoryPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [stockLevels, setStockLevels] = useState<StockLevel[]>([]);
-  const [movements, setMovements] = useState<Movement[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -32,7 +30,6 @@ export default function InventoryPage() {
       apiRequest<Category[]>("/api/inventory/categories", { auth: true }).then(setCategories),
       apiRequest<Product[]>("/api/sales/products", { auth: true }).then(setProducts).catch((e) => setError(e.message)),
       apiRequest<StockLevel[]>("/api/inventory/stock-levels", { auth: true }).then(setStockLevels),
-      apiRequest<Movement[]>("/api/inventory/movements", { auth: true }).then(setMovements),
     ]).finally(() => setLoading(false));
   }
 
@@ -196,19 +193,10 @@ export default function InventoryPage() {
 
         <section>
           <h2 className="font-semibold text-slate-700 dark:text-zinc-200 mb-3">Stock Movements</h2>
-          <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-sm divide-y">
-            {movements.map((m) => (
-              <div key={m.id} className="p-3 flex justify-between items-center text-sm">
-                <span className="text-slate-700 dark:text-zinc-200">
-                  {products.find((p) => p.id === m.product_id)?.name || "Unknown product"}
-                </span>
-                <span className={m.movement_type === "in" ? "text-green-600" : "text-orange-600"}>
-                  {m.movement_type === "in" ? "+" : "-"}{m.qty} · {m.ref_type}
-                </span>
-              </div>
-            ))}
-            {movements.length === 0 && <p className="p-3 text-sm text-slate-400 dark:text-zinc-500">No stock movements yet.</p>}
-          </div>
+          <Link href="/inventory/movements" data-testid="open-movements" className="block bg-white dark:bg-zinc-900 rounded-lg shadow-sm p-4 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">
+            <p className="font-medium text-slate-800 dark:text-white">Open stock movements →</p>
+            <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">Every unit that went in or out. The full ledger opens on its own page, 15 per page, with the client, job, person and profit behind each one.</p>
+          </Link>
         </section>
       </div>
       </>
