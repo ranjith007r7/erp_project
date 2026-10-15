@@ -146,7 +146,7 @@ export default function CRMPage() {
       });
       setForm({ name: "", company_name: "", phone: "", estimated_amount: "", industry: "", email: "", source: "" });
       loadAll();
-      showToast("Quotation entry added. It now counts under Quotations received on Home.", "success");
+      showToast("Enquiry added. It counts under Quotations received on Home.", "success");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to add lead";
       setError(message);
@@ -192,8 +192,8 @@ export default function CRMPage() {
       <div className="grid md:grid-cols-2 gap-8">
         {/* Leads */}
         <section>
-          <h2 className="text-lg font-semibold text-slate-700 dark:text-zinc-200 mb-1">Quotations received</h2>
-          <p className="text-xs text-slate-500 dark:text-zinc-500 mb-3">Type each incoming quotation here. It counts on Home the moment you save it; converting it opens the work (status Assigned).</p>
+          <h2 className="text-lg font-semibold text-slate-700 dark:text-zinc-200 mb-1">Quotation enquiries</h2>
+          <p className="text-xs text-slate-500 dark:text-zinc-500 mb-3">How it flows: an enquiry is logged here first. Once it is converted it opens a job (status Assigned) on the Workpage and moves to the Converted list; the priced quotation and invoice are handled in Sales and Finance.</p>
 
           <form onSubmit={handleAddLead} className="bg-white dark:bg-zinc-900 rounded-xl shadow-sm p-4 mb-4 space-y-2">
             <input
@@ -250,7 +250,7 @@ export default function CRMPage() {
               onChange={(e) => setForm({ ...form, source: e.target.value })}
               className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"
             />
-            <Button type="submit" className="w-full">Add quotation</Button>
+            <Button type="submit" className="w-full">Add enquiry</Button>
           </form>
 
           <div className="flex items-center gap-2 mb-2 flex-wrap">
