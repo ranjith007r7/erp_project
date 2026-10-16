@@ -36,6 +36,7 @@ class PurchaseOrderItemIn(BaseModel):
     unit_price: Decimal = Field(..., ge=0)      # excludes GST
     cgst_percent: Optional[Decimal] = Field(None, ge=0, le=50)   # left out = the product's rate
     sgst_percent: Optional[Decimal] = Field(None, ge=0, le=50)
+    warranty_months: Optional[int] = Field(None, ge=1, le=120)   # warranty the vendor gives us on this line
 
 
 class PurchaseOrderItemOut(BaseModel):
@@ -51,6 +52,7 @@ class PurchaseOrderItemOut(BaseModel):
     sgst_amount: Decimal = Decimal("0")
     received_qty: int = 0
     outstanding_qty: int = 0
+    warranty_months: Optional[int] = None
 
     model_config = {"from_attributes": True}
 

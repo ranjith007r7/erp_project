@@ -20,6 +20,7 @@ class StockBatchIn(BaseModel):
     manufacture_month: Optional[str] = Field(default=None, pattern=r"^\d{4}-\d{2}(-\d{2})?$")
     expiry_date: Optional[date] = None
     already_in_inventory: bool = False
+    vendor_warranty_months: Optional[int] = Field(default=None, ge=1, le=120)   # the warranty the vendor gives us on this lot
     note: Optional[str] = Field(default=None, max_length=500)
 
 
@@ -34,4 +35,5 @@ class StockBatchUpdate(BaseModel):
     manufacture_month: Optional[str] = Field(default=None, pattern=r"^(\d{4}-\d{2}(-\d{2})?)?$")
     expiry_date: Optional[date] = None
     itc_eligible: Optional[bool] = None
+    vendor_warranty_months: Optional[int] = Field(default=None, ge=1, le=120)
     note: Optional[str] = Field(default=None, max_length=500)

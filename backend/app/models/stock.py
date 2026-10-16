@@ -37,6 +37,7 @@ class StockBatch(Base):
     max_discount_percent = Column(Numeric(5, 2), nullable=False, default=0)
     inward_date = Column(Date, nullable=False, default=date.today)
     manufacture_month = Column(Date, nullable=True)                 # always the 1st of the month
+    vendor_warranty_months = Column(Integer, nullable=True)         # the warranty the VENDOR gives us on this lot (from inward date)
     expiry_date = Column(Date, nullable=True)
     source = Column(String, nullable=False, default="manual")       # manual / csv / purchase_order / opening
     po_id = Column(UUID(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=True)

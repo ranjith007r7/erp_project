@@ -551,6 +551,15 @@ def _adopt_lot_gst(db: Session, work: WorkOrder, user: User | None):
                   f"CGST {cg}% / SGST {sg}% (was {old}). The rate comes from the lots' GST slab, so it cannot be typed over.", user)
 
 
+def _warranty_delivered(db: Session, work: WorkOrder):
+    """Delivery starts the warranty: map the delivered lines into the Warranty module (a failure here never blocks delivery)."""
+    def run(db_, w):
+        from app.services import warranty as wsvc
+        db_.flush()
+        wsvc.on_work_delivered(db_, w)
+    safe(db, run, work)
+
+
 def issue_stock_for_work(db: Session, work: WorkOrder, user: User) -> WorkOrder:
     """Take the needed stock out of inventory: rates come from the batch, never typed. The work is delivered at once."""
     if is_sales_order(work):
@@ -599,6 +608,7 @@ def issue_stock_for_work(db: Session, work: WorkOrder, user: User) -> WorkOrder:
               {"cost": str(q2(cost_total))})
     log_event(db, work, "delivered", "Delivered from inventory (no purchase needed)",
               f"Delivered on {work.delivered_on}. Waiting for the customer's payment ({pending_amount(work)}).", user)
+    _warranty_delivered(db, work)
     maybe_auto_close(db, work, user)
     return work
 
@@ -681,6 +691,7 @@ def decide_cancellation(db: Session, work: WorkOrder, user: User, approve: bool,
     if open_pos:
         detail += f" Purchase order(s) still open: {', '.join(open_pos)}; cancel or reject them in Procurement if the goods are no longer needed."
     log_event(db, work, "cancelled", "Work cancelled", detail, user, {"returned": returned})
+    safe(db, lambda d, w: __import__("app.services.warranty", fromlist=["x"]).on_work_cancelled(d, w), work)
     refunds_svc.create_pending(db, work, user)
     return work
 
@@ -816,6 +827,7 @@ def deliver(db: Session, work: WorkOrder, user: User, delivered_on: date | None,
         log_event(db, work, "stock_issued", "Stock taken from inventory", "; ".join(taken) + ". These units came in on this work's purchase order.", user)
     log_event(db, work, "delivered", "Delivered to customer",
               f"Delivered on {work.delivered_on}." + (f" {work.delivery_note}" if work.delivery_note else ""), user)
+    _warranty_delivered(db, work)
     maybe_auto_close(db, work, user)
     return work
 
@@ -973,6 +985,7 @@ def on_invoice_generated(db: Session, order, invoice, user: User | None = None, 
     log_event(db, w, "delivered", "Delivered with the Sales invoice",
               f"Invoice for {q2(invoice.amount)} generated in Sales; the stock was issued from Inventory at that moment. "
               "The payment is recorded against the invoice in Finance.", user)
+    _warranty_delivered(db, w)
     return w
 
 

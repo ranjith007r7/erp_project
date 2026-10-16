@@ -34,7 +34,7 @@ export default function SalesPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [productForm, setProductForm] = useState({ name: "", unit_price: "", cgst_percent: "0", sgst_percent: "0", hsn_code: "", mrp: "", max_discount_percent: "0" });
+  const [productForm, setProductForm] = useState({ name: "", unit_price: "", cgst_percent: "0", sgst_percent: "0", hsn_code: "", mrp: "", max_discount_percent: "0", warranty_months: "", warranty_terms: "" });
   const [customerForm, setCustomerForm] = useState({ name: "" });
   const [quoteForm, setQuoteForm] = useState({ customer_id: "", product_id: "", qty: "1", unit_price: "", cgst_percent: "0", sgst_percent: "0" });
   const qTaxable = Number(quoteForm.qty || 0) * Number(quoteForm.unit_price || 0);
@@ -60,9 +60,10 @@ export default function SalesPage() {
       auth: true,
       body: { name: productForm.name, unit_price: Number(productForm.unit_price), cgst_percent: Number(productForm.cgst_percent || 0),
               sgst_percent: Number(productForm.sgst_percent || 0), hsn_code: productForm.hsn_code.trim() || null,
-              mrp: productForm.mrp ? Number(productForm.mrp) : null, max_discount_percent: Number(productForm.max_discount_percent || 0) },
+              mrp: productForm.mrp ? Number(productForm.mrp) : null, max_discount_percent: Number(productForm.max_discount_percent || 0),
+              warranty_months: productForm.warranty_months ? Number(productForm.warranty_months) : null, warranty_terms: productForm.warranty_terms.trim() || null },
     }).catch((err) => setError(err.message));
-    setProductForm({ name: "", unit_price: "", cgst_percent: "0", sgst_percent: "0", hsn_code: "", mrp: "", max_discount_percent: "0" });
+    setProductForm({ name: "", unit_price: "", cgst_percent: "0", sgst_percent: "0", hsn_code: "", mrp: "", max_discount_percent: "0", warranty_months: "", warranty_terms: "" });
     loadAll();
   }
 
@@ -191,6 +192,17 @@ export default function SalesPage() {
             </label>
             <label className="text-xs text-slate-500 dark:text-zinc-500">Max discount %
               <input type="number" min="0" max="100" step="0.01" value={productForm.max_discount_percent} data-testid="product-maxdisc" onChange={(e) => setProductForm({ ...productForm, max_discount_percent: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs text-slate-500 dark:text-zinc-500">Default warranty (optional)
+              <select value={productForm.warranty_months} data-testid="product-warranty" onChange={(e) => setProductForm({ ...productForm, warranty_months: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm">
+                <option value="">No default</option>
+                {[[1, "1 month"], [3, "3 months"], [6, "6 months"], [12, "1 year"], [24, "2 years"], [36, "3 years"], [60, "5 years"], [120, "10 years"]].map(([m, l]) => <option key={m} value={m}>{l}</option>)}
+              </select>
+            </label>
+            <label className="text-xs text-slate-500 dark:text-zinc-500">Warranty terms (optional)
+              <input value={productForm.warranty_terms} onChange={(e) => setProductForm({ ...productForm, warranty_terms: e.target.value })} className="w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder="e.g. Manufacturing defects only" />
             </label>
           </div>
           <p className="text-xs text-slate-500 dark:text-zinc-500">Set once here: every stock lot (including those received from a purchase order) inherits the MRP, max discount and GST. MSP (max selling price before GST) = MRP ÷ (1 + GST%).</p>

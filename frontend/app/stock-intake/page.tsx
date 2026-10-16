@@ -15,14 +15,14 @@ type Batch = {
   inward_date: string; manufacture_month: string | null; expiry_date: string | null; expired: boolean; expiring_soon: boolean;
   source: string; note: string | null; sold_below_cost_warning?: boolean;
   cgst_percent: number; sgst_percent: number; msp: number; mrp_cgst: number; mrp_sgst: number; lowest_selling_price_excl_gst: number;
-  itc_eligible?: boolean; vendor_cgst?: number; vendor_sgst?: number; vendor_total_paid?: number;
+  vendor_warranty_months?: number | null; itc_eligible?: boolean; vendor_cgst?: number; vendor_sgst?: number; vendor_total_paid?: number;
 };
 
 const inr = (n: number) => "Rs. " + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const field = "w-full border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm";
 const label = "block text-xs font-medium text-slate-600 dark:text-zinc-400 mb-1";
 const today = () => new Date().toISOString().slice(0, 10);
-const EMPTY = { product_id: "", quantity: "", vendor_name: "", vendor_amount: "", mrp: "", max_discount_percent: "", cgst_percent: "", sgst_percent: "", itc_eligible: true, inward_date: today(), manufacture_month: "", expiry_date: "", already_in_inventory: false, note: "" };
+const EMPTY = { product_id: "", quantity: "", vendor_name: "", vendor_amount: "", mrp: "", max_discount_percent: "", cgst_percent: "", sgst_percent: "", itc_eligible: true, inward_date: today(), manufacture_month: "", expiry_date: "", already_in_inventory: false, note: "", vendor_warranty_months: "" };
 
 export default function StockIntakePage() {
   const { showToast } = useToast();
@@ -77,7 +77,7 @@ export default function StockIntakePage() {
         body: {
           product_id: form.product_id, quantity: Number(form.quantity), vendor_name: form.vendor_name.trim(),
           vendor_amount: Number(form.vendor_amount), mrp: Number(form.mrp), max_discount_percent: Number(form.max_discount_percent),
-          cgst_percent: Number(form.cgst_percent) || 0, sgst_percent: Number(form.sgst_percent) || 0, itc_eligible: form.itc_eligible,
+          cgst_percent: Number(form.cgst_percent) || 0, sgst_percent: Number(form.sgst_percent) || 0, itc_eligible: form.itc_eligible, vendor_warranty_months: form.vendor_warranty_months ? Number(form.vendor_warranty_months) : null,
           inward_date: form.inward_date || null, manufacture_month: form.manufacture_month || null, expiry_date: form.expiry_date || null,
           already_in_inventory: form.already_in_inventory, note: form.note.trim() || null,
         },
@@ -95,7 +95,7 @@ export default function StockIntakePage() {
     setEdit({
       vendor_name: b.vendor_name, vendor_amount: String(b.vendor_amount), mrp: String(b.mrp), max_discount_percent: String(b.max_discount_percent),
       cgst_percent: String(Number(b.cgst_percent)), sgst_percent: String(Number(b.sgst_percent)), itc_eligible: b.itc_eligible === false ? "no" : "yes",
-      inward_date: b.inward_date, manufacture_month: b.manufacture_month ? b.manufacture_month.slice(0, 7) : "", expiry_date: b.expiry_date ?? "", note: b.note ?? "",
+      inward_date: b.inward_date, manufacture_month: b.manufacture_month ? b.manufacture_month.slice(0, 7) : "", expiry_date: b.expiry_date ?? "", note: b.note ?? "", vendor_warranty_months: b.vendor_warranty_months ? String(b.vendor_warranty_months) : "",
     });
   }
   async function saveEdit(e: React.FormEvent) {
@@ -107,7 +107,7 @@ export default function StockIntakePage() {
         body: {
           vendor_name: edit.vendor_name, vendor_amount: Number(edit.vendor_amount), mrp: Number(edit.mrp), max_discount_percent: Number(edit.max_discount_percent),
           cgst_percent: Number(edit.cgst_percent) || 0, sgst_percent: Number(edit.sgst_percent) || 0, itc_eligible: edit.itc_eligible !== "no",
-          inward_date: edit.inward_date || null, manufacture_month: edit.manufacture_month || "", expiry_date: edit.expiry_date || null, note: edit.note,
+          inward_date: edit.inward_date || null, manufacture_month: edit.manufacture_month || "", expiry_date: edit.expiry_date || null, note: edit.note, vendor_warranty_months: edit.vendor_warranty_months ? Number(edit.vendor_warranty_months) : null,
         },
       });
       showToast("Batch updated", "success");
@@ -186,7 +186,8 @@ export default function StockIntakePage() {
                 <div><label className={label}>Date of inward</label><input type="date" max={today()} className={field} value={form.inward_date} onChange={(e) => f("inward_date", e.target.value)} /></div>
                 <div><label className={label}>Month of manufacture</label><input type="month" className={field} value={form.manufacture_month} onChange={(e) => f("manufacture_month", e.target.value)} /></div>
                 <div><label className={label}>Expiry date</label><input type="date" className={field} value={form.expiry_date} onChange={(e) => f("expiry_date", e.target.value)} /></div>
-                <div className="sm:col-span-3"><label className={label}>Note</label><input className={field} value={form.note} onChange={(e) => f("note", e.target.value)} /></div>
+                <div><label className={label}>Vendor's warranty to us (optional)</label><select className={field} data-testid="vendor-warranty" value={form.vendor_warranty_months} onChange={(e) => f("vendor_warranty_months", e.target.value)}><option value="">None / not known</option>{[[1, "1 month"], [3, "3 months"], [6, "6 months"], [12, "1 year"], [24, "2 years"], [36, "3 years"], [60, "5 years"], [120, "10 years"]].map(([m, l]) => <option key={m} value={m}>{l}</option>)}</select></div>
+                <div className="sm:col-span-2"><label className={label}>Note</label><input className={field} value={form.note} onChange={(e) => f("note", e.target.value)} /></div>
               </div>
               <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-zinc-300">
                 <input type="checkbox" className="mt-1" checked={form.already_in_inventory} onChange={(e) => f("already_in_inventory", e.target.checked)} />
@@ -309,6 +310,7 @@ export default function StockIntakePage() {
               <div><label className={label}>Date of inward</label><input type="date" className={field} value={edit.inward_date} onChange={(e) => setEdit({ ...edit, inward_date: e.target.value })} /></div>
               <div><label className={label}>Month of manufacture</label><input type="month" className={field} value={edit.manufacture_month} onChange={(e) => setEdit({ ...edit, manufacture_month: e.target.value })} /></div>
               <div><label className={label}>Expiry date</label><input type="date" className={field} value={edit.expiry_date} onChange={(e) => setEdit({ ...edit, expiry_date: e.target.value })} /></div>
+              <div><label className={label}>Vendor's warranty to us</label><select className={field} value={edit.vendor_warranty_months} onChange={(e) => setEdit({ ...edit, vendor_warranty_months: e.target.value })}><option value="">None / not known</option>{[[1, "1 month"], [3, "3 months"], [6, "6 months"], [12, "1 year"], [24, "2 years"], [36, "3 years"], [60, "5 years"], [120, "10 years"]].map(([m, l]) => <option key={m} value={m}>{l}</option>)}</select></div>
               <div className="col-span-2"><label className={label}>Note</label><input className={field} value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></div>
             </div>
             <div className="flex gap-2 justify-end"><Button variant="secondary" type="button" onClick={() => setEditing(null)}>Cancel</Button><Button type="submit">Save</Button></div>

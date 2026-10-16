@@ -17,6 +17,8 @@ class ProductCreate(BaseModel):
     hsn_code: Optional[str] = None
     mrp: Optional[Decimal] = Field(None, gt=0)
     max_discount_percent: Decimal = Field(Decimal("0"), ge=0, le=100)
+    warranty_months: Optional[int] = Field(None, ge=1, le=120)
+    warranty_terms: Optional[str] = Field(None, max_length=1500)
 
 
 class ProductUpdate(BaseModel):
@@ -29,6 +31,8 @@ class ProductUpdate(BaseModel):
     hsn_code: Optional[str] = None
     mrp: Optional[Decimal] = Field(None, gt=0)
     max_discount_percent: Optional[Decimal] = Field(None, ge=0, le=100)
+    warranty_months: Optional[int] = Field(None, ge=1, le=120)
+    warranty_terms: Optional[str] = Field(None, max_length=1500)
 
 
 class ProductOut(BaseModel):
@@ -43,6 +47,8 @@ class ProductOut(BaseModel):
     hsn_code: Optional[str] = None
     mrp: Optional[Decimal] = None
     max_discount_percent: Decimal = Decimal("0")
+    warranty_months: Optional[int] = None
+    warranty_terms: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

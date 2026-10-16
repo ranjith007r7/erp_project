@@ -21,6 +21,7 @@ from app.models.documents import Document, ApprovalWorkflow, ApprovalRequest, Ap
 from app.models.reports import SavedReport
 from app.models.workpage import WorkOrder, WorkEvent, WorkPayment, WorkItem, WorkStockIssue
 from app.models.stock import StockBatch
+from app.models.warranty import WarrantyRecord, WarrantyUnit, WarrantyClaim, WarrantyClaimFile
 
 __all__ = [
     "Organization",
@@ -55,7 +56,7 @@ __all__ = [
     "Vendor",
     "PurchaseOrder",
     "PurchaseOrderItem",
-    "GoodsReceipt", "GoodsReceiptFile", "GoodsReceiptLine", "ProcurementEmailLog",
+    "GoodsReceipt", "GoodsReceiptFile", "GoodsReceiptLine", "WarrantyRecord", "WarrantyUnit", "WarrantyClaim", "WarrantyClaimFile", "ProcurementEmailLog",
     "Department",
     "Employee",
     "Attendance",

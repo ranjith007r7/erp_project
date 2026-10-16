@@ -29,7 +29,7 @@ type ManagedUser = {
 // module the backend doesn't actually recognize.
 const MODULES = [
   "core", "dashboard", "crm", "sales", "procurement", "inventory",
-  "finance", "hr", "projects", "documents", "reports", "custom_fields", "intelligence", "workpage", "stockin",
+  "finance", "hr", "projects", "documents", "reports", "custom_fields", "intelligence", "workpage", "stockin", "warranty", "claims",
 ];
 const ACTIONS = ["view", "create", "edit", "delete", "approve"] as const;
 // Ask Data only uses two of the five ticks; the other three are meaningless for it, so they are not offered.
@@ -44,6 +44,10 @@ const SPECIAL_APPROVALS = [
     help: "Amend a wrongly keyed price after goods are received. Needs a reason; the old price stays on record." },
   { module: "finance", action: "refund", label: "Complete refunds to customers",
     help: "Record the cancellation charge, the refund mode and transaction id in Finance > Refunds and mark a refund completed. Viewing refunds only needs Finance view." },
+  { module: "warranty", action: "approve", label: "Approve or send back warranty registrations",
+    help: "Activate a warranty once the employee has filled the unit details; this issues the printable warranty card. Filling and submitting only needs Warranty edit." },
+  { module: "claims", action: "approve", label: "Approve or reject warranty claims",
+    help: "Decide a customer's claim (replace / repair / reject). Approving a replacement opens a zero-value work. Employees only need Claims create and edit to log a claim and upload its documents." },
   { module: "workpage", action: "approve", label: "Close works manually",
     help: "Mark a work as done by hand when it cannot close automatically." },
 ];

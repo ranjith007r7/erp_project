@@ -16,7 +16,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Users2, ShoppingCart, Wallet, Package, Truck, UserRound, FolderKanban, FileText,
-  BarChart3, Sparkles, ClipboardList, PackagePlus, PanelLeftClose, PanelLeftOpen, Menu, X,
+  BarChart3, Sparkles, ClipboardList, PackagePlus, ShieldCheck, LifeBuoy, PanelLeftClose, PanelLeftOpen, Menu, X,
 } from "lucide-react";
 import { apiRequest, clearToken, getToken } from "@/lib/api";
 import { IdleLogout } from "@/components/IdleLogout";
@@ -56,6 +56,8 @@ const NAV: { name: string; href: string; module: string; icon: typeof Users2 }[]
   { name: "Procurement", href: "/procurement", module: "procurement", icon: Truck },
   { name: "Inventory", href: "/inventory", module: "inventory", icon: Package },
   { name: "Stock Intake", href: "/stock-intake", module: "stockin", icon: PackagePlus },
+  { name: "Warranty", href: "/warranty", module: "warranty", icon: ShieldCheck },
+  { name: "Claims", href: "/claims", module: "claims", icon: LifeBuoy },
   { name: "Finance", href: "/finance", module: "finance", icon: Wallet },
   { name: "HR", href: "/hr", module: "hr", icon: UserRound },
   { name: "Projects", href: "/projects", module: "projects", icon: FolderKanban },

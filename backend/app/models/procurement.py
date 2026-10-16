@@ -81,6 +81,7 @@ class PurchaseOrderItem(Base):
     cgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
     sgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
     received_qty = Column(Integer, nullable=False, default=0, server_default="0")   # units accepted into stock so far
+    warranty_months = Column(Integer, nullable=True)   # warranty the vendor gives us on this line (copied to the lot on receipt)
 
     @property
     def outstanding_qty(self) -> int:

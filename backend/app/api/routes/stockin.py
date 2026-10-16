@@ -119,7 +119,8 @@ def create_batch(payload: StockBatchIn, db: Session = Depends(get_db), org_id: s
              max_discount_percent=payload.max_discount_percent, inward_date=payload.inward_date or date.today(),
              manufacture_month=month, expiry_date=payload.expiry_date, source="manual", note=payload.note,
              already_in_inventory=payload.already_in_inventory,
-             cgst_percent=payload.cgst_percent, sgst_percent=payload.sgst_percent, itc_eligible=payload.itc_eligible)
+             cgst_percent=payload.cgst_percent, sgst_percent=payload.sgst_percent, itc_eligible=payload.itc_eligible,
+             vendor_warranty_months=payload.vendor_warranty_months)
     log_audit_event(db, org_id, current_user.id, "stock_intake", "StockBatch", b.id)
     workpages.safe(db, workpages.resync_gst_for_product, org_id, b.product_id)
     db.commit()
@@ -138,12 +139,16 @@ def update_batch(batch_id: str, payload: StockBatchUpdate, db: Session = Depends
               "CGST %": svc.q2(b.cgst_percent), "SGST %": svc.q2(b.sgst_percent)}
     new = {"vendor_name": b.vendor_name, "vendor_amount": b.vendor_amount, "mrp": b.mrp, "max_discount_percent": b.max_discount_percent,
            "inward_date": b.inward_date, "manufacture_month": b.manufacture_month, "expiry_date": b.expiry_date,
-           "cgst_percent": b.cgst_percent, "sgst_percent": b.sgst_percent, "itc_eligible": b.itc_eligible}
+           "cgst_percent": b.cgst_percent, "sgst_percent": b.sgst_percent, "itc_eligible": b.itc_eligible,
+           "vendor_warranty_months": b.vendor_warranty_months}
     new.update({k: v for k, v in ch.items() if k in new})
-    _run(db, svc.validate_fields, **{k: v for k, v in new.items() if k not in ("cgst_percent", "sgst_percent", "itc_eligible")})
+    _run(db, svc.validate_fields, **{k: v for k, v in new.items() if k not in ("cgst_percent", "sgst_percent", "itc_eligible", "vendor_warranty_months")})
     for k, v in new.items():
         if k == "itc_eligible":
             b.itc_eligible = bool(v)
+            continue
+        if k == "vendor_warranty_months":
+            b.vendor_warranty_months = v or None
             continue
         setattr(b, k, svc.q2(v) if k in ("vendor_amount", "mrp", "max_discount_percent", "cgst_percent", "sgst_percent") else (v.strip() if k == "vendor_name" else v))
     if "note" in ch:

@@ -38,10 +38,10 @@ DEFAULT_STRUCTURE: dict[str, list[tuple[str, dict[str, str]]]] = {
     "Management": [
         ("Managing Director", {"dashboard": "v", "crm": "v", "sales": "va", "procurement": "va", "inventory": "v",
                                "finance": "va", "hr": "va", "projects": "va", "documents": "vcea", "reports": "v",
-                               "workpage": "vea", "intelligence": "va", "core": "v", "stockin": "vce"}),
+                               "workpage": "vea", "intelligence": "va", "core": "v", "stockin": "vce", "warranty": "vea", "claims": "vea"}),
         ("General Manager", {"dashboard": "v", "crm": "v", "sales": "va", "procurement": "va", "inventory": "v",
                              "finance": "v", "hr": "v", "projects": "va", "documents": "vcea", "reports": "v",
-                             "workpage": "vea", "intelligence": "v", "stockin": "vce"}),
+                             "workpage": "vea", "intelligence": "v", "stockin": "vce", "warranty": "vea", "claims": "vea"}),
     ],
     "Sales & Marketing": [
         ("Sales Manager", {"dashboard": "v", "crm": "vced", "sales": "vcea", "inventory": "v", "workpage": "vcea",
@@ -75,10 +75,11 @@ DEFAULT_STRUCTURE: dict[str, list[tuple[str, dict[str, str]]]] = {
     ],
     "Operations & Delivery": [
         ("Operations Manager", {"dashboard": "v", "workpage": "vcea", "projects": "vcea", "inventory": "v",
-                                "procurement": "v", "sales": "v", "documents": "vc", "reports": "v", "stockin": "vce"}),
+                                "procurement": "v", "sales": "v", "documents": "vc", "reports": "v", "stockin": "vce",
+                                "warranty": "vce", "claims": "vce"}),
         ("Operations Executive", {"dashboard": "v", "workpage": "vce", "projects": "vce", "inventory": "v",
-                                  "documents": "vc"}),
-        ("Delivery Executive", {"dashboard": "v", "workpage": "ve", "inventory": "v", "documents": "vc"}),
+                                  "documents": "vc", "warranty": "vce", "claims": "vce"}),
+        ("Delivery Executive", {"dashboard": "v", "workpage": "ve", "inventory": "v", "documents": "vc", "warranty": "vce", "claims": "vc"}),
     ],
     "Projects": [
         ("Project Manager", {"dashboard": "v", "projects": "vcea", "workpage": "v", "documents": "vcea", "reports": "v"}),

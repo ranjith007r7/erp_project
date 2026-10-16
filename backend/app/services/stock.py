@@ -118,7 +118,7 @@ def create_batch(db: Session, org_id, user, *, product_id, quantity: int, vendor
                  max_discount_percent, inward_date: date | None, manufacture_month: date | None, expiry_date: date | None,
                  source: str = "manual", po_id=None, vendor_id=None, note: str | None = None,
                  already_in_inventory: bool = False, count_stock: bool = True,
-                 cgst_percent=None, sgst_percent=None, itc_eligible: bool = True) -> StockBatch:
+                 cgst_percent=None, sgst_percent=None, itc_eligible: bool = True, vendor_warranty_months=None) -> StockBatch:
     """
     Add a priced lot.
       already_in_inventory=True : the units are already in the Inventory total (old stock being priced now);
@@ -155,7 +155,7 @@ def create_batch(db: Session, org_id, user, *, product_id, quantity: int, vendor
                        vendor_name=vendor_name.strip(), quantity_in=quantity, quantity_remaining=quantity,
                        vendor_amount=q2(vendor_amount), mrp=q2(mrp), max_discount_percent=q2(max_discount_percent),
                        inward_date=inward_date, manufacture_month=manufacture_month, expiry_date=expiry_date,
-                       source=source, po_id=po_id, note=(note or "").strip() or None,
+                       source=source, po_id=po_id, note=(note or "").strip() or None, vendor_warranty_months=vendor_warranty_months or None,
                        created_by=user.id if user else None)
     db.add(batch)
     db.flush()
@@ -231,6 +231,7 @@ def batch_row(db: Session, b: StockBatch, product: Product | None = None, show_c
         "sku": product.sku if product else None, "quantity_in": b.quantity_in, "quantity_remaining": b.quantity_remaining,
         "mrp": mrp, "max_discount_percent": q2(b.max_discount_percent), "lowest_selling_price": floor,
         "inward_date": b.inward_date, "manufacture_month": b.manufacture_month, "expiry_date": b.expiry_date,
+        "vendor_warranty_months": b.vendor_warranty_months,
         "expired": expired, "expiring_soon": near, "source": b.source, "po_id": b.po_id, "note": b.note,
         "created_at": b.created_at,
     }
@@ -257,6 +258,7 @@ def batch_from_po(db: Session, org_id, user, po, item, qty: int | None = None) -
                    cgst_percent=q2(item.cgst_percent), sgst_percent=q2(item.sgst_percent),
                    vendor_amount=cost, mrp=mrp, max_discount_percent=q2(product.max_discount_percent if product else 0), inward_date=date.today(),
                    source="purchase_order", po_id=po.id, created_by=user.id if user else None,
+                   vendor_warranty_months=getattr(item, "warranty_months", None),
                    note=(f"Received against {po.po_number}" if po.po_number else "Received against a purchase order")
                         + ("" if from_master else ". The product has no MRP set: set it on the product (Sales > Products) or edit this lot."))
     db.add(b)

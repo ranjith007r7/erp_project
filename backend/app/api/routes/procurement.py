@@ -107,7 +107,7 @@ def _out(po: PurchaseOrder) -> dict:
             "id": i.id, "product_id": i.product_id, "product_name": i.product.name if i.product else None,
             "qty": i.qty, "unit_price": i.unit_price, "line_total": i.qty * i.unit_price,
             "cgst_percent": i.cgst_percent, "sgst_percent": i.sgst_percent,
-            "received_qty": i.received_qty or 0, "outstanding_qty": i.outstanding_qty,
+            "received_qty": i.received_qty or 0, "outstanding_qty": i.outstanding_qty, "warranty_months": i.warranty_months,
             "cgst_amount": gst.line_tax(i.qty, i.unit_price, i.cgst_percent, i.sgst_percent)[1],
             "sgst_amount": gst.line_tax(i.qty, i.unit_price, i.cgst_percent, i.sgst_percent)[2],
         } for i in po.items],
@@ -223,7 +223,7 @@ def create_purchase_order(payload: PurchaseOrderCreate, db: Session = Depends(ge
         cg = product.cgst_percent if item.cgst_percent is None else item.cgst_percent
         sg = product.sgst_percent if item.sgst_percent is None else item.sgst_percent
         po.items.append(PurchaseOrderItem(product_id=item.product_id, qty=item.qty, unit_price=item.unit_price,
-                                          cgst_percent=cg, sgst_percent=sg))
+                                          cgst_percent=cg, sgst_percent=sg, warranty_months=item.warranty_months))
     gst.set_po_totals(po)
     db.add(po)
     db.flush()

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, date
 
-from sqlalchemy import Column, String, ForeignKey, DateTime, Date, Numeric, Integer
+from sqlalchemy import Column, String, ForeignKey, DateTime, Date, Numeric, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -32,6 +32,10 @@ class Product(Base):
     # Selling-side master data every lot inherits (so nobody re-types it per receipt). MRP is GST INCLUDED, as printed on the pack.
     mrp = Column(Numeric(12, 2), nullable=True)
     max_discount_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
+    # Default warranty offered on this product (months; one of the Warranty dropdown values) and its terms. The employee can still
+    # pick another period on the warranty record.
+    warranty_months = Column(Integer, nullable=True)
+    warranty_terms = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
