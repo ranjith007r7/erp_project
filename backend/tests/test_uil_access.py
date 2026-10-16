@@ -66,7 +66,8 @@ EXPECTED = {
     "approved but NO hr": (_profile(["inventory", "sales"], True),
                            {"products", "product_categories", "warehouses", "stock_levels", "stock_movements",
                             "crm_accounts", "customers", "quotations", "quotation_items", "sales_orders",
-                            "sales_order_items", "invoices"}),
+                            "sales_order_items", "invoices", "client_purchases"}),
+    "workpage only": (_profile(["workpage"]), {"work_orders", "work_items", "work_stock_issues", "work_payments", "client_purchases"}),
     "finance only": (_profile(["finance"]),
                      {"customers", "invoices", "chart_of_accounts", "journal_entries", "journal_lines", "payments"}),
 }
@@ -185,8 +186,23 @@ def _register(admin, conn, org_id, modules, restricted):
     return pid
 
 
+def _truth_sales_lines(admin, org_id):
+    with admin.connect() as c:
+        return c.execute(text("SELECT count(*) FROM public.sales_order_items i JOIN public.sales_orders o ON o.id = i.order_id WHERE o.org_id = :o"), {"o": org_id}).scalar()
+
+
+def _truth_work_lines(admin, org_id):
+    with admin.connect() as c:
+        return c.execute(text("SELECT count(*) FROM public.work_orders w LEFT JOIN public.work_items wi ON wi.work_id = w.id WHERE w.org_id = :o AND w.work_type <> 'sales_order'"), {"o": org_id}).scalar()
+
+
 def _truth(admin, view, org_id):
     with admin.connect() as c:
+        if view.name == "client_purchases":   # a union: one row per sales-order line + one per job line (jobs with no lines count once)
+            sql = ("SELECT (SELECT count(*) FROM public.sales_order_items i JOIN public.sales_orders o ON o.id = i.order_id WHERE o.org_id = :o) + "
+                   "(SELECT count(*) FROM public.work_orders w LEFT JOIN public.work_items wi ON wi.work_id = w.id "
+                   "WHERE w.org_id = :o AND w.work_type <> 'sales_order')")
+            return c.execute(text(sql), {"o": org_id}).scalar()
         if view.via is None:
             sql = f"SELECT count(*) FROM public.{view.base} WHERE org_id = :o"
         else:
@@ -210,6 +226,9 @@ def test_database_alone_returns_rows_only_for_views_the_profile_may_read(uil_env
             seen = cur.fetchone()[0]
             conn.rollback()
             want = _truth(uil_env, v, org) if profile.allows(v) else 0
+            if v.name == "client_purchases" and want:          # each half of this union is gated by its own module
+                want = (_truth_sales_lines(uil_env, org) if "sales" in profile.modules else 0) + \
+                       (_truth_work_lines(uil_env, org) if "workpage" in profile.modules else 0)
             assert seen == want, f"{label}: {v.name} returned {seen}, expected {want}"
             visible_with_data += 1 if seen else 0
         assert visible_with_data == (0 if label == "nothing" else visible_with_data)

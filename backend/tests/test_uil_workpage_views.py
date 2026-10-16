@@ -39,3 +39,32 @@ def test_workpage_views_need_the_workpage_module_and_stay_inside_the_org(client,
     from app.models.organization import Organization
     some_other = db_session.query(Organization.id).filter(Organization.id != other_org).first()[0]
     assert _ask(db_session, some_other, q, ("workpage",)).rows == []                    # another tenant never sees it
+
+
+def test_client_purchases_combines_sales_orders_and_jobs_with_space_insensitive_names(client, signup, uil_env, db_session):
+    h = signup()
+    tag = uuid.uuid4().hex[:6]
+    # a direct sale to "Anita<tag>" (like Anita's 5 mounting kits) ...
+    cust = client.post("/api/sales/customers", headers=h, json={"name": f"Anita{tag}"}).json()
+    prod = client.post("/api/sales/products", headers=h, json={"name": "Mounting kits", "unit_price": 6000, "mrp": 7000}).json()
+    quote = client.post("/api/sales/quotations", headers=h, json={"customer_id": cust["id"], "items": [{"product_id": prod["id"], "qty": 5, "unit_price": 6000}]}).json()
+    so = client.post(f"/api/sales/quotations/{quote['id']}/accept", headers=h)
+    assert so.status_code == 201, so.text
+    # ... and a job for "Redbull<tag> Racing" with one product line, plus one with no product lines at all
+    w = client.post(W, headers=h, json={"client_name": f"Redbull{tag} Racing", "quotation_amount": 40000, "vendor_amount": 25000}).json()
+    client.put(f"{W}/{w['id']}/items", headers=h, json={"items": [{"product_id": prod["id"], "qty": 2}]})
+    client.post(W, headers=h, json={"client_name": f"Hadjar{tag}", "quotation_amount": 48000})
+    org_id = db_session.query(WorkOrder.org_id).filter(WorkOrder.client_name == f"Redbull{tag} Racing").scalar()
+
+    def ask(where, modules=("sales", "workpage")):
+        return _ask(db_session, org_id, f"SELECT source, reference, product_name, qty FROM client_purchases WHERE client_key LIKE '{where}'", modules).rows
+
+    assert [(r[0], r[2], r[3]) for r in ask(f"%anita{tag}%")] == [("sales order", "Mounting kits", 5)]
+    for spelling in (f"%redbull{tag}racing%", f"%redbull{tag}%"):                    # 'Red Bull' vs 'Redbull' no longer matters
+        rows = ask(spelling)
+        assert [(r[0], r[2], r[3]) for r in rows] == [("work", "Mounting kits", 2)]
+    assert [(r[0], r[2]) for r in ask(f"%hadjar{tag}%")] == [("work", None)]          # a job with no product lines still shows
+    # each branch is gated by its own module, inside the database
+    assert [r[0] for r in ask(f"%anita{tag}%", ("sales",))] == ["sales order"] and ask(f"%redbull{tag}%", ("sales",)) == []
+    assert ask(f"%anita{tag}%", ("workpage",)) == [] and len(ask(f"%redbull{tag}%", ("workpage",))) == 1
+    assert ask(f"%anita{tag}%", ("hr",)) == []

@@ -55,6 +55,11 @@ def _pid(conn):
 def _expected_count(admin, view, org_id):
     """Ground truth computed as the PRIVILEGED user straight from the base tables."""
     with admin.connect() as c:
+        if view.name == "client_purchases":   # a union: one row per sales-order line + one per job line (jobs with no lines count once)
+            sql = ("SELECT (SELECT count(*) FROM public.sales_order_items i JOIN public.sales_orders o ON o.id = i.order_id WHERE o.org_id = :o) + "
+                   "(SELECT count(*) FROM public.work_orders w LEFT JOIN public.work_items wi ON wi.work_id = w.id "
+                   "WHERE w.org_id = :o AND w.work_type <> 'sales_order')")
+            return c.execute(text(sql), {"o": org_id}).scalar()
         if view.custom_sql:
             sql = f"SELECT count(*) FROM public.{view.base} WHERE org_id = :o"
         elif view.via is None:

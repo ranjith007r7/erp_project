@@ -232,6 +232,18 @@ _RAW_VIEWS: tuple = (
                "method:text:'cash','card','gpay','bank_transfer' or 'cheque'", "paid_on:date", "created_at:timestamp"),
          base="work_payments"),
 
+    View("client_purchases", "Sales",
+         "WHAT EACH CLIENT BOUGHT, from direct sales orders AND jobs (works) together, one row per product line. "
+         "USE THIS for any \"what did <client/company/person> buy / order / get\" question.",
+         _cols("client_name:text", "company_name:text:null for jobs", 
+               "client_key:text:client + company name lower-case with NO spaces; match with client_key LIKE '%redbull%'",
+               "source:text:'sales order' or 'work'", "reference:text:order date or work number, e.g. WK-0018",
+               "product_name:text:null if the job has no product lines recorded", "qty:integer",
+               "unit_price:numeric:null for jobs (jobs are priced as a whole)", "line_value:numeric:null for jobs",
+               "deal_value:numeric:whole order / job value before GST", "status:text", "date:date"),
+         base="work_orders",
+         custom_sql="(client_purchases is created by migration e9b4c1d7a362)"),
+
     # -------------------------------------------------------- PROJECTS
     View("projects", "Projects", "Client or internal projects.",
          _cols("id:uuid", "name:text", "client_account_id:uuid:-> crm_accounts.id", "start_date:date",
@@ -313,6 +325,7 @@ ACCESS: dict = {
     "work_items": (("workpage",), False),
     "work_stock_issues": (("workpage",), False),
     "work_payments": (("workpage",), False),
+    "client_purchases": (("sales", "workpage"), False),
     "projects": (("projects",), False),
     "tasks": (("projects",), False),
     "time_logs": (("projects",), False),
@@ -356,6 +369,11 @@ GLOSSARY_ENTRIES: tuple = (
     (frozenset({"stock_levels"}), "Stock on hand for a product = SUM(stock_levels.quantity) across warehouses."),
     (frozenset({"products", "stock_levels"}),
      "Low stock = product reorder_level > 0 AND on-hand quantity <= reorder_level."),
+    (frozenset({"client_purchases"}),
+     "\"What did X buy / order / get\" -> query client_purchases (it already combines direct sales and jobs). Match the client with "
+     "client_key LIKE '%x%' where x is the name the user typed, lower-case with ALL SPACES REMOVED (e.g. 'Red Bull Racing' or 'redbull racing' "
+     "-> '%redbullracing%'; a single distinctive word like '%redbull%' is fine). Never change the user's spelling or add spaces. "
+     "Show product_name, qty, source, reference, deal_value."),
     (frozenset({"work_orders"}),
      "A client's deals are WORKS (work_orders), not only sales_orders. Questions like \"what did X buy\", \"what did X order\", "
      "\"how much did X pay\" must check work_orders (client_name ILIKE) and, for the parts supplied, work_stock_issues; "
@@ -431,11 +449,10 @@ EXAMPLES: tuple = (
     ("How many leads came from each source?",
      "SELECT COALESCE(source, 'Unknown') AS source, COUNT(*) AS leads FROM crm_leads GROUP BY 1 ORDER BY 2 DESC",
      frozenset({"crm_leads"})),
-    ("What did Acme buy?",
-     "SELECT w.work_number, w.status, p.name AS product_name, si.qty FROM work_orders w "
-     "LEFT JOIN work_stock_issues si ON si.work_id = w.id LEFT JOIN products p ON p.id = si.product_id "
-     "WHERE w.client_name ILIKE '%acme%' ORDER BY w.work_number",
-     frozenset({"work_orders", "work_stock_issues", "products"})),
+    ("What did Red Bull Racing buy?",
+     "SELECT client_name, source, reference, product_name, qty, deal_value, status FROM client_purchases "
+     "WHERE client_key LIKE '%redbullracing%' ORDER BY date DESC",
+     frozenset({"client_purchases"})),
     ("What is the profit on each completed work?",
      "SELECT w.work_number, w.client_name, ROUND(w.quotation_amount - w.quotation_amount * w.discount_percent / 100 - w.vendor_amount, 2) AS profit "
      "FROM work_orders w WHERE w.status = 'closed' ORDER BY profit DESC",

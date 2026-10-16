@@ -103,7 +103,8 @@ def _rewrite_prompt(question: str, history: list) -> str:
     return (
         f"Today's date is {_today()}.\n"
         "Rewrite the user's latest message as ONE standalone question that can be understood without the "
-        "conversation. Keep every specific (names, dates, years, numbers). If it is already standalone, return it "
+        "conversation. Keep every specific (names, dates, years, numbers) EXACTLY as typed: never correct, re-space or re-spell a "
+        "name ('redbull' must not become 'Red Bull'). If it is already standalone, return it "
         "unchanged. Output ONLY the question.\n\n"
         f"Conversation so far:\n{convo}\n\nLatest message: {question}"
     )
@@ -121,6 +122,8 @@ _GATE_EXAMPLES = (
     ("How many units of each product do we have in the warehouse?", "YES"),
     ("Which vendors have purchase orders that are still pending?", "YES"),
     ("Which leave requests are waiting for approval?", "YES"),
+    ("What did Acme buy?", "YES"),
+    ("What is the profit on our completed jobs?", "YES"),
     ("What is our total payroll expense?", "YES"),
     ("What is the weather in Chennai today?", "NO"),
     ("Who won the Formula 1 championship in 2022?", "NO"),
@@ -157,7 +160,7 @@ def _gate_prompt(question: str) -> str:
 _ERP_WORDS = re.compile(
     r"\b(stock|inventory|product|sku|warehouse|reorder|invoice|payment|quotation|sales?|order|customer|revenue|"
     r"vendor|supplier|purchase|procurement|goods|employee|headcount|payroll|salary|leave|attendance|department|"
-    r"lead|opportunit\w*|contact|project|task|journal|account|expense|receivable|overdue)s?\b", re.I)
+    r"lead|opportunit\w*|contact|project|task|journal|account|expense|receivable|overdue|buy|bought|jobs?|profit)s?\b", re.I)
 _NOT_ALLOWED_WORDS = re.compile(
     r"\b(delete|drop|update|insert|remove|truncate|alter|create|password|passwords|secret|token|credential\w*|"
     r"ignore|instruction\w*|prompt|competitor\w*|forecast|predict\w*|next year|weather|poem|joke|email addresses?)\b", re.I)
