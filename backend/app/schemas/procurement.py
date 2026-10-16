@@ -49,6 +49,8 @@ class PurchaseOrderItemOut(BaseModel):
     sgst_percent: Decimal = Decimal("0")
     cgst_amount: Decimal = Decimal("0")
     sgst_amount: Decimal = Decimal("0")
+    received_qty: int = 0
+    outstanding_qty: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -67,6 +69,12 @@ class ReceiptFileOut(BaseModel):
     size: int
 
 
+class ReceiptLineOut(BaseModel):
+    product_name: Optional[str] = None
+    qty_good: int
+    qty_defective: int
+
+
 class ReceiptOut(BaseModel):
     id: UUID
     condition: str
@@ -74,6 +82,7 @@ class ReceiptOut(BaseModel):
     received_date: Optional[date] = None
     received_by_name: Optional[str] = None
     files: list[ReceiptFileOut] = []
+    lines: list[ReceiptLineOut] = []
 
 
 class PriceCorrectionLine(BaseModel):

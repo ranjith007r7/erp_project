@@ -121,6 +121,7 @@ def create_batch(payload: StockBatchIn, db: Session = Depends(get_db), org_id: s
              already_in_inventory=payload.already_in_inventory,
              cgst_percent=payload.cgst_percent, sgst_percent=payload.sgst_percent, itc_eligible=payload.itc_eligible)
     log_audit_event(db, org_id, current_user.id, "stock_intake", "StockBatch", b.id)
+    workpages.safe(db, workpages.resync_gst_for_product, org_id, b.product_id)
     db.commit()
     return svc.batch_row(db, b)
 
@@ -157,6 +158,8 @@ def update_batch(batch_id: str, payload: StockBatchUpdate, db: Session = Depends
     log_audit_event(db, org_id, current_user.id, "update_stock_batch: " + ", ".join(diffs) if diffs else "update_stock_batch", "StockBatch", b.id)
     if "cost" in " ".join(diffs):
         workpages.safe(db, workpages.resync_vendor_for_product, org_id, b.product_id)
+    if diffs:
+        workpages.safe(db, workpages.resync_gst_for_product, org_id, b.product_id)
     db.commit()
     return svc.batch_row(db, b)
 

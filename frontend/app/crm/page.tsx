@@ -223,8 +223,8 @@ export default function CRMPage() {
             />
             <div className="grid grid-cols-2 gap-2">
               <input
-                placeholder="Estimated quotation amount (₹)"
-                aria-label="Estimated quotation amount"
+                placeholder="Quotation amount (₹, excluding GST)"
+                aria-label="Quotation amount (excluding GST)"
                 type="number" min="0" step="0.01"
                 value={form.estimated_amount}
                 onChange={(e) => setForm({ ...form, estimated_amount: e.target.value })}
@@ -367,7 +367,7 @@ export default function CRMPage() {
               />
             </label>
             <label className="block text-sm text-slate-600 dark:text-zinc-300">
-              Quotation amount (₹): becomes the work&apos;s amount
+              Quotation amount (₹, excluding GST): becomes the work&apos;s amount
               <input
                 type="number"
                 min="0"

@@ -75,6 +75,40 @@ REFUSAL_TEXT = (
 )
 
 
+# "Client details / phone / email / address" style questions are refused on purpose: personal contact details are never
+# exposed to the AI (its answers are written by an external model). Instead of a bare refusal we point the person to
+# the work page and, when the client can be recognised, give the work numbers so they can paste one into the search bar.
+_DETAIL_WORDS = re.compile(r"\b(details?|phone|mobile|number|e-?mail|address|contacts?|whatsapp|info(?:rmation)?)\b", re.I)
+_NAME_STOP = frozenset(
+    "list show give tell what whats are the of for from about client clients customer customers company details detail phone mobile "
+    "number numbers email address contact contacts whatsapp info information please me our their his her and with who is its".split())
+
+
+def _work_number_hint(db, org_id, question: str, access: AccessProfile) -> str:
+    """Extra line for a refused client-details question. Returns work numbers only (never contact data); best effort."""
+    hint = "For a client's full details, open their work page: search the work number in the search bar at the top."
+    if not (_DETAIL_WORDS.search(question) and ("workpage" in access.modules)):
+        return ""
+    tokens = [re.sub(r"[^a-z0-9]", "", t.lower()) for t in re.split(r"\s+", question)]
+    tokens = [t for t in tokens if len(t) >= 4 and t not in _NAME_STOP]
+    candidates = ["".join(tokens)] + sorted(set(tokens), key=len, reverse=True) if tokens else []
+    for key in candidates:
+        if not key:
+            continue
+        try:
+            res = run_readonly_query(
+                db, org_id,
+                "SELECT DISTINCT reference, client_name FROM client_purchases WHERE source = 'work' AND client_key LIKE '%" + key + "%' "
+                "ORDER BY reference LIMIT 10",
+                max_rows=10, timeout_ms=settings.UIL_STATEMENT_TIMEOUT_MS, modules=access.modules, restricted=access.restricted)
+        except Exception:     # a hint must never turn a refusal into an error
+            return hint
+        if res.rows:
+            works = ", ".join(f"{r[0]} ({r[1]})" for r in res.rows)
+            return f"{hint}\nMatching work number(s): {works}"
+    return hint
+
+
 @dataclass
 class AskResult:
     answered: bool
@@ -163,7 +197,8 @@ _ERP_WORDS = re.compile(
     r"lead|opportunit\w*|contact|project|task|journal|account|expense|receivable|overdue|buy|bought|jobs?|profit)s?\b", re.I)
 _NOT_ALLOWED_WORDS = re.compile(
     r"\b(delete|drop|update|insert|remove|truncate|alter|create|password|passwords|secret|token|credential\w*|"
-    r"ignore|instruction\w*|prompt|competitor\w*|forecast|predict\w*|next year|weather|poem|joke|email addresses?)\b", re.I)
+    r"ignore|instruction\w*|prompt|competitor\w*|forecast|predict\w*|next year|weather|poem|joke|email addresses?)\b"
+    r"|\b(phone|mobile|contact|client|customer)s?'?\s+(details?|numbers?|info\w*)\b", re.I)
 
 
 def looks_like_erp_question(question: str) -> bool:
@@ -313,7 +348,8 @@ def answer_question(db: Session, org_id: str, question: str, history: list | Non
 
         verdict = llm.generate(_gate_prompt(resolved), max_tokens=256).strip().upper()
         if not verdict.startswith("YES") and not looks_like_erp_question(resolved):
-            return finish(AskResult(False, REFUSED_SCOPE, REFUSAL_TEXT, resolved_question=resolved,
+            extra = _work_number_hint(db, org_id, resolved, access)
+            return finish(AskResult(False, REFUSED_SCOPE, REFUSAL_TEXT + (("\n\n" + extra) if extra else ""), resolved_question=resolved,
                                     detail="The question is outside the ERP's data."))
 
         sql, result, last_error = None, None, None

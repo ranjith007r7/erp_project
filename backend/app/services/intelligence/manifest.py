@@ -235,8 +235,9 @@ _RAW_VIEWS: tuple = (
     View("client_purchases", "Sales",
          "WHAT EACH CLIENT BOUGHT, from direct sales orders AND jobs (works) together, one row per product line. "
          "USE THIS for any \"what did <client/company/person> buy / order / get\" question.",
-         _cols("client_name:text", "company_name:text:null for jobs", 
-               "client_key:text:client + company name lower-case with NO spaces; match with client_key LIKE '%redbull%'",
+         _cols("client_name:text:the client or company", "company_name:text:null for jobs",
+               "contact_name:text:NAME of the contact person on the CRM lead the job came from (null for direct sales, or without CRM access)",
+               "client_key:text:client + company + contact person names, lower-case with NO spaces; match with client_key LIKE '%redbull%' or '%divyaraman%'",
                "source:text:'sales order' or 'work'", "reference:text:order date or work number, e.g. WK-0018",
                "product_name:text:null if the job has no product lines recorded", "qty:integer",
                "unit_price:numeric:null for jobs (jobs are priced as a whole)", "line_value:numeric:null for jobs",
@@ -370,7 +371,8 @@ GLOSSARY_ENTRIES: tuple = (
     (frozenset({"products", "stock_levels"}),
      "Low stock = product reorder_level > 0 AND on-hand quantity <= reorder_level."),
     (frozenset({"client_purchases"}),
-     "\"What did X buy / order / get\" -> query client_purchases (it already combines direct sales and jobs). Match the client with "
+     "\"What did X buy / order / get\" -> query client_purchases (it already combines direct sales and jobs). The name may be a company OR a person (e.g. a CRM contact such as Divya Raman at Lakeview Clinic): "
+     "client_key covers all of them. Match the client with "
      "client_key LIKE '%x%' where x is the name the user typed, lower-case with ALL SPACES REMOVED (e.g. 'Red Bull Racing' or 'redbull racing' "
      "-> '%redbullracing%'; a single distinctive word like '%redbull%' is fine). Never change the user's spelling or add spaces. "
      "Show product_name, qty, source, reference, deal_value."),
@@ -450,7 +452,7 @@ EXAMPLES: tuple = (
      "SELECT COALESCE(source, 'Unknown') AS source, COUNT(*) AS leads FROM crm_leads GROUP BY 1 ORDER BY 2 DESC",
      frozenset({"crm_leads"})),
     ("What did Red Bull Racing buy?",
-     "SELECT client_name, source, reference, product_name, qty, deal_value, status FROM client_purchases "
+     "SELECT client_name, contact_name, source, reference, product_name, qty, deal_value, status FROM client_purchases "
      "WHERE client_key LIKE '%redbullracing%' ORDER BY date DESC",
      frozenset({"client_purchases"})),
     ("What is the profit on each completed work?",

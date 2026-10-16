@@ -15,6 +15,7 @@ Real-world flow implemented here:
                the vendor by email (preview, then send) or is printed
 Stock only ever increases through a GOOD receipt.
 """
+import json
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -28,7 +29,7 @@ from app.api.deps import get_current_user, get_org_id, require_permission
 from app.services import workpages, po_correction
 from app.models.organization import Organization
 from app.models.procurement import (
-    Vendor, PurchaseOrder, PurchaseOrderItem, GoodsReceipt, GoodsReceiptFile, ProcurementEmailLog,
+    Vendor, PurchaseOrder, PurchaseOrderItem, GoodsReceipt, GoodsReceiptFile, GoodsReceiptLine, ProcurementEmailLog,
 )
 from app.models.sales import Product
 from app.schemas.procurement import (
@@ -71,6 +72,7 @@ def _load_po(db: Session, org_id, po_id) -> PurchaseOrder:
             joinedload(PurchaseOrder.vendor), joinedload(PurchaseOrder.creator),
             joinedload(PurchaseOrder.approver),
             selectinload(PurchaseOrder.corrections),
+            selectinload(PurchaseOrder.receipts).selectinload(GoodsReceipt.lines).joinedload(GoodsReceiptLine.item).joinedload(PurchaseOrderItem.product),
             selectinload(PurchaseOrder.receipts).selectinload(GoodsReceipt.files).load_only(
                 GoodsReceiptFile.id, GoodsReceiptFile.kind, GoodsReceiptFile.filename,
                 GoodsReceiptFile.content_type, GoodsReceiptFile.size, GoodsReceiptFile.receipt_id,
@@ -105,6 +107,7 @@ def _out(po: PurchaseOrder) -> dict:
             "id": i.id, "product_id": i.product_id, "product_name": i.product.name if i.product else None,
             "qty": i.qty, "unit_price": i.unit_price, "line_total": i.qty * i.unit_price,
             "cgst_percent": i.cgst_percent, "sgst_percent": i.sgst_percent,
+            "received_qty": i.received_qty or 0, "outstanding_qty": i.outstanding_qty,
             "cgst_amount": gst.line_tax(i.qty, i.unit_price, i.cgst_percent, i.sgst_percent)[1],
             "sgst_amount": gst.line_tax(i.qty, i.unit_price, i.cgst_percent, i.sgst_percent)[2],
         } for i in po.items],
@@ -115,6 +118,8 @@ def _out(po: PurchaseOrder) -> dict:
         "receipts": [{
             "id": r.id, "condition": r.condition, "notes": r.notes, "received_date": r.received_date,
             "received_by_name": r.receiver.name if r.receiver else None,
+            "lines": [{"product_name": l.item.product.name if l.item and l.item.product else None,
+                       "qty_good": l.qty_good, "qty_defective": l.qty_defective} for l in r.lines],
             "files": [{"id": f.id, "kind": f.kind, "filename": f.filename,
                        "content_type": f.content_type, "size": f.size} for f in r.files],
         } for r in po.receipts],
@@ -386,17 +391,25 @@ async def receive_good(
     po_id: str, invoice: UploadFile | None = File(None), pod: UploadFile | None = File(None), notes: str | None = Form(None),
     db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user),
 ):
-    """The only way stock goes up. Needs the vendor invoice AND the courier POD first."""
+    """The only way stock goes up. Needs the vendor invoice AND the courier POD first. Receives every unit still outstanding on the
+    order (after a partial bad-condition receipt that is just the replacement units)."""
     po = _load_po(db, org_id, po_id)
     _guard_receivable(po)
     f_inv = await _read_proof(invoice, "The vendor's original invoice", ALLOWED_PROOF_TYPES)
     f_pod = await _read_proof(pod, "The POD / courier copy", ALLOWED_PROOF_TYPES)
 
-    for item in po.items:
-        receive_stock(db, org_id, product_id=str(item.product_id), qty=item.qty,
+    todo = [i for i in po.items if i.outstanding_qty > 0]
+    if not todo:
+        raise HTTPException(400, "Nothing is outstanding on this purchase order.")
+    replacement = any((i.received_qty or 0) > 0 for i in po.items)     # the units still owed after a partial receipt
+    receipt = _save_receipt(db, org_id, po, current_user, "good", notes, [("invoice", *f_inv), ("pod", *f_pod)])
+    for item in todo:
+        n = item.outstanding_qty
+        receive_stock(db, org_id, product_id=str(item.product_id), qty=n,
                       ref_type="purchase_order", ref_id=str(po.id))
-        stock_svc.batch_from_po(db, org_id, current_user, po, item)   # the priced lot behind these units
-    _save_receipt(db, org_id, po, current_user, "good", notes, [("invoice", *f_inv), ("pod", *f_pod)])
+        stock_svc.batch_from_po(db, org_id, current_user, po, item, qty=n)   # the priced lot behind these units
+        item.received_qty = item.qty
+        db.add(GoodsReceiptLine(org_id=org_id, receipt_id=receipt.id, po_item_id=item.id, qty_good=n, qty_defective=0))
     po.status = "received"
     notify_role(db, org_id, "Admin", f"{po.po_number} from {po.vendor.name if po.vendor else 'a vendor'} was received in good condition - stock updated.")
     workpages.safe(db, workpages.on_po_received, po, current_user)
@@ -408,12 +421,39 @@ async def receive_good(
 @router.post("/purchase-orders/{po_id}/receive-bad", response_model=PurchaseOrderOut, dependencies=[Depends(require_permission("procurement", "edit"))])
 async def receive_bad(
     po_id: str, invoice: UploadFile | None = File(None), pod: UploadFile | None = File(None),
-    defect: list[UploadFile] = File(default=[]), notes: str | None = Form(None),
+    defect: list[UploadFile] = File(default=[]), notes: str | None = Form(None), lines: str | None = Form(None),
     db: Session = Depends(get_db), org_id: str = Depends(get_org_id), current_user=Depends(get_current_user),
 ):
-    """Goods arrived damaged: nothing goes into stock; proof is stored for the vendor notice."""
+    """Goods arrived damaged. `lines` (JSON [{"item_id", "defective_qty"}]) says how many units of each line are defective: those are
+    returned for replacement and stay outstanding on this PO, while the REST of the outstanding units are accepted into stock now
+    (invoice + POD are mandatory either way). Without `lines`, every outstanding unit is treated as defective (nothing enters stock)."""
     po = _load_po(db, org_id, po_id)
     _guard_receivable(po)
+    open_items = [i for i in po.items if i.outstanding_qty > 0]
+    if not open_items:
+        raise HTTPException(400, "Nothing is outstanding on this purchase order.")
+    bad_qty = {i.id: i.outstanding_qty for i in open_items}            # default: everything outstanding is defective
+    if lines:
+        try:
+            raw = json.loads(lines)
+            assert isinstance(raw, list)
+        except Exception:
+            raise HTTPException(400, "The defective quantities could not be read.")
+        by_id = {str(i.id): i for i in open_items}
+        bad_qty = {i.id: 0 for i in open_items}
+        for r in raw:
+            it = by_id.get(str((r or {}).get("item_id")))
+            try:
+                q = int((r or {}).get("defective_qty"))
+            except (TypeError, ValueError):
+                raise HTTPException(400, "Each defective quantity must be a whole number.")
+            if not it:
+                raise HTTPException(400, "A line in the defective list is not an outstanding line of this purchase order.")
+            if q < 0 or q > it.outstanding_qty:
+                raise HTTPException(400, f"{it.product.name if it.product else 'Item'}: defective quantity must be between 0 and {it.outstanding_qty} (what is still outstanding).")
+            bad_qty[it.id] = q
+        if sum(bad_qty.values()) < 1:
+            raise HTTPException(400, "Enter at least one defective unit, or use 'Goods are in good condition'.")
     f_inv = await _read_proof(invoice, "The vendor's original invoice", ALLOWED_PROOF_TYPES)
     f_pod = await _read_proof(pod, "The POD / courier copy", ALLOWED_PROOF_TYPES)
     real = [u for u in defect if u and u.filename]
@@ -427,10 +467,28 @@ async def receive_bad(
             raise HTTPException(400, f"The defect image '{name}' is not a readable image file.")
 
     files = [("invoice", *f_inv), ("pod", *f_pod)] + [("defect", *d) for d in f_def]
-    _save_receipt(db, org_id, po, current_user, "bad", notes, files)
+    receipt = _save_receipt(db, org_id, po, current_user, "bad", notes, files)
+    accepted, returned = [], []
+    for item in open_items:
+        bad = bad_qty[item.id]
+        good = item.outstanding_qty - bad
+        name = item.product.name if item.product else "item"
+        if good > 0:        # the good part goes through the same stock path as a good receipt
+            receive_stock(db, org_id, product_id=str(item.product_id), qty=good, ref_type="purchase_order", ref_id=str(po.id))
+            stock_svc.batch_from_po(db, org_id, current_user, po, item, qty=good)
+            item.received_qty = (item.received_qty or 0) + good
+            accepted.append(f"{name} x {good}")
+        if bad > 0:
+            returned.append(f"{name} x {bad}")
+        db.add(GoodsReceiptLine(org_id=org_id, receipt_id=receipt.id, po_item_id=item.id, qty_good=good, qty_defective=bad))
     po.status = "defective"
-    notify_role(db, org_id, "Admin", f"{po.po_number} from {po.vendor.name if po.vendor else 'a vendor'} arrived DEFECTIVE and was not added to stock.")
-    workpages.safe(db, workpages.on_po_defective, po, current_user, (notes or "").strip() or None)
+    pn, vn = po.po_number, (po.vendor.name if po.vendor else "a vendor")
+    if accepted:
+        notify_role(db, org_id, "Admin", f"{pn} from {vn} arrived PARTLY defective: {', '.join(accepted)} added to stock; {', '.join(returned)} returned for replacement.")
+    else:
+        notify_role(db, org_id, "Admin", f"{pn} from {vn} arrived DEFECTIVE and was not added to stock.")
+    detail = (f"{', '.join(accepted)} accepted into stock; {', '.join(returned)} returned to the vendor for replacement. " if accepted else "") + ((notes or "").strip())
+    workpages.safe(db, workpages.on_po_defective, po, current_user, detail.strip() or None)
     log_audit_event(db, org_id, current_user.id, "receive_purchase_order_defective", "PurchaseOrder", po.id)
     db.commit()
     return _out(_load_po(db, org_id, po_id))

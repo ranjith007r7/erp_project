@@ -22,3 +22,4 @@ class Notification(Base):
     message = Column(String, nullable=False)
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    read_at = Column(DateTime, nullable=True)   # when it was read; read messages live 7 days in the temporary archive

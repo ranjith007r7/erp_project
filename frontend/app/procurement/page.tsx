@@ -312,9 +312,12 @@ export default function ProcurementPage() {
                         {po.receipts.map((r) => (
                           <div key={r.id} className={`text-xs rounded-lg p-2 ${r.condition === "good" ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-900 dark:text-emerald-200" : "bg-red-50 dark:bg-red-950/30 text-red-900 dark:text-red-200"}`}>
                             <p className="font-medium">
-                              {r.condition === "good" ? "Received in good condition" : "Received in bad condition (not added to stock)"} · {r.received_date} · by {r.received_by_name || "-"}
+                              {r.condition === "good" ? "Received in good condition" : (r.lines || []).some((l) => l.qty_good > 0) ? "Received partly defective" : "Received in bad condition (not added to stock)"} · {r.received_date} · by {r.received_by_name || "-"}
                               {r.notes ? ` · ${r.notes}` : ""}
                             </p>
+                            {(r.lines || []).length > 0 && r.condition === "bad" && (
+                              <p className="mt-0.5" data-testid="receipt-lines">{r.lines!.map((l) => `${l.product_name}: ${l.qty_good} good, ${l.qty_defective} defective`).join(" · ")}</p>
+                            )}
                             <div className="flex flex-wrap gap-2 mt-1">
                               {r.files.map((f) => (
                                 <button key={f.id} onClick={() => viewFile(f.id, f.filename)} className="underline flex items-center gap-1">

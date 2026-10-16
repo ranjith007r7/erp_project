@@ -242,7 +242,7 @@ def batch_row(db: Session, b: StockBatch, product: Product | None = None, show_c
     return row
 
 
-def batch_from_po(db: Session, org_id, user, po, item) -> StockBatch:
+def batch_from_po(db: Session, org_id, user, po, item, qty: int | None = None) -> StockBatch:
     """A good Purchase Order receipt also records its lot (stock was already added by the caller). The selling side (MRP incl. GST and
     max discount) is inherited from the product master, so nothing has to be typed in Stock Intake afterwards. Only when the product has
     neither an MRP nor a list price does the lot start at its cost with 0% discount, and the note says so."""
@@ -253,7 +253,7 @@ def batch_from_po(db: Session, org_id, user, po, item) -> StockBatch:
     if mrp is None:
         mrp = max(cost, TWO)
     b = StockBatch(org_id=org_id, product_id=item.product_id, vendor_id=po.vendor_id,
-                   vendor_name=po.vendor.name if po.vendor else "Vendor", quantity_in=item.qty, quantity_remaining=item.qty,
+                   vendor_name=po.vendor.name if po.vendor else "Vendor", quantity_in=qty if qty is not None else item.qty, quantity_remaining=qty if qty is not None else item.qty,
                    cgst_percent=q2(item.cgst_percent), sgst_percent=q2(item.sgst_percent),
                    vendor_amount=cost, mrp=mrp, max_discount_percent=q2(product.max_discount_percent if product else 0), inward_date=date.today(),
                    source="purchase_order", po_id=po.id, created_by=user.id if user else None,

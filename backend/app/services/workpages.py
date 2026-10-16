@@ -318,6 +318,15 @@ def resync_vendor_for_product(db: Session, org_id, product_id, exclude=None):
             sync_vendor_amount(db, w)
 
 
+def resync_gst_for_product(db: Session, org_id, product_id):
+    """A lot arrived or its GST / cost was corrected: open works that list this product re-learn their GST slab, so
+    nobody has to type the client GST by hand (it always follows the product's own rate)."""
+    db.flush()
+    ids = [i for (i,) in db.query(WorkItem.work_id).filter(WorkItem.org_id == org_id, WorkItem.product_id == product_id).distinct()]
+    for w in db.query(WorkOrder).filter(WorkOrder.org_id == org_id, WorkOrder.id.in_(ids), WorkOrder.status.in_(("assigned", "allocated", "po_not_raised"))).all() if ids else []:
+        autofill_from_items(db, w, None)
+
+
 # ------------------------------------------------------------------ items & stock helpers
 def _items(db: Session, work: WorkOrder) -> list[WorkItem]:
     return db.query(WorkItem).filter(WorkItem.work_id == work.id).order_by(WorkItem.created_at, WorkItem.id).all()
@@ -1057,7 +1066,9 @@ def on_po_defective(db: Session, po: PurchaseOrder, user: User | None, notes: st
     if not work:
         return
     log_event(db, work, "po_defective", f"{po.po_number} arrived defective",
-              (notes or "Goods were damaged on arrival and were not added to stock.") + " Waiting for a replacement purchase order.",
+              (notes or "Goods were damaged on arrival and were not added to stock.")
+              + (" The vendor will replace the defective units; receive them on this same purchase order." if any((i.received_qty or 0) > 0 for i in po.items)
+                 else " Waiting for a replacement purchase order."),
               user, {"po_number": po.po_number})
     recompute_from_pos(db, work)
 

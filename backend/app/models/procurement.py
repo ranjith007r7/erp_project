@@ -80,6 +80,11 @@ class PurchaseOrderItem(Base):
     unit_price = Column(Numeric(12, 2), nullable=False)   # excludes GST
     cgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
     sgst_percent = Column(Numeric(5, 2), nullable=False, default=0, server_default="0")
+    received_qty = Column(Integer, nullable=False, default=0, server_default="0")   # units accepted into stock so far
+
+    @property
+    def outstanding_qty(self) -> int:
+        return max(int(self.qty) - int(self.received_qty or 0), 0)
 
     purchase_order = relationship("PurchaseOrder", back_populates="items")
     product = relationship("Product")
@@ -111,6 +116,23 @@ class GoodsReceipt(Base):
     receiver = relationship("User", foreign_keys=[received_by])
     files = relationship("GoodsReceiptFile", back_populates="receipt", cascade="all, delete-orphan",
                          order_by="GoodsReceiptFile.created_at")
+    lines = relationship("GoodsReceiptLine", back_populates="receipt", cascade="all, delete-orphan")
+
+
+class GoodsReceiptLine(Base):
+    """How many units of one PO line were accepted (qty_good, added to stock) and how many were defective (qty_defective,
+    returned for replacement) in one receipt."""
+    __tablename__ = "goods_receipt_lines"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    receipt_id = Column(UUID(as_uuid=True), ForeignKey("goods_receipts.id"), nullable=False)
+    po_item_id = Column(UUID(as_uuid=True), ForeignKey("purchase_order_items.id"), nullable=False)
+    qty_good = Column(Integer, nullable=False, default=0, server_default="0")
+    qty_defective = Column(Integer, nullable=False, default=0, server_default="0")
+
+    receipt = relationship("GoodsReceipt", back_populates="lines")
+    item = relationship("PurchaseOrderItem")
 
 
 class GoodsReceiptFile(Base):

@@ -97,12 +97,18 @@ def build_defect_email(org_name: str, po, receipt) -> dict:
     vendor = po.vendor.name if po.vendor else "Vendor"
     notes = (receipt.notes or "").strip() or "Goods were found damaged / defective on inspection."
     files = [f"{KIND_LABEL.get(f.kind, f.kind)}: {f.filename}" for f in receipt.files]
+    bad_lines = [(l.item.product.name if l.item and l.item.product else "Item", l.qty_defective, l.qty_good) for l in (receipt.lines or []) if l.qty_defective]
+    partial = any(g for _, _, g in bad_lines) or any(l.qty_good for l in (receipt.lines or []))
+    stance = ("and, on physical inspection, found part of the consignment to be in unacceptable condition. "
+              "The good units were accepted; ONLY the defective units listed below were NOT accepted and are being returned."
+              if partial else
+              "and, on physical inspection, found them to be in unacceptable condition. We have NOT accepted this delivery into stock.")
+    detail_lines = (["Units returned for replacement:",
+                     *[f"  - {n}: {d} defective" + (f" ({g} accepted)" if g else "") for n, d, g in bad_lines], ""] if bad_lines else [])
     body = "\n".join([
         f"Dear {vendor},",
         "",
-        f"We received the goods against purchase order {po_number(po)} on {receipt.received_date:%d %b %Y} "
-        "and, on physical inspection, found them to be in unacceptable condition. "
-        "We have NOT accepted this delivery into stock.",
+        f"We received the goods against purchase order {po_number(po)} on {receipt.received_date:%d %b %Y} " + stance,
         "",
         f"PO number: {po_number(po)}",
         f"PO total: {money(po.grand_total)} (taxable {money(po.total)} + GST)",
@@ -111,6 +117,7 @@ def build_defect_email(org_name: str, po, receipt) -> dict:
         "Items ordered:",
         *_item_lines(po),
         "",
+        *detail_lines,
         "Defect details:",
         f"  {notes}",
         "",

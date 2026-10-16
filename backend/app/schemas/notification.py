@@ -9,6 +9,7 @@ class NotificationOut(BaseModel):
     message: str
     is_read: bool
     created_at: datetime
+    read_at: datetime | None = None
 
     class Config:
         from_attributes = True

@@ -17,6 +17,7 @@ type Notification = {
   message: string;
   is_read: boolean;
   created_at: string;
+  read_at?: string | null;
 };
 
 export function NotificationBell() {
@@ -24,6 +25,8 @@ export function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
+  const [archive, setArchive] = useState<Notification[]>([]);
+  const [showArchive, setShowArchive] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   function loadUnreadCount() {
@@ -52,6 +55,7 @@ export function NotificationBell() {
     const next = !open;
     setOpen(next);
     if (next) {
+      setShowArchive(false);
       setLoading(true);
       apiRequest<Notification[]>("/api/notifications", { auth: true })
         .then(setNotifications)
@@ -59,16 +63,23 @@ export function NotificationBell() {
     }
   }
 
+  function loadArchive() {
+    apiRequest<Notification[]>("/api/notifications/archive", { auth: true }).then(setArchive).catch(() => {});
+  }
+
+  // Read messages leave the main list and wait in the temporary archive (kept 7 days, then deleted).
   async function markAllRead() {
     await apiRequest("/api/notifications/read-all", { method: "POST", auth: true }).catch(() => {});
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    setNotifications([]);
     setUnreadCount(0);
+    if (showArchive) loadArchive();
   }
 
   async function markOneRead(id: string) {
     await apiRequest(`/api/notifications/${id}/read`, { method: "PATCH", auth: true }).catch(() => {});
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
     setUnreadCount((c) => Math.max(0, c - 1));
+    if (showArchive) loadArchive();
   }
 
   return (
@@ -100,16 +111,15 @@ export function NotificationBell() {
           <div className="max-h-80 overflow-y-auto">
             {loading && <p className="p-4 text-xs text-slate-400 dark:text-zinc-500">Loading…</p>}
             {!loading && notifications.length === 0 && (
-              <p className="p-4 text-xs text-slate-400 dark:text-zinc-500">No notifications yet.</p>
+              <p className="p-4 text-xs text-slate-400 dark:text-zinc-500" data-testid="no-new">No new notifications.</p>
             )}
             {!loading &&
               notifications.map((n) => (
                 <button
                   key={n.id}
-                  onClick={() => !n.is_read && markOneRead(n.id)}
-                  className={`w-full text-left font-normal px-4 py-3 border-b border-slate-50 dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-800 ${
-                    n.is_read ? "opacity-60" : ""
-                  }`}
+                  data-testid="notif-new"
+                  onClick={() => markOneRead(n.id)}
+                  className="w-full text-left font-normal px-4 py-3 border-b border-slate-50 dark:border-zinc-800 last:border-0 hover:bg-slate-50 dark:hover:bg-zinc-800"
                 >
                   <p className="text-sm text-slate-700 dark:text-zinc-100">{n.message}</p>
                   <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">
@@ -117,6 +127,27 @@ export function NotificationBell() {
                   </p>
                 </button>
               ))}
+          </div>
+
+          <div className="border-t border-slate-100 dark:border-zinc-800">
+            <button
+              data-testid="archive-toggle"
+              onClick={() => { const n = !showArchive; setShowArchive(n); if (n) loadArchive(); }}
+              className="w-full text-left font-normal px-4 py-2 text-xs text-slate-500 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800"
+            >
+              {showArchive ? "▾" : "▸"} Temporary archive (read, kept 7 days)
+            </button>
+            {showArchive && (
+              <div className="max-h-60 overflow-y-auto" data-testid="archive-list">
+                {archive.length === 0 && <p className="px-4 pb-3 text-xs text-slate-400 dark:text-zinc-500">Nothing read in the last 7 days.</p>}
+                {archive.map((n) => (
+                  <div key={n.id} className="px-4 py-2.5 border-t border-slate-50 dark:border-zinc-800 opacity-70" data-testid="notif-archived">
+                    <p className="text-sm text-slate-700 dark:text-zinc-100">{n.message}</p>
+                    <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5">Read {formatDateTime(n.read_at || n.created_at)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -4,8 +4,9 @@ export type ReceiptFile = { id: string; kind: string; filename: string; content_
 export type Receipt = {
   id: string; condition: "good" | "bad"; notes?: string | null; received_date?: string | null;
   received_by_name?: string | null; files: ReceiptFile[];
+  lines?: { product_name?: string | null; qty_good: number; qty_defective: number }[];
 };
-export type POItem = { id: string; product_id: string; product_name?: string | null; qty: number; unit_price: string; line_total: string; cgst_percent: string; sgst_percent: string; cgst_amount: string; sgst_amount: string };
+export type POItem = { id: string; product_id: string; product_name?: string | null; qty: number; unit_price: string; line_total: string; cgst_percent: string; sgst_percent: string; cgst_amount: string; sgst_amount: string; received_qty?: number; outstanding_qty?: number };
 export type PurchaseOrder = {
   id: string; po_number?: string | null; vendor_id: string; vendor_name?: string | null; order_date: string;
   status: "pending" | "received" | "defective" | "cancelled"; approval_status: "pending" | "approved" | "rejected";

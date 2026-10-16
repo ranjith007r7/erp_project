@@ -150,6 +150,25 @@ export default function WorkDetailPage() {
         <Money label="Pending" value={w.pending_amount} tone={Number(w.pending_amount) > 0 ? "warn" : "good"} />
       </div>
 
+      {w.work_type !== "sales_order" && (() => {
+        const ap = Number(w.actual_profit), off = Math.abs(Number(w.cash_after_gst_settlement) - ap) > 0.5;
+        const bad = ap < 0 || off;
+        return (
+          <div className="grid md:grid-cols-2 gap-3 mb-4" data-testid="banners">
+            <div className="rounded-xl border border-green-300 dark:border-green-800 bg-green-50 dark:bg-green-950/40 px-4 py-3" data-testid="profit-banner">
+              <p className="text-xs font-semibold uppercase tracking-wide text-green-800 dark:text-green-300">Profit on this work</p>
+              <p className={`text-2xl font-bold ${bad ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400"}`} data-testid="profit-banner-amount">{inr(w.actual_profit)}</p>
+              <p className="text-xs text-green-800/80 dark:text-green-300/80">{ap < 0 ? "Loss: this work costs more than it earns." : off ? "Check the figures: profit does not match the cash left after GST." : "Taxable value minus vendor cost, excluding GST."}</p>
+            </div>
+            <div className="rounded-xl border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/40 px-4 py-3" data-testid="gst-payable-banner">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-800 dark:text-red-300">GST to pay the government</p>
+              <p className="text-2xl font-bold text-red-600 dark:text-red-400" data-testid="gst-banner-amount">{inr(w.gst_net_payable)}</p>
+              <p className="text-xs text-red-800/80 dark:text-red-300/80">Collected {inr(w.gst_collected)} less credit {inr(w.gst_credit)}. Not part of the profit.</p>
+            </div>
+          </div>
+        );
+      })()}
+
       <Card className="p-4 mb-4" data-testid="profit-panel">
         <h2 className="text-sm font-semibold text-slate-800 dark:text-white mb-3">Profit and GST</h2>
         <div className="grid md:grid-cols-2 gap-4">
@@ -430,7 +449,7 @@ function EditDialog({ w, onClose, onSaved }: { w: WorkDetail; onClose: () => voi
         <Input label="Client name" required value={f.client_name} onChange={(e) => setF({ ...f, client_name: e.target.value })} />
         <Input label="Domain" value={f.domain} onChange={(e) => setF({ ...f, domain: e.target.value })} />
         <div className="grid grid-cols-3 gap-3">
-          <Input label="Quotation amount" type="number" min="0" step="0.01" value={f.quotation_amount} onChange={(e) => setF({ ...f, quotation_amount: e.target.value })} />
+          <Input label="Quotation amount (excluding GST)" type="number" min="0" step="0.01" value={f.quotation_amount} onChange={(e) => setF({ ...f, quotation_amount: e.target.value })} />
           <Input label="Vendor amount" type="number" min="0" step="0.01" value={f.vendor_amount} onChange={(e) => setF({ ...f, vendor_amount: e.target.value })} />
           <Input label="Client discount %" type="number" min="0" max="100" step="0.01" value={f.discount_percent} onChange={(e) => setF({ ...f, discount_percent: e.target.value })} />
         </div>

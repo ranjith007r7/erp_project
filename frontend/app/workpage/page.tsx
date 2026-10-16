@@ -141,7 +141,7 @@ export default function WorkpagePage() {
             </div>
             <Input label="Domain (the client's industry)" value={form.domain} onChange={(e) => setForm({ ...form, domain: e.target.value })} placeholder="e.g. Manufacturing, Retail, Education" />
             <div className="grid grid-cols-3 gap-3">
-              <Input label="Quotation amount" type="number" min="0" step="0.01" value={form.quotation_amount} onChange={(e) => setForm({ ...form, quotation_amount: e.target.value })} />
+              <Input label="Quotation amount (excluding GST)" type="number" min="0" step="0.01" value={form.quotation_amount} onChange={(e) => setForm({ ...form, quotation_amount: e.target.value })} />
               <Input label="Vendor amount" type="number" min="0" step="0.01" value={form.vendor_amount} onChange={(e) => setForm({ ...form, vendor_amount: e.target.value })} />
               <Input label="Client discount %" type="number" min="0" max="100" step="0.01" value={form.discount_percent} onChange={(e) => setForm({ ...form, discount_percent: e.target.value })} />
             </div>
