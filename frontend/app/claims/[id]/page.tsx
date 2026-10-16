@@ -175,7 +175,7 @@ export default function ClaimPage() {
           <div className="space-y-3">
             <p className="text-sm text-slate-600 dark:text-zinc-300"><b>Subject:</b> {notice.subject}</p>
             <pre className="text-xs whitespace-pre-wrap rounded-lg bg-slate-50 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 p-3 max-h-64 overflow-y-auto" data-testid="notice-body">{notice.body}</pre>
-            <p className="text-xs text-slate-500 dark:text-zinc-400">Attachments: {notice.attachments.join(", ") || "none"}. The customer's invoice and warranty copy are never sent.</p>
+            <p className="text-xs text-slate-500 dark:text-zinc-400">Attachments: {notice.attachments.join(", ") || "none"}. The customer&apos;s invoice and warranty copy are never sent.</p>
             <input className={field} placeholder="Vendor email" value={toEmail} onChange={(e) => setToEmail(e.target.value)} data-testid="notice-to" />
             <input className={field} placeholder="Add a line above the message (optional)" value={extra} onChange={(e) => setExtra(e.target.value)} />
             <div className="flex justify-between gap-2"><Button variant="secondary" onClick={printNotice}>No email ID: print notice</Button>
